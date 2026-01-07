@@ -19,6 +19,12 @@ export class App {
     this.pendingChunks = new Map();
     this.pendingEnrollmentSampleId = null;
 
+    // Carryover audio management (for seamless chunk boundaries)
+    this.carryoverAudio = null; // Float32Array of audio to prepend to next chunk
+    this.globalTimeOffset = 0; // Tracks global time in the recording
+    this.chunkQueue = []; // Queue of pending audio chunks
+    this.isProcessingChunk = false; // Flag to ensure sequential processing
+
     // Components
     this.worker = null;
     this.audioCapture = null;
@@ -333,11 +339,14 @@ export class App {
     this.transcriptMerger.reset();
     this.clearTranscriptDisplay();
     this.pendingChunks.clear();
+    this.carryoverAudio = null;
+    this.globalTimeOffset = 0;
+    this.chunkQueue = [];
+    this.isProcessingChunk = false;
 
-    // Create audio capture instance
+    // Create audio capture instance (no overlap - we handle carryover manually)
     this.audioCapture = new AudioCapture({
       chunkDuration: 5,
-      overlapDuration: 0.5,
       onChunkReady: (chunk) => this.handleAudioChunk(chunk),
       onError: (error) => this.handleError(error),
       onAudioLevel: (level) => this.updateAudioLevel(level),
@@ -382,74 +391,166 @@ export class App {
    * Handle audio chunk from capture
    */
   handleAudioChunk(chunk) {
+    // Queue the chunk for processing
+    this.chunkQueue.push(chunk);
+
+    // Update status
+    const queueSize = this.chunkQueue.length;
+    if (queueSize > 1) {
+      this.recordingStatus.textContent = `Recording... (${queueSize} chunks queued)`;
+    }
+
+    // Process next chunk if not already processing
+    this.processNextChunk();
+  }
+
+  /**
+   * Process the next chunk in the queue
+   */
+  processNextChunk() {
+    // Don't process if already processing or queue is empty
+    if (this.isProcessingChunk || this.chunkQueue.length === 0) {
+      return;
+    }
+
+    this.isProcessingChunk = true;
+    const chunk = this.chunkQueue.shift();
+
     const processingText = chunk.isFinal
       ? `Processing final chunk...`
       : `Processing chunk ${chunk.index + 1}...`;
     this.recordingStatus.textContent = processingText;
 
-    // Track pending chunk
+    // Prepend carryover audio from previous chunk (if any)
+    let combinedAudio;
+    let carryoverDuration = 0;
+
+    if (this.carryoverAudio && this.carryoverAudio.length > 0) {
+      carryoverDuration = this.carryoverAudio.length / 16000; // 16kHz sample rate
+      combinedAudio = new Float32Array(this.carryoverAudio.length + chunk.audio.length);
+      combinedAudio.set(this.carryoverAudio, 0);
+      combinedAudio.set(chunk.audio, this.carryoverAudio.length);
+    } else {
+      combinedAudio = chunk.audio;
+    }
+
+    // Track pending chunk with the combined audio for carryover extraction later
     this.pendingChunks.set(chunk.index, {
-      startTime: chunk.startTime,
-      duration: chunk.duration,
+      globalStartTime: this.globalTimeOffset,
+      carryoverDuration,
+      combinedAudio, // Store so we can extract carryover after results come back
+      isFinal: chunk.isFinal,
     });
 
     // Show processing indicator
     this.showProcessingIndicator();
 
-    // Send to worker for transcription
+    // Send combined audio to worker for transcription
     this.worker.postMessage({
       type: 'transcribe',
       data: {
-        audio: chunk.audio,
+        audio: combinedAudio,
         language: 'en',
         chunkIndex: chunk.index,
+        carryoverDuration,
       },
     });
+
+    // Clear carryover - will be set again when results come back
+    this.carryoverAudio = null;
   }
 
   /**
    * Handle transcription result from worker
    */
   handleTranscriptionResult(data) {
-    const { transcript, phrases, chunkIndex, processingTime } = data;
+    const { transcript, phrases, chunkIndex, processingTime, splitPoint, carryoverDuration } = data;
 
-    // Get chunk timing info
+    // Get chunk info
     const chunkInfo = this.pendingChunks.get(chunkIndex);
-    const chunkStartTime = chunkInfo?.startTime || 0;
+    if (!chunkInfo) {
+      console.warn('No chunk info for index', chunkIndex);
+      // Continue processing queue even on error
+      this.isProcessingChunk = false;
+      this.processNextChunk();
+      return;
+    }
+
+    const { globalStartTime, combinedAudio, isFinal } = chunkInfo;
 
     // Remove from pending
     this.pendingChunks.delete(chunkIndex);
 
-    // Hide processing indicator if no more pending
-    if (this.pendingChunks.size === 0) {
+    // Hide processing indicator if no more pending and queue is empty
+    if (this.pendingChunks.size === 0 && this.chunkQueue.length === 0) {
       this.hideProcessingIndicator();
     }
 
-    // Skip if no transcript
-    if (!transcript || !transcript.text || !transcript.text.trim()) {
-      this.updateRecordingStatus(processingTime);
-      return;
+    // Extract carryover audio for next chunk (unless this is final)
+    if (!isFinal && combinedAudio) {
+      const sampleRate = 16000;
+      const splitSample = Math.floor(splitPoint * sampleRate);
+
+      if (splitSample < combinedAudio.length) {
+        // Carry over audio from split point to end
+        this.carryoverAudio = combinedAudio.slice(splitSample);
+      } else {
+        this.carryoverAudio = null;
+      }
+
+      // Update global time offset: we've processed up to splitPoint
+      // But splitPoint is relative to combined audio which includes carryover
+      // The "new" audio processed = splitPoint - carryoverDuration
+      const newAudioProcessed = splitPoint - carryoverDuration;
+      this.globalTimeOffset += Math.max(0, newAudioProcessed);
+    } else {
+      // Final chunk - process everything, no carryover
+      this.carryoverAudio = null;
+      const audioDuration = combinedAudio ? combinedAudio.length / 16000 : 0;
+      const newAudioProcessed = audioDuration - carryoverDuration;
+      this.globalTimeOffset += Math.max(0, newAudioProcessed);
     }
 
-    // Merge ASR with phrase-based diarization
-    const mergedSegments = this.transcriptMerger.merge(transcript, phrases, chunkStartTime);
+    // Process transcript if we have one
+    if (transcript && transcript.text && transcript.text.trim()) {
+      // Calculate chunk start time for transcript display
+      // Word timestamps from Whisper are relative to combined audio start
+      const chunkStartTime = globalStartTime;
 
-    // Add to display
-    this.renderSegments(mergedSegments);
-    this.transcriptMerger.addSegments(mergedSegments);
+      // Merge ASR with phrase-based diarization
+      const mergedSegments = this.transcriptMerger.merge(transcript, phrases, chunkStartTime);
+
+      // Render and store segments directly (no deduplication needed with carryover approach)
+      if (mergedSegments.length > 0) {
+        this.renderSegments(mergedSegments);
+        this.transcriptMerger.segments.push(...mergedSegments);
+      }
+    }
 
     // Update status
     this.updateRecordingStatus(processingTime);
+
+    // Continue processing queue
+    this.isProcessingChunk = false;
+    this.processNextChunk();
   }
 
   /**
    * Update recording status with timing info
    */
   updateRecordingStatus(processingTime) {
+    const queuedCount = this.chunkQueue.length;
+    const pendingCount = this.pendingChunks.size;
+    const totalPending = queuedCount + pendingCount;
+
     if (this.isRecording) {
-      this.recordingStatus.textContent = `Recording... (Last chunk: ${(processingTime / 1000).toFixed(1)}s processing)`;
-    } else if (this.pendingChunks.size > 0) {
-      this.recordingStatus.textContent = `Processing ${this.pendingChunks.size} remaining chunk(s)...`;
+      let status = `Recording... (Last chunk: ${(processingTime / 1000).toFixed(1)}s processing)`;
+      if (queuedCount > 0) {
+        status += ` [${queuedCount} queued]`;
+      }
+      this.recordingStatus.textContent = status;
+    } else if (totalPending > 0) {
+      this.recordingStatus.textContent = `Processing ${totalPending} remaining chunk(s)...`;
     } else {
       this.recordingStatus.textContent = 'Recording stopped.';
     }

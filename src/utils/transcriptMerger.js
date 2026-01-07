@@ -19,6 +19,25 @@ export class TranscriptMerger {
   }
 
   /**
+   * Check if text is a non-speech marker that should be excluded
+   */
+  isNonSpeechMarker(text) {
+    if (!text) return true;
+    const trimmed = text.trim();
+    // Match [BLANK_AUDIO], [BLANK AUDIO], [BLANK, AUDIO], etc.
+    return /^\[BLANK/i.test(trimmed) || /^AUDIO\]$/i.test(trimmed);
+  }
+
+  /**
+   * Check if phrase contains only BLANK_AUDIO (should be excluded entirely)
+   */
+  isBlankAudioOnly(phrase) {
+    if (!phrase.words || phrase.words.length === 0) return true;
+    // Check if ALL words are blank/non-speech markers
+    return phrase.words.every((w) => this.isNonSpeechMarker(w.text));
+  }
+
+  /**
    * Merge ASR results with phrase-based diarization
    * @param {Object} asrResult - Whisper output with text
    * @param {Array} phrases - Phrases from PhraseDetector with words, start, end, embedding
@@ -31,7 +50,8 @@ export class TranscriptMerger {
     // Handle case with no phrases
     if (!phrases || phrases.length === 0) {
       // Fall back to full transcript as single segment
-      const text = asrResult.text?.replace(/\[BLANK_AUDIO\]/g, '').trim() || '';
+      // Remove blank audio markers (various formats)
+      const text = asrResult.text?.replace(/\[BLANK[_\s]*AUDIO\]/gi, '').trim() || '';
       if (text) {
         const speakerId = this.speakerClusterer.assignSpeaker(null);
         return [{
@@ -48,14 +68,18 @@ export class TranscriptMerger {
       return result;
     }
 
-    // Process each phrase through speaker clustering
-    const processedPhrases = this.speakerClusterer.processPhrases(phrases);
+    // Filter out BLANK_AUDIO-only phrases BEFORE speaker clustering
+    // This prevents silence embeddings from affecting speaker assignment
+    const speechPhrases = phrases.filter((p) => !this.isBlankAudioOnly(p));
+
+    // Process only speech phrases through speaker clustering
+    const processedPhrases = this.speakerClusterer.processPhrases(speechPhrases);
 
     // Convert phrases to output segments
     for (const phrase of processedPhrases) {
-      // Build text from words, filtering out blank audio markers
+      // Filter out any remaining non-speech markers (in case of mixed phrases)
       const words = (phrase.words || []).filter(
-        (w) => !w.text.includes('[BLANK_AUDIO]')
+        (w) => !this.isNonSpeechMarker(w.text)
       );
 
       if (words.length === 0) continue;
@@ -89,44 +113,14 @@ export class TranscriptMerger {
   }
 
   /**
-   * Add segments to running transcript with overlap deduplication
+   * Add segments to running transcript
+   * (Deduplication no longer needed - carryover-based chunking prevents duplicates)
    */
   addSegments(newSegments) {
     if (!newSegments || newSegments.length === 0) {
       return this.segments;
     }
-
-    // Get the end time of the last existing segment for overlap detection
-    const lastEndTime = this.segments.length > 0
-      ? this.segments[this.segments.length - 1].endTime
-      : 0;
-
-    // Filter out segments that significantly overlap with already-processed content
-    // Allow a small tolerance (0.1s) for timing differences
-    const tolerance = 0.1;
-    const filteredSegments = newSegments.filter((seg) => {
-      // Keep segment if it starts after (or very close to) the last processed content
-      return seg.startTime >= lastEndTime - tolerance;
-    });
-
-    // If the first filtered segment partially overlaps, trim it
-    if (filteredSegments.length > 0 && filteredSegments[0].startTime < lastEndTime) {
-      const seg = filteredSegments[0];
-      // Trim words that fall before lastEndTime
-      if (seg.words && seg.words.length > 0) {
-        const trimmedWords = seg.words.filter((w) => w.start >= lastEndTime - tolerance);
-        if (trimmedWords.length > 0) {
-          seg.words = trimmedWords;
-          seg.text = trimmedWords.map((w) => w.text).join('');
-          seg.startTime = trimmedWords[0].start;
-        } else {
-          // All words were trimmed, remove this segment
-          filteredSegments.shift();
-        }
-      }
-    }
-
-    this.segments.push(...filteredSegments);
+    this.segments.push(...newSegments);
     return this.segments;
   }
 

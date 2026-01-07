@@ -8,7 +8,6 @@ export class AudioCapture {
     // Audio settings (Whisper expects 16kHz mono)
     this.targetSampleRate = 16000;
     this.chunkDuration = options.chunkDuration || 5; // seconds
-    this.overlapDuration = options.overlapDuration || 0.5; // seconds for continuity
 
     // Callbacks
     this.onChunkReady = options.onChunkReady || (() => {});
@@ -25,9 +24,7 @@ export class AudioCapture {
     // Audio buffer management
     this.audioBuffer = [];
     this.chunkSamples = this.targetSampleRate * this.chunkDuration;
-    this.overlapSamples = this.targetSampleRate * this.overlapDuration;
     this.chunkIndex = 0;
-    this.totalSamplesProcessed = 0;
     this.recordingStartTime = 0;
   }
 
@@ -126,25 +123,17 @@ export class AudioCapture {
    * Emit a chunk of audio for processing
    */
   emitChunk() {
-    // Extract chunk
+    // Extract chunk (exactly chunkSamples worth)
     const chunk = new Float32Array(this.audioBuffer.slice(0, this.chunkSamples));
-
-    // Calculate chunk timing
-    const chunkStartTime = this.chunkIndex === 0
-      ? 0
-      : (this.chunkIndex * (this.chunkDuration - this.overlapDuration));
 
     this.onChunkReady({
       audio: chunk,
       index: this.chunkIndex,
-      startTime: chunkStartTime,
-      duration: this.chunkDuration,
       isFinal: false,
     });
 
-    // Keep overlap samples for continuity between chunks
-    this.audioBuffer = this.audioBuffer.slice(this.chunkSamples - this.overlapSamples);
-    this.totalSamplesProcessed += this.chunkSamples - this.overlapSamples;
+    // Clear emitted samples from buffer (no overlap - carryover handled by app.js)
+    this.audioBuffer = this.audioBuffer.slice(this.chunkSamples);
     this.chunkIndex++;
   }
 
@@ -154,18 +143,13 @@ export class AudioCapture {
   stop() {
     this.isRecording = false;
 
-    // Emit any remaining audio as final chunk (if substantial)
+    // Emit any remaining audio as final chunk (if substantial - at least 0.5s)
     if (this.audioBuffer.length > this.targetSampleRate * 0.5) {
       const finalChunk = new Float32Array(this.audioBuffer);
-      const chunkStartTime = this.chunkIndex === 0
-        ? 0
-        : (this.chunkIndex * (this.chunkDuration - this.overlapDuration));
 
       this.onChunkReady({
         audio: finalChunk,
         index: this.chunkIndex,
-        startTime: chunkStartTime,
-        duration: finalChunk.length / this.targetSampleRate,
         isFinal: true,
       });
     }
@@ -191,7 +175,6 @@ export class AudioCapture {
     // Reset state
     this.audioBuffer = [];
     this.chunkIndex = 0;
-    this.totalSamplesProcessed = 0;
   }
 
   /**
