@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Transcription with Speaker Diarization</title>
+  <link rel="stylesheet" href="/src/styles.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Live Transcription</h1>
+      <p class="subtitle">Browser-based speech recognition with speaker diarization</p>
+    </header>
+
+    <!-- Model Loading Status -->
+    <section id="model-status" class="panel">
+      <h2>Model Status</h2>
+      <div id="loading-message">Click "Load Models" to download ASR, diarization, and speaker embedding models (~150MB total)</div>
+      <button id="load-models-btn" class="btn primary">Load Models</button>
+      <div id="progress-container"></div>
+      <div id="device-info"></div>
+    </section>
+
+    <!-- Speaker Enrollment -->
+    <section id="enrollment-section" class="panel">
+      <h2>Speaker Enrollment <span class="optional-badge">Optional</span></h2>
+
+      <!-- Intro state (before enrollment starts) -->
+      <div id="enrollment-intro">
+        <p>Record your voice to help the system identify you in conversations.</p>
+        <div class="enroll-name-row">
+          <label for="enroll-name">Your name:</label>
+          <input type="text" id="enroll-name" placeholder="e.g., Jake" maxlength="20">
+        </div>
+        <div class="enroll-actions">
+          <button id="enroll-start-btn" class="btn primary" disabled>Start Enrollment</button>
+          <button id="enroll-skip-btn" class="btn secondary">Skip</button>
+        </div>
+      </div>
+
+      <!-- Recording state (during enrollment) -->
+      <div id="enrollment-recording" class="hidden">
+        <p class="enroll-instruction">Read aloud:</p>
+        <blockquote id="enroll-sentence"></blockquote>
+
+        <div class="enroll-controls">
+          <button id="enroll-record-btn" class="btn primary">Record</button>
+          <button id="enroll-skip-sentence-btn" class="btn secondary">Skip Sentence</button>
+        </div>
+
+        <div id="enroll-progress">
+          <span id="enroll-progress-text">Sample 0 of 6</span>
+          <div class="progress-dots" id="enroll-dots"></div>
+        </div>
+
+        <div class="enroll-actions">
+          <button id="enroll-finish-btn" class="btn primary" disabled>Finish Enrollment</button>
+          <button id="enroll-cancel-btn" class="btn secondary">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Complete state (after enrollment) - shows list of enrolled speakers -->
+      <div id="enrollment-complete" class="hidden">
+        <div class="enrolled-header">
+          <span id="enrolled-count" class="enrolled-count">0 speakers enrolled</span>
+          <button id="add-speaker-btn" class="btn secondary small" disabled>+ Add Speaker</button>
+        </div>
+        <div id="enrolled-items"></div>
+        <button id="clear-all-enrollments-btn" class="btn secondary small">Clear All</button>
+
+        <!-- Speaker Visualization -->
+        <div id="speaker-visualization" class="visualization-container">
+          <div class="viz-header">
+            <h3>Speaker Embedding Space</h3>
+            <span class="viz-info">Dots closer together = more similar voices</span>
+          </div>
+          <canvas id="speaker-canvas"></canvas>
+        </div>
+      </div>
+
+      <div id="enroll-status"></div>
+    </section>
+
+    <!-- Recording Controls -->
+    <section id="controls" class="panel">
+      <h2>Recording Controls</h2>
+      <div class="controls-row">
+        <div class="button-group">
+          <button id="record-btn" class="btn" disabled>Start Recording</button>
+          <button id="clear-btn" class="btn secondary" disabled>Clear Transcript</button>
+        </div>
+        <div class="speaker-config">
+          <label for="num-speakers">Expected Speakers:</label>
+          <select id="num-speakers">
+            <option value="1">1</option>
+            <option value="2" selected>2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+          </select>
+        </div>
+      </div>
+      <div id="recording-status"></div>
+      <div id="audio-visualizer"></div>
+    </section>
+
+    <!-- Transcript Display -->
+    <section id="transcript-section" class="panel">
+      <div class="section-header">
+        <h2>Transcript</h2>
+        <button id="copy-btn" class="btn secondary small" disabled>Copy Transcript</button>
+      </div>
+      <div id="transcript-container">
+        <p class="placeholder">Transcript will appear here when you start recording...</p>
+      </div>
+    </section>
+
+    <!-- Info -->
+    <footer class="panel info">
+      <p><strong>How it works:</strong> This app uses Whisper Tiny for speech recognition and Pyannote for speaker diarization.
+      All processing happens locally in your browser - no audio is sent to any server.</p>
+      <p><strong>Models:</strong> Whisper Tiny (~39MB) + Pyannote Segmentation (~6MB) + WavLM Speaker Embedding (~102MB quantized). Cached after first download.</p>
+    </footer>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
