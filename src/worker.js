@@ -1,25 +1,31 @@
 /**
  * Web Worker for ASR and Speaker Diarization
- * Runs Whisper and Pyannote models in a separate thread to keep UI responsive
+ * Runs Whisper and WavLM models in a separate thread to keep UI responsive.
+ * Uses phrase-based diarization: Whisper word timestamps + WavLM frame features.
  */
 
 import {
   pipeline,
   AutoProcessor,
-  AutoModelForAudioFrameClassification,
   AutoModel,
 } from '@huggingface/transformers';
 
+import { PhraseDetector } from './utils/phraseDetector.js';
+
 // Model identifiers
 const ASR_MODEL_ID = 'Xenova/whisper-tiny.en';
-const DIARIZATION_MODEL_ID = 'onnx-community/pyannote-segmentation-3.0';
-const EMBEDDING_MODEL_ID = 'Xenova/wavlm-base-plus-sv';
+// Using base model (not -sv) to access frame-level features via last_hidden_state
+const EMBEDDING_MODEL_ID = 'Xenova/wavlm-base-plus';
+
+// Phrase detector instance
+const phraseDetector = new PhraseDetector({
+  gapThreshold: 0.300,    // 300ms gap triggers phrase boundary
+  minPhraseDuration: 0.5, // 500ms minimum for reliable embedding
+});
 
 // Singleton model manager
 class ModelManager {
   static transcriber = null;
-  static segmentationProcessor = null;
-  static segmentationModel = null;
   static embeddingProcessor = null;
   static embeddingModel = null;
   static isLoaded = false;
@@ -62,33 +68,7 @@ class ModelManager {
       asrConfig
     );
 
-    // Load Pyannote segmentation processor
-    self.postMessage({
-      type: 'loading-stage',
-      stage: 'Loading diarization processor...',
-    });
-
-    this.segmentationProcessor = await AutoProcessor.from_pretrained(
-      DIARIZATION_MODEL_ID,
-      { progress_callback: progressCallback }
-    );
-
-    // Load Pyannote segmentation model (always WASM - WebGPU not supported)
-    self.postMessage({
-      type: 'loading-stage',
-      stage: 'Loading diarization model...',
-    });
-
-    this.segmentationModel = await AutoModelForAudioFrameClassification.from_pretrained(
-      DIARIZATION_MODEL_ID,
-      {
-        device: 'wasm',
-        dtype: 'fp32',
-        progress_callback: progressCallback,
-      }
-    );
-
-    // Load WavLM speaker embedding model
+    // Load WavLM speaker embedding model (for frame-level features)
     self.postMessage({
       type: 'loading-stage',
       stage: 'Loading speaker embedding model...',
@@ -103,41 +83,12 @@ class ModelManager {
       EMBEDDING_MODEL_ID,
       {
         device: 'wasm',
-        dtype: 'q8',
+        dtype: 'fp32', // fp32 for accurate frame-level features
         progress_callback: progressCallback,
       }
     );
 
     this.isLoaded = true;
-  }
-
-  /**
-   * Run speaker segmentation on audio
-   */
-  static async runSegmentation(audio) {
-    try {
-      const inputs = await this.segmentationProcessor(audio);
-      const { logits } = await this.segmentationModel(inputs);
-
-      // Post-process to get speaker segments
-      const segments = this.segmentationProcessor.post_process_speaker_diarization(
-        logits,
-        audio.length
-      )[0];
-
-      // Add human-readable labels
-      for (const segment of segments) {
-        segment.label =
-          this.segmentationModel.config.id2label?.[segment.id] ||
-          `SPEAKER_${segment.id}`;
-      }
-
-      return segments;
-    } catch (error) {
-      console.error('Segmentation error:', error);
-      // Return empty segments on error - transcription will still work
-      return [];
-    }
   }
 
   /**
@@ -152,16 +103,40 @@ class ModelManager {
   }
 
   /**
-   * Extract speaker embedding from audio segment
+   * Extract speaker embedding from audio segment using mean pooling of frame features
    * @param {Float32Array} audioSegment - Audio data for one speaker segment
-   * @returns {Float32Array} 512-dimensional embedding vector
+   * @returns {Float32Array} 768-dimensional embedding vector (mean-pooled from frames)
    */
   static async extractEmbedding(audioSegment) {
     try {
       const inputs = await this.embeddingProcessor(audioSegment);
       const output = await this.embeddingModel(inputs);
-      // Return the embedding vector (typically 512 dimensions)
-      return output.embeddings.data;
+
+      // Base WavLM model outputs last_hidden_state with shape [1, frames, 768]
+      const hiddenState = output.last_hidden_state;
+      if (!hiddenState) {
+        console.error('No last_hidden_state in model output. Keys:', Object.keys(output));
+        return null;
+      }
+
+      // Mean pool across frames to get single embedding
+      const [batchSize, numFrames, hiddenDim] = hiddenState.dims;
+      const data = hiddenState.data;
+      const embedding = new Float32Array(hiddenDim);
+
+      for (let f = 0; f < numFrames; f++) {
+        const frameOffset = f * hiddenDim;
+        for (let d = 0; d < hiddenDim; d++) {
+          embedding[d] += data[frameOffset + d];
+        }
+      }
+
+      // Divide by number of frames for mean
+      for (let d = 0; d < hiddenDim; d++) {
+        embedding[d] /= numFrames;
+      }
+
+      return embedding;
     } catch (error) {
       console.error('Embedding extraction error:', error);
       return null;
@@ -169,37 +144,19 @@ class ModelManager {
   }
 
   /**
-   * Extract embeddings for all speaker segments in the audio
+   * Extract frame-level features from audio (for phrase-level diarization)
    * @param {Float32Array} audio - Full audio data
-   * @param {Array} segments - Diarization segments with start/end times
-   * @returns {Array} Segments with embeddings attached
+   * @returns {Object} Object with dims and data for frame features
    */
-  static async extractSegmentEmbeddings(audio, segments) {
-    const sampleRate = 16000;
-    const segmentsWithEmbeddings = [];
-
-    for (const segment of segments) {
-      const startSample = Math.floor(segment.start * sampleRate);
-      const endSample = Math.floor(segment.end * sampleRate);
-      const segmentAudio = audio.slice(startSample, endSample);
-
-      // Skip very short segments (less than 0.5s)
-      if (segmentAudio.length < sampleRate * 0.5) {
-        segmentsWithEmbeddings.push({
-          ...segment,
-          embedding: null,
-        });
-        continue;
-      }
-
-      const embedding = await this.extractEmbedding(segmentAudio);
-      segmentsWithEmbeddings.push({
-        ...segment,
-        embedding,
-      });
+  static async extractFrameFeatures(audio) {
+    try {
+      const inputs = await this.embeddingProcessor(audio);
+      const output = await this.embeddingModel(inputs);
+      return output.last_hidden_state;
+    } catch (error) {
+      console.error('Frame feature extraction error:', error);
+      return null;
     }
-
-    return segmentsWithEmbeddings;
   }
 }
 
@@ -292,7 +249,8 @@ async function handleLoad({ device }) {
 }
 
 /**
- * Transcribe audio chunk
+ * Transcribe audio chunk using phrase-based diarization
+ * Flow: ASR → Detect phrases from word gaps → Extract frame features → Embed per phrase
  */
 async function handleTranscribe({ audio, language = 'en', chunkIndex }) {
   try {
@@ -300,17 +258,23 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex }) {
 
     // Convert audio array back to Float32Array if needed
     const audioData = audio instanceof Float32Array ? audio : new Float32Array(audio);
+    const sampleRate = 16000;
+    const audioDuration = audioData.length / sampleRate;
 
-    // Run ASR and diarization in parallel for best performance
-    const [asrResult, segments] = await Promise.all([
-      ModelManager.runTranscription(audioData),
-      ModelManager.runSegmentation(audioData),
-    ]);
+    // 1. Run ASR to get transcript with word-level timestamps
+    const asrResult = await ModelManager.runTranscription(audioData);
 
-    // Extract speaker embeddings for each segment
-    const segmentsWithEmbeddings = await ModelManager.extractSegmentEmbeddings(
-      audioData,
-      segments
+    // 2. Detect phrase boundaries from gaps between words
+    const phrases = phraseDetector.detectPhrases(asrResult.chunks || []);
+
+    // 3. Extract frame-level features (single WavLM call for entire chunk)
+    const frameFeatures = await ModelManager.extractFrameFeatures(audioData);
+
+    // 4. Extract per-phrase embeddings by slicing frame features
+    const phrasesWithEmbeddings = phraseDetector.extractPhraseEmbeddings(
+      frameFeatures,
+      phrases,
+      audioDuration
     );
 
     const processingTime = performance.now() - startTime;
@@ -319,7 +283,7 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex }) {
       type: 'result',
       data: {
         transcript: asrResult,
-        segments: segmentsWithEmbeddings,
+        phrases: phrasesWithEmbeddings, // NEW: replaces 'segments'
         chunkIndex,
         processingTime,
       },

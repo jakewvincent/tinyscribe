@@ -1,6 +1,6 @@
 /**
  * Transcript Merger
- * Aligns ASR word timestamps with speaker diarization segments
+ * Processes phrases with embeddings and assigns speakers via clustering
  */
 
 import { SpeakerClusterer } from './speakerClusterer.js';
@@ -19,106 +19,61 @@ export class TranscriptMerger {
   }
 
   /**
-   * Merge ASR results with diarization segments
-   * @param {Object} asrResult - Whisper output with chunks (words + timestamps)
-   * @param {Array} diarizationSegments - Pyannote segments with start, end, speaker, embedding
+   * Merge ASR results with phrase-based diarization
+   * @param {Object} asrResult - Whisper output with text
+   * @param {Array} phrases - Phrases from PhraseDetector with words, start, end, embedding
    * @param {number} chunkStartTime - Start time offset for this audio chunk
    * @returns {Array} Merged segments with speaker labels and text
    */
-  merge(asrResult, diarizationSegments, chunkStartTime = 0) {
-    let words = asrResult.chunks || [];
+  merge(asrResult, phrases, chunkStartTime = 0) {
     const result = [];
 
-    // Filter out [BLANK_AUDIO] tokens
-    words = words.filter((w) => !w.text.includes('[BLANK_AUDIO]'));
-
-    // Handle case with no words
-    if (!words.length) {
+    // Handle case with no phrases
+    if (!phrases || phrases.length === 0) {
+      // Fall back to full transcript as single segment
+      const text = asrResult.text?.replace(/\[BLANK_AUDIO\]/g, '').trim() || '';
+      if (text) {
+        const speakerId = this.speakerClusterer.assignSpeaker(null);
+        return [{
+          speaker: speakerId,
+          speakerLabel: this.speakerClusterer.getSpeakerLabel(speakerId),
+          text,
+          startTime: chunkStartTime,
+          endTime: chunkStartTime + (asrResult.chunks?.length > 0
+            ? (asrResult.chunks[asrResult.chunks.length - 1].timestamp?.[1] || 0)
+            : 0),
+          words: [],
+        }];
+      }
       return result;
     }
 
-    // Process diarization segments through speaker clusterer to get consistent IDs
-    const processedSegments = diarizationSegments && diarizationSegments.length
-      ? this.speakerClusterer.processSegments(diarizationSegments)
-      : [];
+    // Process each phrase through speaker clustering
+    const processedPhrases = this.speakerClusterer.processPhrases(phrases);
 
-    // Handle case with no diarization - treat as single speaker
-    if (!processedSegments.length) {
-      const speakerId = this.speakerClusterer.assignSpeaker(null);
-      return [{
-        speaker: speakerId,
-        speakerLabel: this.speakerClusterer.getSpeakerLabel(speakerId),
-        text: asrResult.text?.replace(/\[BLANK_AUDIO\]/g, '').trim() || '',
-        startTime: chunkStartTime + (words[0]?.timestamp?.[0] || 0),
-        endTime: chunkStartTime + (words[words.length - 1]?.timestamp?.[1] || 0),
-        words: words.map((w) => ({
-          text: w.text,
-          start: chunkStartTime + (w.timestamp?.[0] || 0),
-          end: chunkStartTime + (w.timestamp?.[1] || 0),
-        })),
-      }];
-    }
-
-    // Group words by speaker segments
-    let currentSegment = null;
-    let currentWords = [];
-    let lastSpeakerId = null;
-
-    for (const word of words) {
-      // Get word timing (handle both array and object formats)
-      const wordStart = Array.isArray(word.timestamp)
-        ? word.timestamp[0]
-        : word.timestamp?.start || 0;
-      const wordEnd = Array.isArray(word.timestamp)
-        ? word.timestamp[1]
-        : word.timestamp?.end || wordStart;
-      const wordMid = (wordStart + wordEnd) / 2;
-
-      // Find which diarization segment this word belongs to
-      const speakerSegment = processedSegments.find(
-        (seg) => seg.start <= wordMid && wordMid < seg.end
+    // Convert phrases to output segments
+    for (const phrase of processedPhrases) {
+      // Build text from words, filtering out blank audio markers
+      const words = (phrase.words || []).filter(
+        (w) => !w.text.includes('[BLANK_AUDIO]')
       );
 
-      // Use clustered speaker ID for consistent identification
-      const speakerId = speakerSegment?.clusteredSpeakerId ?? 0;
+      if (words.length === 0) continue;
 
-      // Start new segment if speaker changed or first word
-      if (currentSegment === null || lastSpeakerId !== speakerId) {
-        // Finalize previous segment
-        if (currentSegment !== null && currentWords.length > 0) {
-          currentSegment.text = currentWords.map((w) => w.text).join('');
-          currentSegment.endTime = currentWords[currentWords.length - 1].end;
-          currentSegment.words = [...currentWords];
-          result.push(currentSegment);
-        }
+      const text = words.map((w) => w.text).join('');
 
-        // Start new segment
-        currentSegment = {
-          speaker: speakerId,
-          speakerLabel: this.speakerClusterer.getSpeakerLabel(speakerId),
-          startTime: chunkStartTime + wordStart,
-          endTime: 0,
-          text: '',
-          words: [],
-        };
-        currentWords = [];
-        lastSpeakerId = speakerId;
-      }
-
-      // Add word to current segment
-      currentWords.push({
-        text: word.text,
-        start: chunkStartTime + wordStart,
-        end: chunkStartTime + wordEnd,
+      result.push({
+        speaker: phrase.clusteredSpeakerId,
+        speakerLabel: this.speakerClusterer.getSpeakerLabel(phrase.clusteredSpeakerId),
+        text,
+        startTime: chunkStartTime + phrase.start,
+        endTime: chunkStartTime + phrase.end,
+        words: words.map((w) => ({
+          text: w.text,
+          start: chunkStartTime + (w.timestamp?.[0] || phrase.start),
+          end: chunkStartTime + (w.timestamp?.[1] || phrase.end),
+        })),
       });
-    }
-
-    // Finalize last segment
-    if (currentSegment !== null && currentWords.length > 0) {
-      currentSegment.text = currentWords.map((w) => w.text).join('');
-      currentSegment.endTime = currentWords[currentWords.length - 1].end;
-      currentSegment.words = currentWords;
-      result.push(currentSegment);
     }
 
     return result;

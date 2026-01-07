@@ -141,6 +141,34 @@ export class SpeakerClusterer {
   }
 
   /**
+   * Process phrases and assign consistent speaker IDs
+   * Handles null embeddings by inheriting from previous phrase or defaulting to 0
+   * @param {Array} phrases - Phrases with embeddings from PhraseDetector
+   * @returns {Array} Phrases with assigned speaker IDs
+   */
+  processPhrases(phrases) {
+    let lastSpeakerId = 0;
+
+    return phrases.map((phrase) => {
+      // If phrase has embedding, assign normally
+      if (phrase.embedding) {
+        const speakerId = this.assignSpeaker(phrase.embedding);
+        lastSpeakerId = speakerId;
+        return {
+          ...phrase,
+          clusteredSpeakerId: speakerId,
+        };
+      }
+
+      // No embedding (phrase too short) - inherit from previous or default
+      return {
+        ...phrase,
+        clusteredSpeakerId: lastSpeakerId,
+      };
+    });
+  }
+
+  /**
    * Set the expected number of speakers
    * @param {number} n - Number of speakers
    */

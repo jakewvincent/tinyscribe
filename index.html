@@ -16,7 +16,7 @@
     <!-- Model Loading Status -->
     <section id="model-status" class="panel">
       <h2>Model Status</h2>
-      <div id="loading-message">Click "Load Models" to download ASR, diarization, and speaker embedding models (~150MB total)</div>
+      <div id="loading-message">Click "Load Models" to download ASR and speaker embedding models (~400MB total)</div>
       <button id="load-models-btn" class="btn primary">Load Models</button>
       <div id="progress-container"></div>
       <div id="device-info"></div>
@@ -119,9 +119,9 @@
 
     <!-- Info -->
     <footer class="panel info">
-      <p><strong>How it works:</strong> This app uses Whisper Tiny for speech recognition and Pyannote for speaker diarization.
+      <p><strong>How it works:</strong> This app uses Whisper Tiny for speech recognition and WavLM for speaker diarization.
       All processing happens locally in your browser - no audio is sent to any server.</p>
-      <p><strong>Models:</strong> Whisper Tiny (~39MB) + Pyannote Segmentation (~6MB) + WavLM Speaker Embedding (~102MB quantized). Cached after first download.</p>
+      <p><strong>Models:</strong> Whisper Tiny (~39MB) + WavLM Speaker Embedding (~360MB). Cached after first download.</p>
     </footer>
   </div>
 

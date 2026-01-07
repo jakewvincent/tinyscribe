@@ -20,14 +20,14 @@ Requires COOP/COEP headers (configured in `vite.config.js`) for SharedArrayBuffe
 │  │   index.html │───▶│    App.js    │───▶│  Worker.js   │  │
 │  │   styles.css │    │              │    │              │  │
 │  └──────────────┘    │ - UI control │    │ - Whisper    │  │
-│                      │ - Audio cap  │    │ - Pyannote   │  │
-│                      │ - Enrollment │    │ - WavLM      │  │
+│                      │ - Audio cap  │    │ - WavLM      │  │
+│                      │ - Enrollment │    │ - Phrases    │  │
 │                      └──────────────┘    └──────────────┘  │
 │                             │                   │          │
 │                      ┌──────▼──────┐    ┌──────▼──────┐   │
 │                      │ Transcript  │    │   Models    │   │
 │                      │   Merger    │    │ (IndexedDB) │   │
-│                      │ + Clusterer │    │  ~150MB     │   │
+│                      │ + Clusterer │    │  ~400MB     │   │
 │                      └─────────────┘    └─────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -37,8 +37,7 @@ Requires COOP/COEP headers (configured in `vite.config.js`) for SharedArrayBuffe
 | Model | Purpose | Size | Source |
 |-------|---------|------|--------|
 | Whisper Tiny | Speech-to-text (ASR) | ~39MB | `Xenova/whisper-tiny.en` |
-| Pyannote Segmentation | Speaker change detection | ~6MB | `onnx-community/pyannote-segmentation-3.0` |
-| WavLM | Speaker embeddings | ~102MB (q8) | `Xenova/wavlm-base-plus-sv` |
+| WavLM Base Plus | Speaker embeddings (frame-level) | ~360MB (fp32) | `Xenova/wavlm-base-plus` |
 
 Models are cached in IndexedDB after first download.
 
@@ -52,7 +51,8 @@ src/
 ├── styles.css              # All styling
 └── utils/
     ├── audioCapture.js     # Microphone capture, resampling to 16kHz
-    ├── transcriptMerger.js # Aligns ASR words with speaker segments
+    ├── phraseDetector.js   # Detects phrase boundaries from word timestamps
+    ├── transcriptMerger.js # Processes phrases with speaker assignments
     ├── speakerClusterer.js # Embedding-based speaker identification
     ├── enrollmentManager.js # Multi-speaker enrollment with Rainbow Passage
     ├── pcaProjector.js     # PCA for 2D embedding projection
@@ -64,13 +64,12 @@ src/
 ### Recording Flow
 
 1. **Audio Capture**: Microphone → 5-second chunks (0.5s overlap) → 16kHz mono Float32Array
-2. **Worker Processing** (parallel):
-   - Whisper: audio → text with word timestamps
-   - Pyannote: audio → speaker change segments
-3. **Embedding Extraction**: WavLM extracts 512-dim vector per segment
-4. **Clustering**: Cosine similarity matches segments to known speakers
-5. **Merging**: Words aligned to clustered speaker segments
-6. **Display**: Transcript rendered with speaker labels and timestamps
+2. **ASR**: Whisper produces text with word-level timestamps
+3. **Phrase Detection**: Words grouped into phrases based on gaps > 300ms
+4. **Frame Features**: Single WavLM call extracts frame-level features for entire chunk
+5. **Per-Phrase Embeddings**: Frame features sliced and mean-pooled per phrase → 768-dim vectors
+6. **Clustering**: Cosine similarity matches phrase embeddings to known speakers
+7. **Display**: Transcript rendered with speaker labels and timestamps
 
 ### Speaker Enrollment (Optional)
 
@@ -97,7 +96,7 @@ With enrollment:
 ### Speaker Visualization
 
 2D scatter plot showing speaker embedding relationships:
-- Uses PCA (power iteration) to project 512-dim embeddings to 2D
+- Uses PCA (power iteration) to project 768-dim embeddings to 2D
 - Enrolled speakers shown as colored, labeled dots
 - Discovered speakers shown as hollow gray dots
 - Closer dots = more similar voice characteristics
@@ -107,11 +106,13 @@ With enrollment:
 
 - **Sample rate**: All audio resampled to 16kHz (model requirement)
 - **Chunk duration**: 5 seconds with 0.5s overlap for continuity
-- **Embedding dimensions**: 512 (WavLM output)
+- **Phrase gap threshold**: 300ms gap between words triggers phrase boundary
+- **Min phrase duration**: 500ms minimum for reliable embedding extraction
+- **Embedding dimensions**: 768 (WavLM base output)
+- **Frame rate**: WavLM outputs ~50 frames/second (20ms per frame)
 - **Similarity threshold**: 0.7 cosine similarity for speaker matching
-- **Quantization**: WavLM uses q8 (8-bit) for smaller size
 - **WebGPU**: Used for Whisper if available, otherwise WASM fallback
-- **WASM only**: Pyannote and WavLM always use WASM
+- **WavLM**: Always uses WASM with fp32 for accurate frame features
 
 ## Configuration
 
@@ -122,6 +123,6 @@ With enrollment:
 ## Limitations
 
 - English only (using `whisper-tiny.en`)
-- Pyannote segmentation is frame-level, not true diarization
 - Speaker IDs can drift without enrollment
-- Short utterances (<0.5s) may not get reliable embeddings
+- Short phrases (<0.5s) may not get reliable embeddings
+- Phrase boundaries depend on Whisper word timing accuracy

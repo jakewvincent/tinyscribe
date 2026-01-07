@@ -411,7 +411,7 @@ export class App {
    * Handle transcription result from worker
    */
   handleTranscriptionResult(data) {
-    const { transcript, segments, chunkIndex, processingTime } = data;
+    const { transcript, phrases, chunkIndex, processingTime } = data;
 
     // Get chunk timing info
     const chunkInfo = this.pendingChunks.get(chunkIndex);
@@ -431,8 +431,8 @@ export class App {
       return;
     }
 
-    // Merge ASR with diarization
-    const mergedSegments = this.transcriptMerger.merge(transcript, segments, chunkStartTime);
+    // Merge ASR with phrase-based diarization
+    const mergedSegments = this.transcriptMerger.merge(transcript, phrases, chunkStartTime);
 
     // Add to display
     this.renderSegments(mergedSegments);
