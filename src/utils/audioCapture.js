@@ -4,10 +4,38 @@
  */
 
 export class AudioCapture {
+  /**
+   * Enumerate available audio input devices
+   * @returns {Promise<Array<{deviceId: string, label: string}>>}
+   */
+  static async getAudioInputDevices() {
+    try {
+      // Request permission first (needed to get device labels)
+      // We'll immediately stop the stream - just need permission
+      const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      tempStream.getTracks().forEach(track => track.stop());
+
+      // Now enumerate devices
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices
+        .filter(device => device.kind === 'audioinput')
+        .map(device => ({
+          deviceId: device.deviceId,
+          label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`,
+        }));
+
+      return audioInputs;
+    } catch (error) {
+      console.error('Failed to enumerate audio devices:', error);
+      return [];
+    }
+  }
+
   constructor(options = {}) {
     // Audio settings (Whisper expects 16kHz mono)
     this.targetSampleRate = 16000;
     this.chunkDuration = options.chunkDuration || 5; // seconds
+    this.deviceId = options.deviceId || null; // Specific device to use
 
     // Callbacks
     this.onChunkReady = options.onChunkReady || (() => {});
@@ -33,10 +61,14 @@ export class AudioCapture {
    */
   async start() {
     try {
+      // Build audio constraints
+      const audioConstraints = this.deviceId
+        ? { deviceId: { exact: this.deviceId } }
+        : true;
+
       // Request microphone access - this triggers the permission prompt
-      // Start with simple constraints to maximize compatibility
       this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
+        audio: audioConstraints,
       });
 
       // Create audio context

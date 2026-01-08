@@ -47,6 +47,7 @@ export class App {
     this.recordBtn = document.getElementById('record-btn');
     this.clearBtn = document.getElementById('clear-btn');
     this.copyBtn = document.getElementById('copy-btn');
+    this.micSelect = document.getElementById('mic-select');
     this.numSpeakersSelect = document.getElementById('num-speakers');
     this.loadingMessage = document.getElementById('loading-message');
     this.progressContainer = document.getElementById('progress-container');
@@ -135,6 +136,9 @@ export class App {
     // Initialize visualization
     this.initVisualization();
 
+    // Populate microphone dropdown
+    this.populateMicrophoneList();
+
     // Expose speakerClusterer for debug toggling via console
     // Usage: window.speakerClusterer.debugLogging = true
     window.speakerClusterer = this.transcriptMerger.speakerClusterer;
@@ -144,6 +148,39 @@ export class App {
 
     // Auto-load models
     this.loadModels();
+  }
+
+  /**
+   * Populate the microphone dropdown with available audio input devices
+   */
+  async populateMicrophoneList() {
+    try {
+      const devices = await AudioCapture.getAudioInputDevices();
+
+      // Clear existing options except default
+      this.micSelect.innerHTML = '<option value="">Default</option>';
+
+      // Add each device
+      for (const device of devices) {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.textContent = device.label;
+        this.micSelect.appendChild(option);
+      }
+
+      // Restore saved selection if any
+      const savedDeviceId = localStorage.getItem('selected-mic-device');
+      if (savedDeviceId) {
+        this.micSelect.value = savedDeviceId;
+      }
+
+      // Save selection on change
+      this.micSelect.addEventListener('change', () => {
+        localStorage.setItem('selected-mic-device', this.micSelect.value);
+      });
+    } catch (error) {
+      console.error('Failed to populate microphone list:', error);
+    }
   }
 
   /**
@@ -508,9 +545,13 @@ export class App {
     this.updateChunkQueueViz();
     this.resetPhraseStats();
 
+    // Get selected microphone device ID
+    const selectedDeviceId = this.micSelect.value || null;
+
     // Create audio capture instance (no overlap - we handle carryover manually)
     this.audioCapture = new AudioCapture({
       chunkDuration: 5,
+      deviceId: selectedDeviceId,
       onChunkReady: (chunk) => this.handleAudioChunk(chunk),
       onError: (error) => this.handleError(error),
       onAudioLevel: (level) => this.updateAudioLevel(level),
