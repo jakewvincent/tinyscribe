@@ -1,7 +1,7 @@
 /**
  * Enrollment Manager
  * Handles voice enrollment workflow using the Rainbow Passage
- * Supports multiple speaker enrollments
+ * Supports multiple speaker enrollments and re-recording of samples
  */
 
 import { l2Normalize, l2NormalizeCopy, cosineSimilarity } from './embeddingUtils.js';
@@ -10,57 +10,82 @@ const STORAGE_KEY = 'speaker-enrollments';
 const OUTLIER_SIMILARITY_THRESHOLD = 0.7;
 const OLD_STORAGE_KEY = 'speaker-enrollment'; // For migration
 
-const RAINBOW_SENTENCES = [
-  'When the sunlight strikes raindrops in the air, they act as a prism and form a rainbow.',
-  'The rainbow is a division of white light into many beautiful colors.',
-  'These take the shape of a long round arch, with its path high above, and its two ends apparently beyond the horizon.',
-  'There is, according to legend, a boiling pot of gold at one end.',
-  'People look, but no one ever finds it.',
-  'When a man looks for something beyond his reach, his friends say he is looking for the pot of gold at the end of the rainbow.',
+// Rainbow Passage grouped into longer segments for reliable embeddings
+// Each group should be ~30-45 words for 5+ seconds of speech
+const RAINBOW_PASSAGES = [
+  // Group 1: Sentences 1-2 (~29 words)
+  'When the sunlight strikes raindrops in the air, they act as a prism and form a rainbow. The rainbow is a division of white light into many beautiful colors.',
+
+  // Group 2: Sentences 3-4 (~35 words)
+  'These take the shape of a long round arch, with its path high above, and its two ends apparently beyond the horizon. There is, according to legend, a boiling pot of gold at one end.',
+
+  // Group 3: Sentences 5-6 (~30 words)
+  'People look, but no one ever finds it. When a man looks for something beyond his reach, his friends say he is looking for the pot of gold at the end of the rainbow.',
 ];
+
+const MIN_SAMPLES_REQUIRED = 3;
 
 export class EnrollmentManager {
   constructor() {
-    this.samples = []; // Array of normalized embeddings (Float32Array)
+    // Samples indexed by passage group (allows re-recording)
+    // null = not recorded, Float32Array = recorded
+    this.samples = new Array(RAINBOW_PASSAGES.length).fill(null);
     this.speakerName = '';
-    this.currentSentenceIndex = 0;
+    this.currentGroupIndex = 0; // Which group is currently selected
     this.rejectedSamples = []; // Track samples rejected during centroid computation
     this.usedFallback = false; // True if >50% rejected and fallback was used
   }
 
   /**
-   * Get all Rainbow Passage sentences
+   * Get all Rainbow Passage groups
    */
-  getSentences() {
-    return RAINBOW_SENTENCES;
+  getPassages() {
+    return RAINBOW_PASSAGES;
   }
 
   /**
-   * Get the current sentence to read
+   * Get the current passage to read
    */
   getCurrentSentence() {
-    return RAINBOW_SENTENCES[this.currentSentenceIndex] || null;
+    return RAINBOW_PASSAGES[this.currentGroupIndex] || null;
   }
 
   /**
-   * Get current sentence index (0-based)
+   * Get current group index (0-based)
    */
   getCurrentIndex() {
-    return this.currentSentenceIndex;
+    return this.currentGroupIndex;
   }
 
   /**
-   * Get total number of sentences
+   * Get total number of passage groups
    */
   getTotalSentences() {
-    return RAINBOW_SENTENCES.length;
+    return RAINBOW_PASSAGES.length;
   }
 
   /**
-   * Get number of samples collected
+   * Get number of samples collected (non-null entries)
    */
   getSampleCount() {
-    return this.samples.length;
+    return this.samples.filter((s) => s !== null).length;
+  }
+
+  /**
+   * Check if a specific group has been recorded
+   * @param {number} index - Group index
+   * @returns {boolean}
+   */
+  hasRecording(index) {
+    return this.samples[index] !== null;
+  }
+
+  /**
+   * Get the status of all recordings
+   * @returns {Array<'empty'|'recorded'>}
+   */
+  getRecordingStatuses() {
+    return this.samples.map((s) => (s !== null ? 'recorded' : 'empty'));
   }
 
   /**
@@ -78,44 +103,83 @@ export class EnrollmentManager {
   }
 
   /**
-   * Add a sample embedding
-   * Normalizes the embedding before storing to ensure equal contribution to centroid
+   * Record or re-record a sample at the current group index
+   * Normalizes the embedding before storing
+   * @param {Float32Array|Array} embedding - The embedding to store
    */
   addSample(embedding) {
-    // L2 normalize the sample so each contributes equally to centroid
     const normalizedEmbedding = l2NormalizeCopy(embedding);
-    this.samples.push(normalizedEmbedding);
-    this.currentSentenceIndex++;
+    this.samples[this.currentGroupIndex] = normalizedEmbedding;
+    // Auto-advance to next unrecorded group if available
+    this.advanceToNextEmpty();
   }
 
   /**
-   * Skip current sentence without recording
+   * Record or re-record a sample at a specific index
+   * @param {number} index - Group index to record
+   * @param {Float32Array|Array} embedding - The embedding to store
    */
-  skipSentence() {
-    if (this.currentSentenceIndex < RAINBOW_SENTENCES.length) {
-      this.currentSentenceIndex++;
+  setSample(index, embedding) {
+    if (index >= 0 && index < RAINBOW_PASSAGES.length) {
+      const normalizedEmbedding = l2NormalizeCopy(embedding);
+      this.samples[index] = normalizedEmbedding;
     }
   }
 
   /**
-   * Check if minimum samples collected (3+)
+   * Select a specific group for recording/re-recording
+   * @param {number} index - Group index to select
+   */
+  selectGroup(index) {
+    if (index >= 0 && index < RAINBOW_PASSAGES.length) {
+      this.currentGroupIndex = index;
+    }
+  }
+
+  /**
+   * Advance to the next empty (unrecorded) group
+   * If all are recorded, stays at current position
+   */
+  advanceToNextEmpty() {
+    // First try to find an empty slot after current position
+    for (let i = this.currentGroupIndex + 1; i < RAINBOW_PASSAGES.length; i++) {
+      if (this.samples[i] === null) {
+        this.currentGroupIndex = i;
+        return;
+      }
+    }
+    // Then try from the beginning
+    for (let i = 0; i < this.currentGroupIndex; i++) {
+      if (this.samples[i] === null) {
+        this.currentGroupIndex = i;
+        return;
+      }
+    }
+    // All slots filled - stay at current or move to end
+    if (this.currentGroupIndex < RAINBOW_PASSAGES.length - 1) {
+      this.currentGroupIndex++;
+    }
+  }
+
+  /**
+   * Check if minimum samples collected
    */
   canComplete() {
-    return this.samples.length >= 3;
+    return this.getSampleCount() >= MIN_SAMPLES_REQUIRED;
   }
 
   /**
-   * Check if all sentences have been processed
+   * Check if all passages have been recorded
    */
   isComplete() {
-    return this.currentSentenceIndex >= RAINBOW_SENTENCES.length;
+    return this.getSampleCount() === RAINBOW_PASSAGES.length;
   }
 
   /**
-   * Check if there are more sentences available
+   * Check if there are unrecorded passages
    */
   hasMoreSentences() {
-    return this.currentSentenceIndex < RAINBOW_SENTENCES.length;
+    return this.getSampleCount() < RAINBOW_PASSAGES.length;
   }
 
   /**
@@ -125,19 +189,22 @@ export class EnrollmentManager {
    * @returns {Float32Array|null}
    */
   computeAverageEmbedding() {
-    if (this.samples.length === 0) return null;
+    // Filter out null entries (unrecorded groups)
+    const recordedSamples = this.samples.filter((s) => s !== null);
 
-    const dim = this.samples[0].length;
+    if (recordedSamples.length === 0) return null;
 
-    // Step 1: Compute initial centroid from all samples
+    const dim = recordedSamples[0].length;
+
+    // Step 1: Compute initial centroid from all recorded samples
     const initialCentroid = new Float32Array(dim);
-    for (const sample of this.samples) {
+    for (const sample of recordedSamples) {
       for (let i = 0; i < dim; i++) {
         initialCentroid[i] += sample[i];
       }
     }
     for (let i = 0; i < dim; i++) {
-      initialCentroid[i] /= this.samples.length;
+      initialCentroid[i] /= recordedSamples.length;
     }
     l2Normalize(initialCentroid);
 
@@ -145,8 +212,8 @@ export class EnrollmentManager {
     const validSamples = [];
     this.rejectedSamples = [];
 
-    for (let idx = 0; idx < this.samples.length; idx++) {
-      const sample = this.samples[idx];
+    for (let idx = 0; idx < recordedSamples.length; idx++) {
+      const sample = recordedSamples[idx];
       const similarity = cosineSimilarity(sample, initialCentroid);
       if (similarity >= OUTLIER_SIMILARITY_THRESHOLD) {
         validSamples.push(sample);
@@ -159,21 +226,21 @@ export class EnrollmentManager {
     }
 
     // Step 3: Fallback if too many rejected (need at least 2 for meaningful average)
-    const samplesToUse = validSamples.length >= 2 ? validSamples : this.samples;
+    const samplesToUse = validSamples.length >= 2 ? validSamples : recordedSamples;
 
     // Track if we had to use fallback due to >50% rejection
-    const rejectionRatio = this.rejectedSamples.length / this.samples.length;
+    const rejectionRatio = this.rejectedSamples.length / recordedSamples.length;
     this.usedFallback = validSamples.length < 2 && this.rejectedSamples.length > 0;
 
     if (this.usedFallback) {
       console.warn(
-        `Enrollment: Too many outliers rejected (${this.rejectedSamples.length}/${this.samples.length}), using all samples`
+        `Enrollment: Too many outliers rejected (${this.rejectedSamples.length}/${recordedSamples.length}), using all samples`
       );
     } else if (rejectionRatio > 0.5) {
       // Even if we didn't fall back, warn if >50% were rejected
       this.usedFallback = true;
       console.warn(
-        `Enrollment: High outlier rate (${this.rejectedSamples.length}/${this.samples.length} rejected), enrollment quality may be affected`
+        `Enrollment: High outlier rate (${this.rejectedSamples.length}/${recordedSamples.length} rejected), enrollment quality may be affected`
       );
     }
 
@@ -212,9 +279,9 @@ export class EnrollmentManager {
    * Reset enrollment state for new enrollment
    */
   reset() {
-    this.samples = [];
+    this.samples = new Array(RAINBOW_PASSAGES.length).fill(null);
     this.speakerName = '';
-    this.currentSentenceIndex = 0;
+    this.currentGroupIndex = 0;
     this.rejectedSamples = [];
     this.usedFallback = false;
   }

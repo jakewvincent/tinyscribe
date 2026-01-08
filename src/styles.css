@@ -683,12 +683,17 @@ body {
   height: 10px;
   border-radius: 50%;
   background: var(--border-color);
-  transition: background 0.2s;
+  transition: background 0.2s, transform 0.15s, box-shadow 0.15s;
+  cursor: pointer;
+}
+
+.progress-dot:hover {
+  transform: scale(1.3);
 }
 
 .progress-dot.complete { background: #10b981; }
-.progress-dot.current { background: var(--speaker-0); animation: pulse 1s infinite; }
-.progress-dot.skipped { background: #f59e0b; }
+.progress-dot.selected { box-shadow: 0 0 0 2px var(--text-color); }
+.progress-dot.recording { background: var(--speaker-0); animation: pulse 1s infinite; }
 
 .enroll-success { color: #10b981; font-weight: 500; }
 

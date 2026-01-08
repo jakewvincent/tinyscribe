@@ -17,6 +17,7 @@ export class App {
     this.isModelLoaded = false;
     this.isRecording = false;
     this.isEnrolling = false;
+    this.isEnrollmentRecording = false;
     this.device = 'wasm';
     this.numSpeakers = 2;
     this.pendingChunks = new Map();
@@ -72,7 +73,6 @@ export class App {
     this.enrollSkipBtn = document.getElementById('enroll-skip-btn');
     this.enrollSentence = document.getElementById('enroll-sentence');
     this.enrollRecordBtn = document.getElementById('enroll-record-btn');
-    this.enrollSkipSentenceBtn = document.getElementById('enroll-skip-sentence-btn');
     this.enrollProgressText = document.getElementById('enroll-progress-text');
     this.enrollDots = document.getElementById('enroll-dots');
     this.enrollFinishBtn = document.getElementById('enroll-finish-btn');
@@ -284,7 +284,6 @@ export class App {
     this.enrollStartBtn.addEventListener('click', () => this.startEnrollment());
     this.enrollSkipBtn.addEventListener('click', () => this.skipEnrollment());
     this.enrollRecordBtn.addEventListener('click', () => this.toggleEnrollmentRecording());
-    this.enrollSkipSentenceBtn.addEventListener('click', () => this.skipEnrollmentSentence());
     this.enrollFinishBtn.addEventListener('click', () => this.finishEnrollment());
     this.enrollCancelBtn.addEventListener('click', () => this.cancelEnrollment());
 
@@ -1414,7 +1413,7 @@ export class App {
     // Initialize progress dots
     this.initEnrollmentDots();
 
-    // Show first sentence
+    // Show first passage
     this.updateEnrollmentUI();
   }
 
@@ -1454,12 +1453,13 @@ export class App {
 
     if (success) {
       this.isEnrolling = true;
+      this.isEnrollmentRecording = true;
       this.enrollRecordBtn.textContent = 'Stop';
       this.enrollRecordBtn.classList.add('recording');
-      this.setEnrollStatus('Recording... Read the sentence aloud, then click Stop.');
+      this.setEnrollStatus('Recording... Read the passage aloud, then click Stop.');
 
       // Mark current dot as recording
-      this.updateCurrentDot('current');
+      this.updateCurrentDot('recording');
     } else {
       this.setEnrollStatus('Failed to access microphone.', true);
     }
@@ -1476,8 +1476,16 @@ export class App {
     }
 
     this.isEnrolling = false;
-    this.enrollRecordBtn.textContent = 'Record';
+    this.isEnrollmentRecording = false;
+
+    // Update button text based on current passage recording status
+    const currentIndex = this.enrollmentManager.getCurrentIndex();
+    const hasRecording = this.enrollmentManager.hasRecording(currentIndex);
+    this.enrollRecordBtn.textContent = hasRecording ? 'Re-record' : 'Record';
     this.enrollRecordBtn.classList.remove('recording');
+
+    // Sync dots to remove recording state
+    this.syncEnrollmentDots();
   }
 
   /**
@@ -1596,41 +1604,26 @@ export class App {
       }
     }
 
-    // Add sample to enrollment manager
+    // Add sample to enrollment manager (auto-advances to next empty slot)
     this.enrollmentManager.addSample(embedding.embedding);
 
     // Update UI
-    this.updateDotComplete(sampleId);
+    this.syncEnrollmentDots();
     this.updateEnrollmentUI();
 
     // Check if we can finish
     this.enrollFinishBtn.disabled = !this.enrollmentManager.canComplete();
 
     // Show status with optional transcription warning
+    const sampleCount = this.enrollmentManager.getSampleCount();
+    const total = this.enrollmentManager.getTotalSentences();
+
     if (this.enrollmentManager.isComplete()) {
-      this.setEnrollStatus('All sentences recorded! Click Finish to complete enrollment.');
+      this.setEnrollStatus('All passages recorded! Click Finish to complete enrollment.');
     } else if (transcriptionWarning) {
-      this.setEnrollStatus(`Sample ${this.enrollmentManager.getSampleCount()} recorded. Note: ${transcriptionWarning}`);
+      this.setEnrollStatus(`Recorded (${sampleCount}/${total}). Note: ${transcriptionWarning}`);
     } else {
-      this.setEnrollStatus(`Sample ${this.enrollmentManager.getSampleCount()} recorded.`);
-    }
-  }
-
-  /**
-   * Skip current enrollment sentence
-   */
-  skipEnrollmentSentence() {
-    const currentIndex = this.enrollmentManager.getCurrentIndex();
-    this.enrollmentManager.skipSentence();
-    this.updateDotSkipped(currentIndex);
-    this.updateEnrollmentUI();
-
-    if (this.enrollmentManager.isComplete()) {
-      if (this.enrollmentManager.canComplete()) {
-        this.setEnrollStatus('All sentences processed. Click Finish to complete.');
-      } else {
-        this.setEnrollStatus('Need at least 3 recordings. Please go back and record more.', true);
-      }
+      this.setEnrollStatus(`Recorded (${sampleCount}/${total}). ${total - sampleCount} passage${total - sampleCount === 1 ? '' : 's'} remaining.`);
     }
   }
 
@@ -1846,23 +1839,26 @@ export class App {
     const sampleCount = this.enrollmentManager.getSampleCount();
     const total = this.enrollmentManager.getTotalSentences();
     const currentIndex = this.enrollmentManager.getCurrentIndex();
+    const hasRecording = this.enrollmentManager.hasRecording(currentIndex);
 
     if (currentSentence) {
       this.enrollSentence.textContent = currentSentence;
       this.enrollRecordBtn.disabled = false;
-      this.enrollSkipSentenceBtn.disabled = false;
+      // Update button text based on whether this passage was already recorded
+      this.enrollRecordBtn.textContent = hasRecording ? 'Re-record' : 'Record';
     } else {
-      this.enrollSentence.textContent = 'All sentences completed!';
+      this.enrollSentence.textContent = 'All passages completed!';
       this.enrollRecordBtn.disabled = true;
-      this.enrollSkipSentenceBtn.disabled = true;
     }
 
-    this.enrollProgressText.textContent = `Sample ${sampleCount} of ${total} (Sentence ${Math.min(currentIndex + 1, total)} of ${total})`;
+    // Show sample count and which passage is selected
+    const passageLabel = hasRecording ? `Passage ${currentIndex + 1} (recorded)` : `Passage ${currentIndex + 1}`;
+    this.enrollProgressText.textContent = `${sampleCount} of ${total} recorded | ${passageLabel}`;
     this.enrollFinishBtn.disabled = !this.enrollmentManager.canComplete();
   }
 
   /**
-   * Initialize progress dots for enrollment
+   * Initialize progress dots for enrollment with click handlers
    */
   initEnrollmentDots() {
     this.enrollDots.innerHTML = '';
@@ -1871,38 +1867,67 @@ export class App {
       const dot = document.createElement('div');
       dot.className = 'progress-dot';
       dot.dataset.index = i;
+      dot.addEventListener('click', () => this.selectEnrollmentPassage(i));
       this.enrollDots.appendChild(dot);
     }
+    this.syncEnrollmentDots();
   }
 
   /**
-   * Update current dot state
+   * Select a specific passage for recording/re-recording
+   */
+  selectEnrollmentPassage(index) {
+    // Don't allow selection while recording
+    if (this.isEnrollmentRecording) return;
+
+    this.enrollmentManager.selectGroup(index);
+    this.syncEnrollmentDots();
+    this.updateEnrollmentUI();
+  }
+
+  /**
+   * Sync all dots with recording statuses from enrollment manager
+   */
+  syncEnrollmentDots() {
+    const statuses = this.enrollmentManager.getRecordingStatuses();
+    const currentIndex = this.enrollmentManager.getCurrentIndex();
+
+    statuses.forEach((status, i) => {
+      const dot = this.enrollDots.querySelector(`[data-index="${i}"]`);
+      if (dot) {
+        // Base class
+        let className = 'progress-dot';
+
+        // Add complete class if recorded
+        if (status === 'recorded') {
+          className += ' complete';
+        }
+
+        // Add selected class for current selection (not during recording)
+        if (i === currentIndex && !this.isEnrollmentRecording) {
+          className += ' selected';
+        }
+
+        dot.className = className;
+      }
+    });
+  }
+
+  /**
+   * Update current dot to show recording state
+   * @param {string} state - 'recording' or '' (empty to reset)
    */
   updateCurrentDot(state) {
-    const currentIndex = this.enrollmentManager.getCurrentIndex();
-    const dot = this.enrollDots.querySelector(`[data-index="${currentIndex}"]`);
-    if (dot) {
-      dot.className = `progress-dot ${state}`;
-    }
-  }
-
-  /**
-   * Mark dot as complete
-   */
-  updateDotComplete(index) {
-    const dot = this.enrollDots.querySelector(`[data-index="${index}"]`);
-    if (dot) {
-      dot.className = 'progress-dot complete';
-    }
-  }
-
-  /**
-   * Mark dot as skipped
-   */
-  updateDotSkipped(index) {
-    const dot = this.enrollDots.querySelector(`[data-index="${index}"]`);
-    if (dot) {
-      dot.className = 'progress-dot skipped';
+    if (state === 'recording') {
+      // Add recording class to current dot
+      const currentIndex = this.enrollmentManager.getCurrentIndex();
+      const dot = this.enrollDots.querySelector(`[data-index="${currentIndex}"]`);
+      if (dot) {
+        dot.classList.add('recording');
+      }
+    } else {
+      // Sync all dots to reset state
+      this.syncEnrollmentDots();
     }
   }
 

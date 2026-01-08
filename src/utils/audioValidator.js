@@ -10,8 +10,8 @@ const RMS_MIN = 0.01;
 const RMS_MAX = 0.5;
 
 // Speech content thresholds
-const MIN_SPEECH_DURATION = 3.0; // seconds (research suggests 3-5s for reliable embeddings)
-const MIN_SPEECH_RATIO = 0.6; // 60%
+const MIN_SPEECH_DURATION = 5.0; // seconds (grouped passages ~30 words, target 5-7s speech)
+const MIN_SPEECH_RATIO = 0.5; // 50% (allow some pauses in longer passages)
 
 // Transcription matching threshold
 const TRANSCRIPTION_MATCH_THRESHOLD = 0.7; // 70% word overlap
