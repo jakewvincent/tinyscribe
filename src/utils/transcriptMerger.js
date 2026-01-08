@@ -165,6 +165,7 @@ export class TranscriptMerger {
       if (words.length === 0) continue;
 
       const text = words.map((w) => w.text).join('');
+      const duration = phrase.end - phrase.start;
 
       result.push({
         speaker: phrase.clusteredSpeakerId,
@@ -177,6 +178,13 @@ export class TranscriptMerger {
           start: chunkStartTime + (w.timestamp?.[0] || phrase.start),
           end: chunkStartTime + (w.timestamp?.[1] || phrase.end),
         })),
+        // Debug info for phrase stats panel
+        debug: {
+          duration: duration,
+          frameCount: phrase.frameCount || 0,
+          type: 'speech',
+          clustering: phrase.clusteringDebug || null,
+        },
       });
     }
 
@@ -186,6 +194,7 @@ export class TranscriptMerger {
       if (words.length === 0) continue;
 
       const text = words.map((w) => w.text).join('');
+      const duration = phrase.end - phrase.start;
 
       result.push({
         speaker: null,
@@ -199,6 +208,13 @@ export class TranscriptMerger {
           start: chunkStartTime + (w.timestamp?.[0] || phrase.start),
           end: chunkStartTime + (w.timestamp?.[1] || phrase.end),
         })),
+        // Debug info for environmental sounds
+        debug: {
+          duration: duration,
+          frameCount: phrase.frameCount || 0,
+          type: 'environmental',
+          clustering: null,
+        },
       });
     }
 

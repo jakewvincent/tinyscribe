@@ -14,8 +14,8 @@ import { PhraseDetector } from './utils/phraseDetector.js';
 
 // Model identifiers
 const ASR_MODEL_ID = 'Xenova/whisper-tiny.en';
-// Using base model (not -sv) to access frame-level features via last_hidden_state
-const EMBEDDING_MODEL_ID = 'Xenova/wavlm-base-plus';
+// Speaker verification model - trained to distinguish speakers (outputs embeddings directly)
+const EMBEDDING_MODEL_ID = 'Xenova/wavlm-base-plus-sv';
 
 // Phrase detector instance
 const phraseDetector = new PhraseDetector({
@@ -103,40 +103,24 @@ class ModelManager {
   }
 
   /**
-   * Extract speaker embedding from audio segment using mean pooling of frame features
+   * Extract speaker embedding from audio segment using SV model
    * @param {Float32Array} audioSegment - Audio data for one speaker segment
-   * @returns {Float32Array} 768-dimensional embedding vector (mean-pooled from frames)
+   * @returns {Float32Array} Speaker embedding vector (512-dimensional for SV model)
    */
   static async extractEmbedding(audioSegment) {
     try {
       const inputs = await this.embeddingProcessor(audioSegment);
       const output = await this.embeddingModel(inputs);
 
-      // Base WavLM model outputs last_hidden_state with shape [1, frames, 768]
-      const hiddenState = output.last_hidden_state;
-      if (!hiddenState) {
-        console.error('No last_hidden_state in model output. Keys:', Object.keys(output));
+      // SV model outputs embeddings directly with shape [1, embedding_dim]
+      const embeddings = output.embeddings;
+      if (!embeddings) {
+        console.error('No embeddings in model output. Keys:', Object.keys(output));
         return null;
       }
 
-      // Mean pool across frames to get single embedding
-      const [batchSize, numFrames, hiddenDim] = hiddenState.dims;
-      const data = hiddenState.data;
-      const embedding = new Float32Array(hiddenDim);
-
-      for (let f = 0; f < numFrames; f++) {
-        const frameOffset = f * hiddenDim;
-        for (let d = 0; d < hiddenDim; d++) {
-          embedding[d] += data[frameOffset + d];
-        }
-      }
-
-      // Divide by number of frames for mean
-      for (let d = 0; d < hiddenDim; d++) {
-        embedding[d] /= numFrames;
-      }
-
-      return embedding;
+      // Return as Float32Array
+      return new Float32Array(embeddings.data);
     } catch (error) {
       console.error('Embedding extraction error:', error);
       return null;
@@ -144,19 +128,21 @@ class ModelManager {
   }
 
   /**
-   * Extract frame-level features from audio (for phrase-level diarization)
-   * @param {Float32Array} audio - Full audio data
-   * @returns {Object} Object with dims and data for frame features
+   * Extract speaker embeddings for multiple audio segments (batch)
+   * @param {Array<Float32Array>} audioSegments - Array of audio segments
+   * @returns {Array<Float32Array>} Array of embeddings
    */
-  static async extractFrameFeatures(audio) {
-    try {
-      const inputs = await this.embeddingProcessor(audio);
-      const output = await this.embeddingModel(inputs);
-      return output.last_hidden_state;
-    } catch (error) {
-      console.error('Frame feature extraction error:', error);
-      return null;
+  static async extractEmbeddingsBatch(audioSegments) {
+    const embeddings = [];
+    for (const segment of audioSegments) {
+      if (segment && segment.length >= 8000) { // Min 0.5s at 16kHz
+        const emb = await this.extractEmbedding(segment);
+        embeddings.push(emb);
+      } else {
+        embeddings.push(null);
+      }
     }
+    return embeddings;
   }
 }
 
@@ -250,7 +236,7 @@ async function handleLoad({ device }) {
 
 /**
  * Transcribe audio chunk using phrase-based diarization
- * Flow: ASR → Detect phrases from word gaps → Extract frame features → Embed per phrase
+ * Flow: ASR → Detect phrases from word gaps → Extract audio per phrase → SV embedding per phrase
  */
 async function handleTranscribe({ audio, language = 'en', chunkIndex, carryoverDuration = 0, isFinal = false }) {
   try {
@@ -262,7 +248,9 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, carryoverD
     const audioDuration = audioData.length / sampleRate;
 
     // 1. Run ASR to get transcript with word-level timestamps
+    const asrStartTime = performance.now();
     const asrResult = await ModelManager.runTranscription(audioData);
+    const asrTime = performance.now() - asrStartTime;
 
     const words = asrResult.chunks || [];
 
@@ -295,16 +283,35 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, carryoverD
     // 3. Detect phrase boundaries from the words we're keeping
     const phrases = phraseDetector.detectPhrases(wordsToKeep);
 
-    // 4. Extract frame-level features (single WavLM call for entire chunk)
-    const frameFeatures = await ModelManager.extractFrameFeatures(audioData);
+    // 4. Extract audio segments for each phrase and get SV embeddings
+    const embeddingStartTime = performance.now();
+    const phrasesWithEmbeddings = [];
 
-    // 5. Extract per-phrase embeddings by slicing frame features
-    const phrasesWithEmbeddings = phraseDetector.extractPhraseEmbeddings(
-      frameFeatures,
-      phrases,
-      audioDuration
-    );
+    for (const phrase of phrases) {
+      const duration = phrase.end - phrase.start;
 
+      // Extract audio segment for this phrase
+      const startSample = Math.floor(phrase.start * sampleRate);
+      const endSample = Math.min(Math.ceil(phrase.end * sampleRate), audioData.length);
+      const phraseAudio = audioData.slice(startSample, endSample);
+
+      // Only get embedding if phrase is long enough (0.5s = 8000 samples)
+      let embedding = null;
+      let frameCount = phraseAudio.length;
+
+      if (duration >= 0.5 && phraseAudio.length >= 8000) {
+        embedding = await ModelManager.extractEmbedding(phraseAudio);
+      }
+
+      phrasesWithEmbeddings.push({
+        ...phrase,
+        embedding,
+        frameCount,
+        reason: embedding ? null : (duration < 0.5 ? 'too_short' : 'extraction_failed'),
+      });
+    }
+
+    const embeddingTime = performance.now() - embeddingStartTime;
     const processingTime = performance.now() - startTime;
 
     self.postMessage({
@@ -322,6 +329,12 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, carryoverD
         processingTime,
         splitPoint, // seconds - app.js uses this to calculate carryover audio
         carryoverDuration, // echo back so app.js can adjust timestamps
+        // Debug timing breakdown
+        debug: {
+          asrTime: Math.round(asrTime),
+          featureTime: 0, // No longer using frame features
+          embeddingTime: Math.round(embeddingTime),
+        },
       },
     });
   } catch (error) {

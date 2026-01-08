@@ -91,31 +91,33 @@ export class PhraseDetector {
     return phrases.map(phrase => {
       const duration = phrase.end - phrase.start;
 
+      // Calculate frame range for this phrase
+      const startFrame = Math.floor(phrase.start * actualFrameRate);
+      const endFrame = Math.min(Math.ceil(phrase.end * actualFrameRate), numFrames);
+      const frameCount = Math.max(0, endFrame - startFrame);
+
       // Skip phrases that are too short for reliable embedding
       if (duration < this.minPhraseDuration) {
         return {
           ...phrase,
           embedding: null,
+          frameCount,
           reason: 'too_short',
         };
       }
-
-      // Calculate frame range for this phrase
-      const startFrame = Math.floor(phrase.start * actualFrameRate);
-      const endFrame = Math.min(Math.ceil(phrase.end * actualFrameRate), numFrames);
 
       // Ensure we have at least some frames
       if (endFrame <= startFrame) {
         return {
           ...phrase,
           embedding: null,
+          frameCount: 0,
           reason: 'no_frames',
         };
       }
 
       // Mean pool frames for this phrase
       const embedding = new Float32Array(hiddenDim);
-      const frameCount = endFrame - startFrame;
 
       for (let f = startFrame; f < endFrame; f++) {
         const frameOffset = f * hiddenDim;
@@ -132,6 +134,7 @@ export class PhraseDetector {
       return {
         ...phrase,
         embedding,
+        frameCount,
       };
     });
   }

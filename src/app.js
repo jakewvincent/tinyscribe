@@ -25,6 +25,12 @@ export class App {
     this.chunkQueue = []; // Queue of pending audio chunks
     this.isProcessingChunk = false; // Flag to ensure sequential processing
 
+    // Debug stats
+    this.completedChunks = 0;
+    this.lastDebugTiming = null;
+    this.lastPhraseDebug = null;
+    this.bufferFillPercent = 0;
+
     // Components
     this.worker = null;
     this.audioCapture = null;
@@ -33,6 +39,7 @@ export class App {
     this.enrollmentManager = new EnrollmentManager();
     this.speakerVisualizer = null;
     this.progressItems = new Map();
+    this.panelStates = this.loadPanelStates();
 
     // DOM elements - Main controls
     this.loadModelsBtn = document.getElementById('load-models-btn');
@@ -70,6 +77,29 @@ export class App {
     this.clearAllEnrollmentsBtn = document.getElementById('clear-all-enrollments-btn');
     this.speakerCanvas = document.getElementById('speaker-canvas');
 
+    // DOM elements - Status bar
+    this.statusDot = document.getElementById('status-dot');
+    this.statusText = document.getElementById('status-text');
+    this.metricAsr = document.getElementById('metric-asr');
+    this.metricEmbed = document.getElementById('metric-embed');
+    this.metricTotal = document.getElementById('metric-total');
+    this.bufferFill = document.getElementById('buffer-fill');
+    this.bufferPercent = document.getElementById('buffer-percent');
+
+    // DOM elements - Chunk queue
+    this.chunkProcessing = document.getElementById('chunk-processing');
+    this.chunkCounts = document.getElementById('chunk-counts');
+    this.chunkSlots = document.querySelectorAll('.chunk-slot');
+
+    // DOM elements - Phrase stats
+    this.phrasePreview = document.getElementById('phrase-preview');
+    this.phraseSpeaker = document.getElementById('phrase-speaker');
+    this.phraseSimilarity = document.getElementById('phrase-similarity');
+    this.phraseRunnerUp = document.getElementById('phrase-runner-up');
+    this.phraseMargin = document.getElementById('phrase-margin');
+    this.phraseDuration = document.getElementById('phrase-duration');
+    this.phraseType = document.getElementById('phrase-type');
+
     this.init();
   }
 
@@ -88,6 +118,9 @@ export class App {
     // Setup UI event listeners
     this.setupEventListeners();
 
+    // Setup panel collapse functionality
+    this.setupPanelCollapse();
+
     // Check for WebGPU support
     await this.detectWebGPU();
 
@@ -99,6 +132,76 @@ export class App {
 
     // Initialize visualization
     this.initVisualization();
+
+    // Expose speakerClusterer for debug toggling via console
+    // Usage: window.speakerClusterer.debugLogging = true
+    window.speakerClusterer = this.transcriptMerger.speakerClusterer;
+
+    // Update status bar
+    this.updateStatusBar('ready');
+
+    // Auto-load models
+    this.loadModels();
+  }
+
+  /**
+   * Load panel collapse states from localStorage
+   */
+  loadPanelStates() {
+    try {
+      const saved = localStorage.getItem('panel-states');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Save panel collapse states to localStorage
+   */
+  savePanelStates() {
+    try {
+      localStorage.setItem('panel-states', JSON.stringify(this.panelStates));
+    } catch {
+      // Ignore storage errors
+    }
+  }
+
+  /**
+   * Setup collapsible panel functionality
+   */
+  setupPanelCollapse() {
+    const panelHeaders = document.querySelectorAll('.panel-header');
+
+    panelHeaders.forEach((header) => {
+      const panelId = header.dataset.panel;
+      const panel = header.closest('.sidebar-panel');
+      const content = panel.querySelector('.panel-content');
+      const chevron = header.querySelector('.panel-chevron');
+
+      if (!content || !panelId) return;
+
+      // Get initial state from localStorage or default
+      const defaultExpanded = panel.dataset.defaultExpanded === 'true';
+      const isExpanded = this.panelStates[panelId] ?? defaultExpanded;
+
+      // Apply initial state
+      if (!isExpanded) {
+        content.classList.add('collapsed');
+        chevron.innerHTML = '&#9656;'; // Right-pointing triangle
+      } else {
+        content.classList.remove('collapsed');
+        chevron.innerHTML = '&#9662;'; // Down-pointing triangle
+      }
+
+      // Add click handler
+      header.addEventListener('click', () => {
+        const nowExpanded = content.classList.toggle('collapsed');
+        chevron.innerHTML = nowExpanded ? '&#9656;' : '&#9662;';
+        this.panelStates[panelId] = !nowExpanded;
+        this.savePanelStates();
+      });
+    });
   }
 
   /**
@@ -227,9 +330,59 @@ export class App {
       if (enrollmentCount > 0 && enrollmentCount < 6) {
         this.addSpeakerBtn.disabled = false;
       }
+
+      // Update status bar
+      this.updateStatusBar('ready');
+
+      // Auto-collapse model status panel
+      this.collapsePanel('model-status');
+    } else if (status === 'loading') {
+      this.updateStatusBar('loading');
+      // Expand model status panel during load
+      this.expandPanel('model-status');
     } else if (status === 'error') {
       this.loadModelsBtn.textContent = 'Retry Loading';
       this.loadModelsBtn.disabled = false;
+      this.loadModelsBtn.classList.remove('hidden');
+      this.updateStatusBar('ready');
+    }
+  }
+
+  /**
+   * Collapse a specific panel
+   */
+  collapsePanel(panelId) {
+    const header = document.querySelector(`[data-panel="${panelId}"]`);
+    if (!header) return;
+
+    const panel = header.closest('.sidebar-panel');
+    const content = panel?.querySelector('.panel-content');
+    const chevron = header.querySelector('.panel-chevron');
+
+    if (content && !content.classList.contains('collapsed')) {
+      content.classList.add('collapsed');
+      chevron.innerHTML = '&#9656;';
+      this.panelStates[panelId] = false;
+      this.savePanelStates();
+    }
+  }
+
+  /**
+   * Expand a specific panel
+   */
+  expandPanel(panelId) {
+    const header = document.querySelector(`[data-panel="${panelId}"]`);
+    if (!header) return;
+
+    const panel = header.closest('.sidebar-panel');
+    const content = panel?.querySelector('.panel-content');
+    const chevron = header.querySelector('.panel-chevron');
+
+    if (content && content.classList.contains('collapsed')) {
+      content.classList.remove('collapsed');
+      chevron.innerHTML = '&#9662;';
+      this.panelStates[panelId] = true;
+      this.savePanelStates();
     }
   }
 
@@ -343,6 +496,13 @@ export class App {
     this.globalTimeOffset = 0;
     this.chunkQueue = [];
     this.isProcessingChunk = false;
+    this.completedChunks = 0;
+    this.lastDebugTiming = null;
+    this.lastPhraseDebug = null;
+
+    // Reset UI
+    this.updateChunkQueueViz();
+    this.resetPhraseStats();
 
     // Create audio capture instance (no overlap - we handle carryover manually)
     this.audioCapture = new AudioCapture({
@@ -360,6 +520,7 @@ export class App {
       this.recordBtn.classList.add('recording');
       this.recordingStatus.textContent = 'Recording... Speak into your microphone.';
       this.audioVisualizer.classList.add('active');
+      this.updateStatusBar('recording');
     } else {
       this.recordingStatus.textContent =
         'Failed to access microphone. Please check permissions and try again.';
@@ -380,10 +541,12 @@ export class App {
     this.recordBtn.classList.remove('recording');
     this.audioVisualizer.classList.remove('active');
 
-    if (this.pendingChunks.size > 0) {
-      this.recordingStatus.textContent = `Processing ${this.pendingChunks.size} remaining chunk(s)...`;
+    if (this.pendingChunks.size > 0 || this.chunkQueue.length > 0) {
+      this.recordingStatus.textContent = `Processing ${this.pendingChunks.size + this.chunkQueue.length} remaining chunk(s)...`;
+      this.updateStatusBar('processing');
     } else {
       this.recordingStatus.textContent = 'Recording stopped.';
+      this.updateStatusBar('ready');
     }
   }
 
@@ -399,6 +562,9 @@ export class App {
     if (queueSize > 1) {
       this.recordingStatus.textContent = `Recording... (${queueSize} chunks queued)`;
     }
+
+    // Update chunk queue visualization
+    this.updateChunkQueueViz();
 
     // Process next chunk if not already processing
     this.processNextChunk();
@@ -420,6 +586,9 @@ export class App {
       ? `Processing final chunk...`
       : `Processing chunk ${chunk.index + 1}...`;
     this.recordingStatus.textContent = processingText;
+
+    // Update chunk queue visualization
+    this.updateChunkQueueViz();
 
     // Prepend carryover audio from previous chunk (if any)
     let combinedAudio;
@@ -465,7 +634,7 @@ export class App {
    * Handle transcription result from worker
    */
   handleTranscriptionResult(data) {
-    const { transcript, phrases, chunkIndex, processingTime, splitPoint, carryoverDuration } = data;
+    const { transcript, phrases, chunkIndex, processingTime, splitPoint, carryoverDuration, debug } = data;
 
     // Get chunk info
     const chunkInfo = this.pendingChunks.get(chunkIndex);
@@ -481,6 +650,15 @@ export class App {
 
     // Remove from pending
     this.pendingChunks.delete(chunkIndex);
+
+    // Track completed chunks
+    this.completedChunks++;
+
+    // Store debug timing
+    if (debug) {
+      this.lastDebugTiming = debug;
+      this.updateStatusBarMetrics(debug, processingTime);
+    }
 
     // Hide processing indicator if no more pending and queue is empty
     if (this.pendingChunks.size === 0 && this.chunkQueue.length === 0) {
@@ -525,6 +703,10 @@ export class App {
       if (mergedSegments.length > 0) {
         this.renderSegments(mergedSegments);
         this.transcriptMerger.segments.push(...mergedSegments);
+
+        // Update phrase stats with last segment
+        const lastSegment = mergedSegments[mergedSegments.length - 1];
+        this.updatePhraseStats(lastSegment);
       }
     }
 
@@ -533,6 +715,10 @@ export class App {
 
     // Continue processing queue
     this.isProcessingChunk = false;
+
+    // Update chunk queue visualization (after isProcessingChunk is false)
+    this.updateChunkQueueViz();
+
     this.processNextChunk();
   }
 
@@ -552,8 +738,10 @@ export class App {
       this.recordingStatus.textContent = status;
     } else if (totalPending > 0) {
       this.recordingStatus.textContent = `Processing ${totalPending} remaining chunk(s)...`;
+      this.updateStatusBar('processing');
     } else {
       this.recordingStatus.textContent = 'Recording stopped.';
+      this.updateStatusBar('ready');
     }
   }
 
@@ -574,6 +762,31 @@ export class App {
       textEl.className = 'segment-text';
       textEl.textContent = segment.text;
 
+      // Build confidence metrics HTML if available
+      let confidenceHtml = '';
+      if (segment.debug?.clustering && !segment.isEnvironmental) {
+        const clustering = segment.debug.clustering;
+        const sim = clustering.similarity?.toFixed(2) || '-';
+        const margin = clustering.margin?.toFixed(2) || '-';
+
+        // Determine confidence class
+        let marginClass = '';
+        if (clustering.margin >= 0.15) {
+          marginClass = 'confidence-high';
+        } else if (clustering.margin >= 0.05) {
+          marginClass = 'confidence-medium';
+        } else if (clustering.margin > 0) {
+          marginClass = 'confidence-low';
+        }
+
+        confidenceHtml = `
+          <div class="segment-confidence">
+            <span class="conf-item" title="Similarity to assigned speaker">sim: ${sim}</span>
+            <span class="conf-item ${marginClass}" title="Margin between best and second-best match">margin: ${margin}</span>
+          </div>
+        `;
+      }
+
       if (segment.isEnvironmental || segment.speaker === null) {
         // Environmental sound - gray box, no speaker label
         segmentEl.className = 'transcript-segment environmental';
@@ -589,6 +802,7 @@ export class App {
         labelEl.innerHTML = `
           ${segment.speakerLabel}
           <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
+          ${confidenceHtml}
         `;
       }
 
@@ -648,6 +862,210 @@ export class App {
     this.audioVisualizer.style.background = `linear-gradient(to right,
       #3b82f6 ${normalizedLevel * 100}%,
       #e2e8f0 ${normalizedLevel * 100}%)`;
+
+    // Update buffer bar in status bar
+    this.bufferFillPercent = Math.round(normalizedLevel * 100);
+    if (this.bufferFill) {
+      this.bufferFill.style.width = `${this.bufferFillPercent}%`;
+    }
+    if (this.bufferPercent) {
+      this.bufferPercent.textContent = `${this.bufferFillPercent}%`;
+    }
+  }
+
+  /**
+   * Update status bar state
+   */
+  updateStatusBar(state) {
+    if (!this.statusDot || !this.statusText) return;
+
+    // Remove all state classes
+    this.statusDot.classList.remove('ready', 'recording', 'processing', 'loading');
+
+    switch (state) {
+      case 'ready':
+        this.statusDot.classList.add('ready');
+        this.statusText.textContent = 'Ready';
+        break;
+      case 'recording':
+        this.statusDot.classList.add('recording');
+        this.statusText.textContent = 'Recording';
+        break;
+      case 'processing':
+        this.statusDot.classList.add('processing');
+        this.statusText.textContent = 'Processing';
+        break;
+      case 'loading':
+        this.statusDot.classList.add('loading');
+        this.statusText.textContent = 'Loading models...';
+        break;
+    }
+  }
+
+  /**
+   * Update status bar metrics with timing data
+   */
+  updateStatusBarMetrics(debug, totalTime) {
+    if (this.metricAsr) {
+      this.metricAsr.textContent = `${debug.asrTime}ms`;
+    }
+    if (this.metricEmbed) {
+      // Combine feature extraction and embedding time
+      const embedTime = debug.featureTime + (debug.embeddingTime || 0);
+      this.metricEmbed.textContent = `${embedTime}ms`;
+    }
+    if (this.metricTotal) {
+      this.metricTotal.textContent = `${Math.round(totalTime)}ms`;
+    }
+  }
+
+  /**
+   * Update chunk queue visualization
+   * Shows current processing activity, not history
+   */
+  updateChunkQueueViz() {
+    if (!this.chunkSlots || !this.chunkCounts || !this.chunkProcessing) return;
+
+    const pendingCount = this.pendingChunks.size;
+    const queuedCount = this.chunkQueue.length;
+    const isActive = this.isRecording || this.isProcessingChunk || pendingCount > 0 || queuedCount > 0;
+
+    // Update processing text
+    if (this.isProcessingChunk) {
+      this.chunkProcessing.textContent = `Processing chunk #${this.completedChunks + 1}`;
+    } else if (pendingCount > 0 || queuedCount > 0) {
+      this.chunkProcessing.textContent = 'Waiting...';
+    } else if (this.isRecording) {
+      this.chunkProcessing.textContent = 'Recording...';
+    } else {
+      this.chunkProcessing.textContent = 'Idle';
+    }
+
+    // Update counts - only show when there's activity
+    if (isActive) {
+      this.chunkCounts.textContent = `Completed: ${this.completedChunks} | Queued: ${queuedCount}`;
+    } else {
+      this.chunkCounts.textContent = this.completedChunks > 0
+        ? `${this.completedChunks} chunks processed`
+        : '';
+    }
+
+    // Update slot visuals - show current activity only
+    this.chunkSlots.forEach((slot, i) => {
+      slot.className = 'chunk-slot';
+
+      if (!isActive) {
+        // Idle - all slots empty
+        return;
+      }
+
+      // Slot 0: currently processing (if any)
+      // Slots 1-4: queued chunks
+      if (i === 0 && this.isProcessingChunk) {
+        slot.classList.add('processing');
+      } else if (i > 0 && i <= queuedCount) {
+        slot.classList.add('queued');
+      }
+      // else: empty slot
+    });
+  }
+
+  /**
+   * Update phrase stats panel
+   */
+  updatePhraseStats(segment) {
+    if (!segment) return;
+
+    // Update phrase preview
+    if (this.phrasePreview) {
+      const text = segment.text || '';
+      this.phrasePreview.textContent = text.length > 80 ? text.substring(0, 80) + '...' : text;
+    }
+
+    // Update speaker
+    if (this.phraseSpeaker) {
+      if (segment.isEnvironmental) {
+        this.phraseSpeaker.textContent = 'Environmental';
+      } else {
+        this.phraseSpeaker.textContent = segment.speakerLabel || '-';
+      }
+    }
+
+    // Update debug info if available
+    const debug = segment.debug;
+    if (debug && debug.clustering) {
+      const clustering = debug.clustering;
+
+      // Similarity
+      if (this.phraseSimilarity) {
+        const sim = clustering.similarity?.toFixed(2) || '-';
+        this.phraseSimilarity.textContent = sim;
+      }
+
+      // Runner-up
+      if (this.phraseRunnerUp) {
+        const secondBest = clustering.secondBestSimilarity?.toFixed(2) || '-';
+        const secondSpeaker = clustering.secondBestSpeaker || '';
+        this.phraseRunnerUp.textContent = secondSpeaker ? `${secondBest} (${secondSpeaker})` : secondBest;
+      }
+
+      // Margin with confidence indicator
+      if (this.phraseMargin) {
+        const margin = clustering.margin?.toFixed(2) || '-';
+        let confidenceClass = '';
+        let indicator = '';
+
+        if (clustering.margin >= 0.15) {
+          confidenceClass = 'confidence-high';
+          indicator = ' ✓';
+        } else if (clustering.margin >= 0.05) {
+          confidenceClass = 'confidence-medium';
+          indicator = ' ~';
+        } else if (clustering.margin > 0) {
+          confidenceClass = 'confidence-low';
+          indicator = ' !';
+        }
+
+        this.phraseMargin.textContent = margin + indicator;
+        this.phraseMargin.className = `detail-value ${confidenceClass}`;
+      }
+    } else {
+      // No clustering data
+      if (this.phraseSimilarity) this.phraseSimilarity.textContent = '-';
+      if (this.phraseRunnerUp) this.phraseRunnerUp.textContent = '-';
+      if (this.phraseMargin) {
+        this.phraseMargin.textContent = '-';
+        this.phraseMargin.className = 'detail-value';
+      }
+    }
+
+    // Duration
+    if (this.phraseDuration && debug) {
+      const duration = debug.duration?.toFixed(1) || '-';
+      const frames = debug.frameCount || 0;
+      this.phraseDuration.textContent = `${duration}s (${frames} frames)`;
+    }
+
+    // Type
+    if (this.phraseType && debug) {
+      this.phraseType.textContent = debug.type || 'speech';
+    }
+  }
+
+  /**
+   * Reset phrase stats panel to initial state
+   */
+  resetPhraseStats() {
+    if (this.phrasePreview) this.phrasePreview.textContent = 'No phrases yet';
+    if (this.phraseSpeaker) this.phraseSpeaker.textContent = '-';
+    if (this.phraseSimilarity) this.phraseSimilarity.textContent = '-';
+    if (this.phraseRunnerUp) this.phraseRunnerUp.textContent = '-';
+    if (this.phraseMargin) {
+      this.phraseMargin.textContent = '-';
+      this.phraseMargin.className = 'detail-value';
+    }
+    if (this.phraseDuration) this.phraseDuration.textContent = '-';
+    if (this.phraseType) this.phraseType.textContent = '-';
   }
 
   /**

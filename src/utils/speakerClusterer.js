@@ -12,7 +12,9 @@ export class SpeakerClusterer {
     this.similarityThreshold = 0.7;
     // Minimum margin between best and second-best match to be confident
     // If margin is smaller, we're uncertain and should be more conservative
-    this.confidenceMargin = 0.05;
+    this.confidenceMargin = 0.10; // Raised from 0.05 since SV model gives better margins
+    // Debug logging flag - can be toggled via console: window.speakerClusterer.debugLogging = true
+    this.debugLogging = false;
   }
 
   /**
@@ -91,12 +93,26 @@ export class SpeakerClusterer {
    * Assign a speaker ID to a segment based on its embedding
    * Uses online clustering: matches to existing speaker or creates new one
    * @param {Float32Array|Array} embedding - The speaker embedding
-   * @returns {number} Assigned speaker ID
+   * @param {boolean} returnDebug - If true, returns debug info along with ID
+   * @returns {number|Object} Assigned speaker ID, or {speakerId, debug} if returnDebug
    */
-  assignSpeaker(embedding) {
+  assignSpeaker(embedding, returnDebug = false) {
+    const makeResult = (speakerId, debug = {}) => {
+      if (returnDebug) {
+        return { speakerId, debug };
+      }
+      return speakerId;
+    };
+
     if (!embedding) {
       // No embedding - assign to speaker 0 by default
-      return 0;
+      return makeResult(0, {
+        similarity: 0,
+        secondBestSimilarity: 0,
+        margin: 0,
+        isEnrolled: false,
+        reason: 'no_embedding',
+      });
     }
 
     // If no speakers yet, create the first one
@@ -105,24 +121,61 @@ export class SpeakerClusterer {
         centroid: new Float32Array(embedding),
         count: 1,
       });
-      return 0;
+      return makeResult(0, {
+        similarity: 1,
+        secondBestSimilarity: 0,
+        margin: 1,
+        isEnrolled: false,
+        reason: 'new_speaker',
+      });
     }
 
     // Find best matching speaker
     const match = this.findBestMatch(embedding);
+    const margin = match.similarity - (match.secondBestSimilarity || 0);
+
+    // Build debug info with ALL speaker similarities
+    const allSimilarities = this.speakers.map((s, i) => ({
+      speaker: s.name || `Speaker ${i + 1}`,
+      similarity: this.cosineSimilarity(embedding, s.centroid),
+      enrolled: s.enrolled || false,
+    }));
+
+    const debug = {
+      similarity: match.similarity,
+      secondBestSimilarity: match.secondBestSimilarity || 0,
+      margin: margin,
+      isEnrolled: this.speakers[match.speakerId]?.enrolled || false,
+      secondBestSpeaker: null,
+      allSimilarities: allSimilarities, // Full breakdown
+      reason: '',
+    };
+
+    // Find second-best speaker name if available
+    if (this.speakers.length > 1 && match.secondBestSimilarity > 0) {
+      for (let i = 0; i < this.speakers.length; i++) {
+        if (i !== match.speakerId) {
+          const sim = this.cosineSimilarity(embedding, this.speakers[i].centroid);
+          if (Math.abs(sim - match.secondBestSimilarity) < 0.001) {
+            debug.secondBestSpeaker = this.speakers[i].name || `Speaker ${i + 1}`;
+            break;
+          }
+        }
+      }
+    }
 
     // If similarity is above threshold, consider assigning to that speaker
     if (match.similarity >= this.similarityThreshold) {
       // Check confidence margin when we have multiple speakers
       // The best match should be significantly better than second-best
-      const margin = match.similarity - match.secondBestSimilarity;
       const hasMultipleSpeakers = this.speakers.length > 1;
 
       if (hasMultipleSpeakers && margin < this.confidenceMargin) {
         // Ambiguous match - similarities too close to be confident
         // Don't update any centroids, just return best match
         // This prevents voice contamination when uncertain
-        return match.speakerId;
+        debug.reason = 'ambiguous_match';
+        return makeResult(match.speakerId, debug);
       }
 
       // Confident match - only update centroid for non-enrolled speakers
@@ -130,7 +183,8 @@ export class SpeakerClusterer {
       if (!speaker.enrolled) {
         this.updateCentroid(match.speakerId, embedding);
       }
-      return match.speakerId;
+      debug.reason = 'confident_match';
+      return makeResult(match.speakerId, debug);
     }
 
     // If we haven't reached numSpeakers yet, create a new speaker
@@ -140,7 +194,10 @@ export class SpeakerClusterer {
         centroid: new Float32Array(embedding),
         count: 1,
       });
-      return newId;
+      debug.reason = 'new_speaker';
+      debug.similarity = 1;
+      debug.margin = 1;
+      return makeResult(newId, debug);
     }
 
     // We've reached max speakers - assign to closest one even if below threshold
@@ -149,7 +206,8 @@ export class SpeakerClusterer {
     if (!speaker.enrolled) {
       this.updateCentroid(match.speakerId, embedding);
     }
-    return match.speakerId;
+    debug.reason = 'forced_match';
+    return makeResult(match.speakerId, debug);
   }
 
   /**
@@ -171,19 +229,35 @@ export class SpeakerClusterer {
    * Process phrases and assign consistent speaker IDs
    * Handles null embeddings by inheriting from previous phrase or defaulting to 0
    * @param {Array} phrases - Phrases with embeddings from PhraseDetector
-   * @returns {Array} Phrases with assigned speaker IDs
+   * @returns {Array} Phrases with assigned speaker IDs and clustering debug info
    */
   processPhrases(phrases) {
     let lastSpeakerId = 0;
+    let lastDebug = null;
 
-    return phrases.map((phrase) => {
-      // If phrase has embedding, assign normally
+    return phrases.map((phrase, idx) => {
+      // If phrase has embedding, assign normally with debug info
       if (phrase.embedding) {
-        const speakerId = this.assignSpeaker(phrase.embedding);
-        lastSpeakerId = speakerId;
+        const result = this.assignSpeaker(phrase.embedding, true);
+        lastSpeakerId = result.speakerId;
+        lastDebug = result.debug;
+
+        // Debug log for each phrase assignment (toggleable)
+        if (this.debugLogging) {
+          const phraseText = phrase.words?.map(w => w.text).join('').trim().substring(0, 40);
+          const allSimsStr = result.debug.allSimilarities
+            ?.map(s => `${s.speaker}: ${s.similarity.toFixed(2)}`)
+            .join(', ') || '';
+          console.log(
+            `🎤 Phrase ${idx}: "${phraseText}..." → ${this.getSpeakerLabel(result.speakerId)} ` +
+            `(margin: ${result.debug.margin.toFixed(3)}) [${allSimsStr}]`
+          );
+        }
+
         return {
           ...phrase,
-          clusteredSpeakerId: speakerId,
+          clusteredSpeakerId: result.speakerId,
+          clusteringDebug: result.debug,
         };
       }
 
@@ -191,6 +265,13 @@ export class SpeakerClusterer {
       return {
         ...phrase,
         clusteredSpeakerId: lastSpeakerId,
+        clusteringDebug: lastDebug || {
+          similarity: 0,
+          secondBestSimilarity: 0,
+          margin: 0,
+          isEnrolled: false,
+          reason: 'inherited',
+        },
       };
     });
   }
@@ -302,6 +383,34 @@ export class SpeakerClusterer {
         colorIndex: e.colorIndex ?? i,
       });
     }
+
+    // Debug: Log inter-speaker similarities for enrolled speakers (always on import)
+    this.logEnrolledSpeakerSimilarities(true);
+  }
+
+  /**
+   * Debug: Log cosine similarities between all enrolled speaker centroids
+   * This helps diagnose if enrollments are too similar
+   * Always logs on import (useful for initial diagnosis), but can be called manually
+   */
+  logEnrolledSpeakerSimilarities(force = false) {
+    const enrolled = this.speakers.filter((s) => s.enrolled);
+    if (enrolled.length < 2) return;
+
+    // Always log on first import (force=true) or when debugLogging is enabled
+    if (!force && !this.debugLogging) return;
+
+    console.group('🔍 Enrolled Speaker Centroid Similarities');
+    console.log('If these values are high (>0.6), the enrollments may not be distinctive enough.');
+
+    for (let i = 0; i < enrolled.length; i++) {
+      for (let j = i + 1; j < enrolled.length; j++) {
+        const sim = this.cosineSimilarity(enrolled[i].centroid, enrolled[j].centroid);
+        const status = sim > 0.7 ? '⚠️ HIGH' : sim > 0.5 ? '⚡ MODERATE' : '✓ GOOD';
+        console.log(`  ${enrolled[i].name} ↔ ${enrolled[j].name}: ${sim.toFixed(3)} ${status}`);
+      }
+    }
+    console.groupEnd();
   }
 
   /**

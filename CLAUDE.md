@@ -37,7 +37,7 @@ Requires COOP/COEP headers (configured in `vite.config.js`) for SharedArrayBuffe
 | Model | Purpose | Size | Source |
 |-------|---------|------|--------|
 | Whisper Tiny | Speech-to-text (ASR) | ~39MB | `Xenova/whisper-tiny.en` |
-| WavLM Base Plus | Speaker embeddings (frame-level) | ~360MB (fp32) | `Xenova/wavlm-base-plus` |
+| WavLM Base Plus SV | Speaker verification embeddings | ~360MB (fp32) | `Xenova/wavlm-base-plus-sv` |
 
 Models are cached in IndexedDB after first download.
 
@@ -119,10 +119,9 @@ Whisper may output bracketed markers for non-speech sounds:
 - **Chunk duration**: 5 seconds with carryover-based continuity (last word re-transcribed in next chunk)
 - **Phrase gap threshold**: 300ms gap between words triggers phrase boundary
 - **Min phrase duration**: 500ms minimum for reliable embedding extraction
-- **Embedding dimensions**: 768 (WavLM base output)
-- **Frame rate**: WavLM outputs ~50 frames/second (20ms per frame)
+- **Embedding dimensions**: 512 (WavLM SV model output)
 - **Similarity threshold**: 0.7 cosine similarity for speaker matching
-- **Confidence margin**: 0.05 minimum difference between best and second-best match
+- **Confidence margin**: 0.10 minimum difference between best and second-best match
 - **Enrolled centroids**: Fixed during recording (not updated with new embeddings)
 - **WebGPU**: Used for Whisper if available, otherwise WASM fallback
 - **WavLM**: Always uses WASM with fp32 for accurate frame features
