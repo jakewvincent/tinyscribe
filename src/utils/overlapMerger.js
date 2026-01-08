@@ -157,24 +157,17 @@ export class OverlapMerger {
   }
 
   /**
-   * Fall back to timestamp-based merge when text matching fails
+   * Fall back when text matching fails - keep all words since we have no
+   * evidence of actual duplication. Previously this removed words based on
+   * timestamps alone, which caused data loss when chunks had unrelated content.
    */
   timestampFallback(currWords, overlapDuration) {
-    // Find first word that starts after the overlap region
-    let mergeIndex = 0;
-    for (let i = 0; i < currWords.length; i++) {
-      const wordStart = currWords[i].timestamp?.[0] || 0;
-      if (wordStart >= overlapDuration) {
-        mergeIndex = i;
-        break;
-      }
-      mergeIndex = i + 1; // If all words are in overlap, skip them all
-    }
-
+    // Without text match evidence, we can't be confident any words are duplicates.
+    // The safe default is to keep all words (mergeIndex = 0) to avoid data loss.
     return {
-      mergeIndex,
-      confidence: 0.5,
-      method: 'timestamp_fallback',
+      mergeIndex: 0,
+      confidence: 0,
+      method: 'no_text_match',
       matchedWords: [],
       timestamp: overlapDuration,
     };
