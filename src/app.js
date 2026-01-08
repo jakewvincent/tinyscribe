@@ -3,13 +3,18 @@
  * Coordinates audio capture, worker inference, and UI updates
  */
 
-import { AudioCapture } from './utils/audioCapture.js';
-import { VADProcessor } from './utils/vadProcessor.js';
-import { OverlapMerger } from './utils/overlapMerger.js';
-import { TranscriptMerger } from './utils/transcriptMerger.js';
+// Audio layer (browser audio APIs)
+import { AudioCapture, VADProcessor } from './audio/index.js';
+
+// UI components
+import { SpeakerVisualizer } from './ui/index.js';
+
+// Enrollment manager (still in utils/ for now)
 import { EnrollmentManager } from './utils/enrollmentManager.js';
-import { SpeakerVisualizer } from './utils/speakerVisualizer.js';
-import { AudioValidator } from './utils/audioValidator.js';
+
+// Core modules (pure logic, no browser dependencies)
+import { OverlapMerger, TranscriptMerger } from './core/transcription/index.js';
+import { AudioValidator } from './core/validation/index.js';
 
 export class App {
   constructor() {

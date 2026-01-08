@@ -4,27 +4,45 @@
  */
 
 import { l2Normalize, l2NormalizeCopy, cosineSimilarity } from './embeddingUtils.js';
+import { CLUSTERING_DEFAULTS } from '../../config/index.js';
 
 // Special speaker ID for unknown/unassignable speakers
 export const UNKNOWN_SPEAKER_ID = -1;
 
-// Threshold for warning about similar enrolled speakers
-const INTER_ENROLLMENT_WARNING_THRESHOLD = 0.65;
-
 export class SpeakerClusterer {
-  constructor(numSpeakers = 2) {
-    this.numSpeakers = numSpeakers;
+  /**
+   * @param {number|Object} numSpeakersOrOptions - Number of speakers or options object
+   * @param {Object} [options] - Configuration options (if first param is number)
+   * @param {number} [options.numSpeakers=2] - Expected number of speakers
+   * @param {number} [options.similarityThreshold] - Threshold for confident matching
+   * @param {number} [options.minimumSimilarityThreshold] - Below this, assign to Unknown
+   * @param {number} [options.confidenceMargin] - Min margin between best and second-best
+   * @param {number} [options.interEnrollmentWarningThreshold] - Warn when enrolled speakers are too similar
+   */
+  constructor(numSpeakersOrOptions = 2, options = {}) {
+    // Support both old API (number) and new API (options object)
+    if (typeof numSpeakersOrOptions === 'object') {
+      options = numSpeakersOrOptions;
+      this.numSpeakers = options.numSpeakers || 2;
+    } else {
+      this.numSpeakers = numSpeakersOrOptions;
+    }
+
+    // Apply defaults from config
+    const config = { ...CLUSTERING_DEFAULTS, ...options };
+
     // Each speaker has { centroid: Float32Array, count: number }
     this.speakers = [];
     // Similarity threshold for confident matching (cosine similarity)
-    this.similarityThreshold = 0.7;
+    this.similarityThreshold = config.similarityThreshold;
     // Minimum similarity - below this, assign to Unknown (don't force match)
-    this.minimumSimilarityThreshold = 0.4;
+    this.minimumSimilarityThreshold = config.minimumSimilarityThreshold;
     // Minimum margin between best and second-best match to be confident
-    // If margin is smaller, we're uncertain and should be more conservative
-    this.confidenceMargin = 0.10; // Raised from 0.05 since SV model gives better margins
+    this.confidenceMargin = config.confidenceMargin;
+    // Threshold for warning about similar enrolled speakers
+    this.interEnrollmentWarningThreshold = config.interEnrollmentWarningThreshold;
     // Debug logging flag - can be toggled via console: window.speakerClusterer.debugLogging = true
-    this.debugLogging = false;
+    this.debugLogging = options.debugLogging || false;
   }
 
   /**
@@ -413,7 +431,7 @@ export class SpeakerClusterer {
         const sim = cosineSimilarity(enrolled[i].centroid, enrolled[j].centroid);
 
         // Collect warnings for pairs above threshold
-        if (sim > INTER_ENROLLMENT_WARNING_THRESHOLD) {
+        if (sim > this.interEnrollmentWarningThreshold) {
           warnings.push({
             speaker1: enrolled[i].name,
             speaker2: enrolled[j].name,

@@ -4,32 +4,32 @@
  * Supports multiple speaker enrollments and re-recording of samples
  */
 
-import { l2Normalize, l2NormalizeCopy, cosineSimilarity } from './embeddingUtils.js';
-
-const STORAGE_KEY = 'speaker-enrollments';
-const OUTLIER_SIMILARITY_THRESHOLD = 0.7;
-const OLD_STORAGE_KEY = 'speaker-enrollment'; // For migration
-
-// Rainbow Passage grouped into longer segments for reliable embeddings
-// Each group should be ~30-45 words for 5+ seconds of speech
-const RAINBOW_PASSAGES = [
-  // Group 1: Sentences 1-2 (~29 words)
-  'When the sunlight strikes raindrops in the air, they act as a prism and form a rainbow. The rainbow is a division of white light into many beautiful colors.',
-
-  // Group 2: Sentences 3-4 (~35 words)
-  'These take the shape of a long round arch, with its path high above, and its two ends apparently beyond the horizon. There is, according to legend, a boiling pot of gold at one end.',
-
-  // Group 3: Sentences 5-6 (~30 words)
-  'People look, but no one ever finds it. When a man looks for something beyond his reach, his friends say he is looking for the pot of gold at the end of the rainbow.',
-];
-
-const MIN_SAMPLES_REQUIRED = 3;
+import { l2Normalize, l2NormalizeCopy, cosineSimilarity } from '../core/embedding/embeddingUtils.js';
+import { ENROLLMENT_DEFAULTS, RAINBOW_PASSAGES } from '../config/index.js';
 
 export class EnrollmentManager {
-  constructor() {
+  /**
+   * @param {Object} [options] - Configuration options
+   * @param {string[]} [options.passages] - Custom passages for enrollment
+   * @param {number} [options.minSamplesRequired] - Minimum samples to complete
+   * @param {number} [options.outlierThreshold] - Similarity threshold for outlier detection
+   * @param {string} [options.storageKey] - localStorage key for saving
+   * @param {string} [options.legacyStorageKey] - Old key for migration
+   */
+  constructor(options = {}) {
+    // Apply defaults from config
+    const config = { ...ENROLLMENT_DEFAULTS, ...options };
+
+    // Configuration
+    this.passages = options.passages || RAINBOW_PASSAGES;
+    this.minSamplesRequired = config.minSamplesRequired;
+    this.outlierThreshold = config.outlierThreshold;
+    this.storageKey = config.storageKey;
+    this.legacyStorageKey = config.legacyStorageKey;
+
     // Samples indexed by passage group (allows re-recording)
     // null = not recorded, Float32Array = recorded
-    this.samples = new Array(RAINBOW_PASSAGES.length).fill(null);
+    this.samples = new Array(this.passages.length).fill(null);
     this.speakerName = '';
     this.currentGroupIndex = 0; // Which group is currently selected
     this.rejectedSamples = []; // Track samples rejected during centroid computation
@@ -37,17 +37,17 @@ export class EnrollmentManager {
   }
 
   /**
-   * Get all Rainbow Passage groups
+   * Get all passage groups
    */
   getPassages() {
-    return RAINBOW_PASSAGES;
+    return this.passages;
   }
 
   /**
    * Get the current passage to read
    */
   getCurrentSentence() {
-    return RAINBOW_PASSAGES[this.currentGroupIndex] || null;
+    return this.passages[this.currentGroupIndex] || null;
   }
 
   /**
@@ -61,7 +61,7 @@ export class EnrollmentManager {
    * Get total number of passage groups
    */
   getTotalSentences() {
-    return RAINBOW_PASSAGES.length;
+    return this.passages.length;
   }
 
   /**
@@ -120,7 +120,7 @@ export class EnrollmentManager {
    * @param {Float32Array|Array} embedding - The embedding to store
    */
   setSample(index, embedding) {
-    if (index >= 0 && index < RAINBOW_PASSAGES.length) {
+    if (index >= 0 && index < this.passages.length) {
       const normalizedEmbedding = l2NormalizeCopy(embedding);
       this.samples[index] = normalizedEmbedding;
     }
@@ -131,7 +131,7 @@ export class EnrollmentManager {
    * @param {number} index - Group index to select
    */
   selectGroup(index) {
-    if (index >= 0 && index < RAINBOW_PASSAGES.length) {
+    if (index >= 0 && index < this.passages.length) {
       this.currentGroupIndex = index;
     }
   }
@@ -142,7 +142,7 @@ export class EnrollmentManager {
    */
   advanceToNextEmpty() {
     // First try to find an empty slot after current position
-    for (let i = this.currentGroupIndex + 1; i < RAINBOW_PASSAGES.length; i++) {
+    for (let i = this.currentGroupIndex + 1; i < this.passages.length; i++) {
       if (this.samples[i] === null) {
         this.currentGroupIndex = i;
         return;
@@ -156,7 +156,7 @@ export class EnrollmentManager {
       }
     }
     // All slots filled - stay at current or move to end
-    if (this.currentGroupIndex < RAINBOW_PASSAGES.length - 1) {
+    if (this.currentGroupIndex < this.passages.length - 1) {
       this.currentGroupIndex++;
     }
   }
@@ -165,21 +165,21 @@ export class EnrollmentManager {
    * Check if minimum samples collected
    */
   canComplete() {
-    return this.getSampleCount() >= MIN_SAMPLES_REQUIRED;
+    return this.getSampleCount() >= this.minSamplesRequired;
   }
 
   /**
    * Check if all passages have been recorded
    */
   isComplete() {
-    return this.getSampleCount() === RAINBOW_PASSAGES.length;
+    return this.getSampleCount() === this.passages.length;
   }
 
   /**
    * Check if there are unrecorded passages
    */
   hasMoreSentences() {
-    return this.getSampleCount() < RAINBOW_PASSAGES.length;
+    return this.getSampleCount() < this.passages.length;
   }
 
   /**
@@ -215,12 +215,12 @@ export class EnrollmentManager {
     for (let idx = 0; idx < recordedSamples.length; idx++) {
       const sample = recordedSamples[idx];
       const similarity = cosineSimilarity(sample, initialCentroid);
-      if (similarity >= OUTLIER_SIMILARITY_THRESHOLD) {
+      if (similarity >= this.outlierThreshold) {
         validSamples.push(sample);
       } else {
         this.rejectedSamples.push({ index: idx, sample, similarity });
         console.warn(
-          `Enrollment: Outlier sample ${idx + 1} rejected (similarity ${similarity.toFixed(3)} < ${OUTLIER_SIMILARITY_THRESHOLD})`
+          `Enrollment: Outlier sample ${idx + 1} rejected (similarity ${similarity.toFixed(3)} < ${this.outlierThreshold})`
         );
       }
     }
@@ -279,7 +279,7 @@ export class EnrollmentManager {
    * Reset enrollment state for new enrollment
    */
   reset() {
-    this.samples = new Array(RAINBOW_PASSAGES.length).fill(null);
+    this.samples = new Array(this.passages.length).fill(null);
     this.speakerName = '';
     this.currentGroupIndex = 0;
     this.rejectedSamples = [];
@@ -289,12 +289,26 @@ export class EnrollmentManager {
   // ==================== Static localStorage methods (multi-enrollment) ====================
 
   /**
+   * Get the storage key (uses default from config)
+   */
+  static get STORAGE_KEY() {
+    return ENROLLMENT_DEFAULTS.storageKey;
+  }
+
+  /**
+   * Get the legacy storage key (uses default from config)
+   */
+  static get LEGACY_STORAGE_KEY() {
+    return ENROLLMENT_DEFAULTS.legacyStorageKey;
+  }
+
+  /**
    * Migrate old single enrollment to new multi-enrollment format
    * Call this once on app startup
    */
   static migrateFromSingle() {
-    const oldData = localStorage.getItem(OLD_STORAGE_KEY);
-    if (oldData && !localStorage.getItem(STORAGE_KEY)) {
+    const oldData = localStorage.getItem(this.LEGACY_STORAGE_KEY);
+    if (oldData && !localStorage.getItem(this.STORAGE_KEY)) {
       try {
         const parsed = JSON.parse(oldData);
         const migrated = [{
@@ -303,7 +317,7 @@ export class EnrollmentManager {
           colorIndex: 0,
         }];
         this.saveAll(migrated);
-        localStorage.removeItem(OLD_STORAGE_KEY);
+        localStorage.removeItem(this.LEGACY_STORAGE_KEY);
         console.log('Migrated single enrollment to multi-enrollment format');
       } catch (e) {
         console.error('Failed to migrate enrollment:', e);
@@ -316,7 +330,7 @@ export class EnrollmentManager {
    * @param {Array} enrollments - Array of {id, name, centroid, timestamp, colorIndex}
    */
   static saveAll(enrollments) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(enrollments));
+    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(enrollments));
   }
 
   /**
@@ -325,7 +339,7 @@ export class EnrollmentManager {
    */
   static loadAll() {
     try {
-      const data = localStorage.getItem(STORAGE_KEY);
+      const data = localStorage.getItem(this.STORAGE_KEY);
       return data ? JSON.parse(data) : [];
     } catch (e) {
       console.error('Failed to load enrollments:', e);
@@ -380,7 +394,7 @@ export class EnrollmentManager {
    * Clear all enrollments from localStorage
    */
   static clearAll() {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(this.STORAGE_KEY);
   }
 
   /**

@@ -3,26 +3,31 @@
  * Processes phrases with embeddings and assigns speakers via clustering
  */
 
-import { SpeakerClusterer } from './speakerClusterer.js';
-
-// Human voice sounds - can be attributed to a speaker
-const HUMAN_VOICE_PATTERNS = [
-  'laugh', 'chuckle', 'giggle', 'cough', 'sigh', 'sneeze', 'cry', 'sob',
-  'scream', 'groan', 'moan', 'yawn', 'gasp', 'breath', 'hum', 'whistle',
-  'sing', 'clear', 'throat', 'hiccup', 'snore', 'sniff', 'whimper',
-];
-
-// Environmental sounds - should NOT be attributed to a speaker
-const ENVIRONMENTAL_PATTERNS = [
-  'blank', 'music', 'noise', 'applause', 'silence', 'static', 'beep',
-  'ring', 'click', 'bang', 'crash', 'thunder', 'rain', 'wind', 'door',
-  'phone', 'alarm', 'siren', 'horn', 'engine', 'background',
-];
+import { SpeakerClusterer } from '../embedding/speakerClusterer.js';
+import { SoundClassifier } from '../sound/soundClassifier.js';
 
 export class TranscriptMerger {
-  constructor(numSpeakers = 2) {
+  /**
+   * @param {number|Object} numSpeakersOrOptions - Number of speakers or options object
+   * @param {Object} [options] - Configuration options (if first param is number)
+   * @param {number} [options.numSpeakers=2] - Expected number of speakers
+   * @param {SpeakerClusterer} [options.clusterer] - Custom speaker clusterer instance
+   * @param {SoundClassifier} [options.soundClassifier] - Custom sound classifier instance
+   */
+  constructor(numSpeakersOrOptions = 2, options = {}) {
+    // Support both old API (number) and new API (options object)
+    let numSpeakers = 2;
+    if (typeof numSpeakersOrOptions === 'object') {
+      options = numSpeakersOrOptions;
+      numSpeakers = options.numSpeakers || 2;
+    } else {
+      numSpeakers = numSpeakersOrOptions;
+    }
+
     this.segments = [];
-    this.speakerClusterer = new SpeakerClusterer(numSpeakers);
+    // Allow dependency injection of clusterer and classifier
+    this.speakerClusterer = options.clusterer || new SpeakerClusterer(numSpeakers);
+    this.soundClassifier = options.soundClassifier || new SoundClassifier();
   }
 
   /**
@@ -30,75 +35,6 @@ export class TranscriptMerger {
    */
   setNumSpeakers(n) {
     this.speakerClusterer.setNumSpeakers(n);
-  }
-
-  /**
-   * Check if text is a bracketed marker like [MUSIC] or [LAUGHTER]
-   */
-  isBracketedMarker(text) {
-    if (!text) return false;
-    const trimmed = text.trim();
-    return /^\[.*\]$/.test(trimmed) || /^\(.*\)$/.test(trimmed);
-  }
-
-  /**
-   * Check if text is a human voice sound (can be attributed to speaker)
-   */
-  isHumanVoiceSound(text) {
-    if (!text) return false;
-    const lower = text.toLowerCase();
-    return HUMAN_VOICE_PATTERNS.some((pattern) => lower.includes(pattern));
-  }
-
-  /**
-   * Check if text is an environmental sound (should NOT be attributed to speaker)
-   * Default: unknown bracketed markers are treated as environmental (safer)
-   */
-  isEnvironmentalSound(text) {
-    if (!text) return false;
-    const trimmed = text.trim();
-
-    // Check if it's a bracketed marker
-    if (!this.isBracketedMarker(trimmed)) {
-      return false; // Regular speech, not environmental
-    }
-
-    // If it matches human voice patterns, it's NOT environmental
-    if (this.isHumanVoiceSound(trimmed)) {
-      return false;
-    }
-
-    // All other bracketed markers are environmental (safer default)
-    return true;
-  }
-
-  /**
-   * Check if text is BLANK_AUDIO specifically (should be filtered out entirely)
-   */
-  isBlankAudio(text) {
-    if (!text) return false;
-    const trimmed = text.trim();
-    return /^\[BLANK/i.test(trimmed) || /^AUDIO\]$/i.test(trimmed);
-  }
-
-  /**
-   * Check if phrase contains only BLANK_AUDIO (should be excluded entirely)
-   */
-  isBlankAudioOnly(phrase) {
-    if (!phrase.words || phrase.words.length === 0) return true;
-    return phrase.words.every((w) => this.isBlankAudio(w.text));
-  }
-
-  /**
-   * Check if phrase contains only environmental sounds (no speech)
-   */
-  isEnvironmentalOnly(phrase) {
-    if (!phrase.words || phrase.words.length === 0) return true;
-    return phrase.words.every((w) => {
-      const text = w.text?.trim();
-      if (!text) return true;
-      return this.isEnvironmentalSound(text);
-    });
   }
 
   /**
@@ -132,7 +68,7 @@ export class TranscriptMerger {
       return result;
     }
 
-    // Categorize phrases:
+    // Categorize phrases using sound classifier:
     // 1. BLANK_AUDIO only → filter out entirely
     // 2. Environmental only (music, applause, etc.) → show without speaker
     // 3. Speech/human sounds → normal speaker clustering
@@ -140,10 +76,11 @@ export class TranscriptMerger {
     const environmentalPhrases = [];
 
     for (const phrase of phrases) {
-      if (this.isBlankAudioOnly(phrase)) {
+      const category = this.soundClassifier.categorizePhrase(phrase);
+      if (category === 'blank') {
         // Filter out completely - silence/blank audio
         continue;
-      } else if (this.isEnvironmentalOnly(phrase)) {
+      } else if (category === 'environmental') {
         // Environmental sound - keep but don't attribute to speaker
         environmentalPhrases.push(phrase);
       } else {
@@ -159,7 +96,7 @@ export class TranscriptMerger {
     for (const phrase of processedSpeechPhrases) {
       // Filter out BLANK_AUDIO tokens but keep other markers (human sounds)
       const words = (phrase.words || []).filter(
-        (w) => !this.isBlankAudio(w.text)
+        (w) => !this.soundClassifier.isBlankAudio(w.text)
       );
 
       if (words.length === 0) continue;

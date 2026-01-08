@@ -1,29 +1,57 @@
 /**
  * Speaker Visualizer
  * Renders speaker embeddings as 2D scatter plot using PCA projection
+ *
+ * Reusable component - accepts canvas element or ID
  */
 
-import { PCAProjector } from './pcaProjector.js';
-
-const SPEAKER_COLORS = [
-  '#3b82f6', // Blue
-  '#10b981', // Green
-  '#f59e0b', // Amber
-  '#ef4444', // Red
-  '#8b5cf6', // Purple
-  '#ec4899', // Pink
-];
+import { PCAProjector } from '../../core/embedding/pcaProjector.js';
+import { SPEAKER_COLORS } from '../../config/index.js';
 
 export class SpeakerVisualizer {
-  constructor(canvasId) {
-    this.canvas = document.getElementById(canvasId);
+  /**
+   * @param {Object|string} options - Canvas element, options object, or canvas ID (for backward compatibility)
+   * @param {HTMLCanvasElement} [options.canvas] - Canvas element to render to
+   * @param {string} [options.canvasId] - Canvas element ID (alternative to canvas)
+   * @param {number} [options.padding=50] - Padding around the plot
+   * @param {number} [options.dotRadius=10] - Radius of speaker dots
+   * @param {string[]} [options.colors] - Custom color palette
+   */
+  constructor(options = {}) {
+    // Support old API: new SpeakerVisualizer('canvas-id')
+    if (typeof options === 'string') {
+      options = { canvasId: options };
+    }
+
+    // Resolve canvas element
+    if (options.canvas) {
+      this.canvas = options.canvas;
+    } else if (options.canvasId) {
+      this.canvas = document.getElementById(options.canvasId);
+    } else {
+      this.canvas = null;
+    }
+
     this.ctx = this.canvas ? this.canvas.getContext('2d') : null;
     this.pca = new PCAProjector();
-    this.padding = 50;
-    this.dotRadius = 10;
+    this.padding = options.padding ?? 50;
+    this.dotRadius = options.dotRadius ?? 10;
+    this.colors = options.colors ?? SPEAKER_COLORS;
     this.dpr = window.devicePixelRatio || 1;
 
     // Set up high-DPI canvas
+    if (this.canvas) {
+      this.setupCanvas();
+    }
+  }
+
+  /**
+   * Set a new canvas element
+   * @param {HTMLCanvasElement} canvas - Canvas element to use
+   */
+  setCanvas(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas ? canvas.getContext('2d') : null;
     if (this.canvas) {
       this.setupCanvas();
     }
@@ -142,7 +170,7 @@ export class SpeakerVisualizer {
    * Draw a speaker dot with label
    */
   drawSpeaker(cx, cy, speaker) {
-    const color = SPEAKER_COLORS[speaker.colorIndex % SPEAKER_COLORS.length];
+    const color = this.colors[speaker.colorIndex % this.colors.length];
 
     // Draw shadow for depth
     this.ctx.beginPath();
@@ -204,7 +232,7 @@ export class SpeakerVisualizer {
       // Draw filled circle
       this.ctx.beginPath();
       this.ctx.arc(x + 5, y, 5, 0, Math.PI * 2);
-      this.ctx.fillStyle = SPEAKER_COLORS[0];
+      this.ctx.fillStyle = this.colors[0];
       this.ctx.fill();
       this.ctx.strokeStyle = '#1e293b';
       this.ctx.lineWidth = 1;

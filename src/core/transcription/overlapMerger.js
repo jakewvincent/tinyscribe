@@ -3,13 +3,23 @@
  * Compares transcriptions from overlapping audio regions to find consensus merge points
  */
 
+import { OVERLAP_MERGER_DEFAULTS } from '../../config/index.js';
+
 export class OverlapMerger {
+  /**
+   * @param {Object} [options] - Configuration options
+   * @param {number} [options.similarityThreshold] - Threshold for text matching (0-1)
+   * @param {number} [options.minMatchLength] - Minimum words for valid match
+   */
   constructor(options = {}) {
+    // Apply defaults from config
+    const config = { ...OVERLAP_MERGER_DEFAULTS, ...options };
+
     // Similarity threshold for text matching
-    this.similarityThreshold = options.similarityThreshold || 0.8;
+    this.similarityThreshold = config.similarityThreshold;
 
     // Minimum words to consider a valid match
-    this.minMatchLength = options.minMatchLength || 2;
+    this.minMatchLength = config.minMatchLength;
   }
 
   /**

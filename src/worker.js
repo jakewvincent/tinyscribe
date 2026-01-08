@@ -10,7 +10,7 @@ import {
   AutoModel,
 } from '@huggingface/transformers';
 
-import { PhraseDetector } from './utils/phraseDetector.js';
+import { PhraseDetector } from './core/transcription/phraseDetector.js';
 
 // Model identifiers
 const ASR_MODEL_ID = 'Xenova/whisper-tiny.en';
@@ -148,23 +148,25 @@ class ModelManager {
 
 // Handle messages from main thread
 self.addEventListener('message', async (event) => {
-  const { type, data } = event.data;
+  const { type, requestId, ...payload } = event.data;
+  // Support both old API (data property) and new API (flat payload)
+  const data = payload.data || payload;
 
   switch (type) {
     case 'load':
-      await handleLoad(data);
+      await handleLoad(data, requestId);
       break;
     case 'transcribe':
-      await handleTranscribe(data);
+      await handleTranscribe(data, requestId);
       break;
     case 'extract-embedding':
-      await handleExtractEmbedding(data);
+      await handleExtractEmbedding(data, requestId);
       break;
     case 'transcribe-for-validation':
-      await handleTranscribeForValidation(data);
+      await handleTranscribeForValidation(data, requestId);
       break;
     case 'check-webgpu':
-      await checkWebGPU();
+      await checkWebGPU(requestId);
       break;
   }
 });
@@ -172,7 +174,7 @@ self.addEventListener('message', async (event) => {
 /**
  * Check WebGPU availability
  */
-async function checkWebGPU() {
+async function checkWebGPU(requestId) {
   let hasWebGPU = false;
 
   if (typeof navigator !== 'undefined' && 'gpu' in navigator) {
@@ -186,7 +188,8 @@ async function checkWebGPU() {
 
   self.postMessage({
     type: 'webgpu-check',
-    hasWebGPU,
+    requestId,
+    available: hasWebGPU,
     device: hasWebGPU ? 'webgpu' : 'wasm',
   });
 }
@@ -194,7 +197,7 @@ async function checkWebGPU() {
 /**
  * Load models
  */
-async function handleLoad({ device }) {
+async function handleLoad({ device }, requestId) {
   try {
     self.postMessage({
       type: 'status',
@@ -227,6 +230,14 @@ async function handleLoad({ device }) {
       status: 'ready',
       message: 'Models loaded and ready!',
     });
+
+    // Send completion signal for promise-based API
+    if (requestId) {
+      self.postMessage({
+        type: 'load-complete',
+        requestId,
+      });
+    }
   } catch (error) {
     console.error('Model loading error:', error);
     self.postMessage({
@@ -234,6 +245,13 @@ async function handleLoad({ device }) {
       status: 'error',
       message: `Failed to load models: ${error.message}`,
     });
+    if (requestId) {
+      self.postMessage({
+        type: 'error',
+        requestId,
+        message: error.message,
+      });
+    }
   }
 }
 
@@ -319,7 +337,7 @@ function isBlankAudioMarker(word) {
  * - Overlap audio is prepended by AudioCapture
  * - ALL words are kept (no discard) - overlap merging happens in app.js
  */
-async function handleTranscribe({ audio, language = 'en', chunkIndex, overlapDuration = 0, isFinal = false }) {
+async function handleTranscribe({ audio, language = 'en', chunkIndex, overlapDuration = 0, isFinal = false }, requestId) {
   try {
     const startTime = performance.now();
 
@@ -381,6 +399,11 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, overlapDur
 
     self.postMessage({
       type: 'result',
+      requestId,
+      text: wordsToKeep.map(w => w.text).join(''),
+      words: wordsToKeep,
+      language: asrResult.language || 'en',
+      // Full data for backward compatibility
       data: {
         transcript: {
           ...asrResult,
@@ -412,6 +435,7 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, overlapDur
     console.error('Transcription error:', error);
     self.postMessage({
       type: 'error',
+      requestId,
       message: `Transcription failed: ${error.message}`,
       chunkIndex,
     });
@@ -421,7 +445,7 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, overlapDur
 /**
  * Extract embedding for enrollment
  */
-async function handleExtractEmbedding({ audio, sampleId }) {
+async function handleExtractEmbedding({ audio, sampleId }, requestId) {
   try {
     const audioData = audio instanceof Float32Array ? audio : new Float32Array(audio);
 
@@ -438,6 +462,9 @@ async function handleExtractEmbedding({ audio, sampleId }) {
 
     self.postMessage({
       type: 'embedding-result',
+      requestId,
+      embedding: Array.from(embedding),
+      // Backward compatibility
       data: {
         sampleId,
         embedding: Array.from(embedding),
@@ -447,7 +474,10 @@ async function handleExtractEmbedding({ audio, sampleId }) {
   } catch (error) {
     console.error('Embedding extraction error:', error);
     self.postMessage({
-      type: 'embedding-result',
+      type: 'error',
+      requestId,
+      message: error.message,
+      // Backward compatibility
       data: {
         sampleId,
         success: false,
@@ -461,16 +491,21 @@ async function handleExtractEmbedding({ audio, sampleId }) {
  * Transcribe audio for enrollment validation
  * Returns just the text for comparison against expected sentence
  */
-async function handleTranscribeForValidation({ audio, sampleId }) {
+async function handleTranscribeForValidation({ audio, sampleId }, requestId) {
   try {
     const audioData = audio instanceof Float32Array ? audio : new Float32Array(audio);
 
     // Run transcription
     const result = await ModelManager.runTranscription(audioData);
     const text = result.text || '';
+    const words = result.chunks || [];
 
     self.postMessage({
       type: 'transcription-validation-result',
+      requestId,
+      text,
+      words,
+      // Backward compatibility
       data: {
         sampleId,
         text,
@@ -480,7 +515,10 @@ async function handleTranscribeForValidation({ audio, sampleId }) {
   } catch (error) {
     console.error('Transcription validation error:', error);
     self.postMessage({
-      type: 'transcription-validation-result',
+      type: 'error',
+      requestId,
+      message: error.message,
+      // Backward compatibility
       data: {
         sampleId,
         success: false,

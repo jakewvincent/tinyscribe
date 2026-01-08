@@ -2,11 +2,23 @@
  * PhraseDetector - Detects phrase boundaries from Whisper word timestamps
  * and extracts speaker embeddings per phrase from WavLM frame features.
  */
+
+import { PHRASE_DEFAULTS } from '../../config/index.js';
+
 export class PhraseDetector {
+  /**
+   * @param {Object} [options] - Configuration options
+   * @param {number} [options.gapThreshold] - Gap in seconds that triggers phrase boundary
+   * @param {number} [options.minPhraseDuration] - Minimum phrase duration in seconds
+   * @param {number} [options.frameRate] - WavLM frame rate (frames per second)
+   */
   constructor(options = {}) {
-    this.gapThreshold = options.gapThreshold || 0.300; // 300ms gap triggers phrase boundary
-    this.minPhraseDuration = options.minPhraseDuration || 0.5; // 500ms minimum for reliable embedding
-    this.frameRate = 50; // WavLM outputs ~50 frames per second (20ms per frame)
+    // Apply defaults from config
+    const config = { ...PHRASE_DEFAULTS, ...options };
+
+    this.gapThreshold = config.gapThreshold;
+    this.minPhraseDuration = config.minPhraseDuration;
+    this.frameRate = config.frameRate;
   }
 
   /**

@@ -4,16 +4,44 @@
  */
 
 import { MicVAD } from '@ricky0123/vad-web';
+import { VAD_DEFAULTS } from '../config/index.js';
 
 export class VADProcessor {
+  /**
+   * @param {Object} [options] - Configuration options
+   * @param {number} [options.minSpeechDuration] - Minimum speech duration in seconds
+   * @param {number} [options.maxSpeechDuration] - Maximum speech duration in seconds
+   * @param {number} [options.overlapDuration] - Overlap duration in seconds
+   * @param {string} [options.model] - VAD model ('legacy' or 'v5')
+   * @param {number} [options.positiveSpeechThreshold] - Threshold for speech detection
+   * @param {number} [options.negativeSpeechThreshold] - Threshold for silence detection
+   * @param {number} [options.redemptionMs] - Wait time before triggering speech end
+   * @param {number} [options.preSpeechPadMs] - Audio to include before speech start
+   * @param {string} [options.deviceId] - Audio device ID
+   * @param {Function} [options.onSpeechStart] - Callback when speech starts
+   * @param {Function} [options.onSpeechEnd] - Callback when speech ends
+   * @param {Function} [options.onSpeechProgress] - Callback for progress updates
+   * @param {Function} [options.onError] - Error callback
+   * @param {Function} [options.onAudioLevel] - Audio level callback
+   */
   constructor(options = {}) {
+    // Apply defaults from config
+    const config = { ...VAD_DEFAULTS, ...options };
+
     // Speech duration constraints
-    this.minSpeechDuration = options.minSpeechDuration || 1.0; // seconds
-    this.maxSpeechDuration = options.maxSpeechDuration || 15.0; // seconds
+    this.minSpeechDuration = config.minSpeechDuration;
+    this.maxSpeechDuration = config.maxSpeechDuration;
 
     // Overlap configuration
-    this.overlapDuration = options.overlapDuration || 1.5; // seconds
+    this.overlapDuration = config.overlapDuration;
     this.overlapSamples = 16000 * this.overlapDuration;
+
+    // VAD model settings
+    this.vadModel = config.model;
+    this.positiveSpeechThreshold = config.positiveSpeechThreshold;
+    this.negativeSpeechThreshold = config.negativeSpeechThreshold;
+    this.redemptionMs = config.redemptionMs;
+    this.preSpeechPadMs = config.preSpeechPadMs;
 
     // Device selection
     this.deviceId = options.deviceId || null;
@@ -21,7 +49,7 @@ export class VADProcessor {
     // Callbacks
     this.onSpeechStart = options.onSpeechStart || (() => {});
     this.onSpeechEnd = options.onSpeechEnd || (() => {});
-    this.onSpeechProgress = options.onSpeechProgress || (() => {}); // For UI updates during speech
+    this.onSpeechProgress = options.onSpeechProgress || (() => {});
     this.onError = options.onError || console.error;
     this.onAudioLevel = options.onAudioLevel || (() => {});
 
@@ -59,20 +87,20 @@ export class VADProcessor {
         // Stream configuration
         getStream,
 
-        // Use Silero VAD legacy model (v5 has a bug where onSpeechEnd doesn't fire after first segment)
-        model: 'legacy',
+        // VAD model selection (legacy is more reliable for continuous speech)
+        model: this.vadModel,
 
         // Asset paths - files are copied to /vad/ by vite-plugin-static-copy
         baseAssetPath: '/vad/',
         onnxWASMBasePath: '/vad/',
 
         // Speech detection thresholds
-        positiveSpeechThreshold: 0.5,
-        negativeSpeechThreshold: 0.35,
+        positiveSpeechThreshold: this.positiveSpeechThreshold,
+        negativeSpeechThreshold: this.negativeSpeechThreshold,
 
         // Timing configuration
-        redemptionMs: 300, // Wait 300ms of silence before triggering speech end
-        preSpeechPadMs: 250, // Include 250ms before speech start
+        redemptionMs: this.redemptionMs,
+        preSpeechPadMs: this.preSpeechPadMs,
         minSpeechMs: this.minSpeechDuration * 1000, // Convert to ms
 
         // Don't start automatically

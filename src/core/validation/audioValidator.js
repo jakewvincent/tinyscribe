@@ -3,25 +3,21 @@
  * Performs audio quality checks and validation for enrollment recordings
  */
 
-// Audio quality thresholds
-const CLIPPING_THRESHOLD = 0.99;
-const CLIPPING_RATIO_LIMIT = 0.001; // 0.1% of samples
-const RMS_MIN = 0.01;
-const RMS_MAX = 0.5;
+import { VALIDATION_DEFAULTS } from '../../config/index.js';
 
-// Speech content thresholds
-const MIN_SPEECH_DURATION = 5.0; // seconds (grouped passages ~30 words, target 5-7s speech)
-const MIN_SPEECH_RATIO = 0.5; // 50% (allow some pauses in longer passages)
-
-// Transcription matching threshold
-const TRANSCRIPTION_MATCH_THRESHOLD = 0.7; // 70% word overlap
-
-// Energy-based speech detection parameters
-const ENERGY_FRAME_SIZE = 512; // ~32ms at 16kHz
-const ENERGY_THRESHOLD = 0.02;
-
-// VAD-based speech validation thresholds
-const MIN_VAD_SPEECH_DURATION = 5.0; // seconds - minimum total speech detected by VAD
+// Re-export defaults for backward compatibility
+const {
+  clippingThreshold: CLIPPING_THRESHOLD,
+  clippingRatioLimit: CLIPPING_RATIO_LIMIT,
+  rmsMin: RMS_MIN,
+  rmsMax: RMS_MAX,
+  minSpeechDuration: MIN_SPEECH_DURATION,
+  minSpeechRatio: MIN_SPEECH_RATIO,
+  transcriptionMatchThreshold: TRANSCRIPTION_MATCH_THRESHOLD,
+  energyFrameSize: ENERGY_FRAME_SIZE,
+  energyThreshold: ENERGY_THRESHOLD,
+  minVadSpeechDuration: MIN_VAD_SPEECH_DURATION,
+} = VALIDATION_DEFAULTS;
 
 export class AudioValidator {
   /**
