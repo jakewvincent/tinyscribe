@@ -453,6 +453,7 @@ export class App {
         language: 'en',
         chunkIndex: chunk.index,
         carryoverDuration,
+        isFinal: chunk.isFinal,
       },
     });
 

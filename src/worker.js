@@ -252,7 +252,7 @@ async function handleLoad({ device }) {
  * Transcribe audio chunk using phrase-based diarization
  * Flow: ASR → Detect phrases from word gaps → Extract frame features → Embed per phrase
  */
-async function handleTranscribe({ audio, language = 'en', chunkIndex, carryoverDuration = 0 }) {
+async function handleTranscribe({ audio, language = 'en', chunkIndex, carryoverDuration = 0, isFinal = false }) {
   try {
     const startTime = performance.now();
 
@@ -268,11 +268,16 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, carryoverD
 
     // 2. Calculate split point for carryover
     // Split point = end of second-to-last word (so last word gets re-transcribed next chunk)
+    // For final chunk, keep ALL words (no next chunk to re-transcribe)
     // If < 2 words, carry over everything
     let splitPoint = 0; // seconds from start of this chunk's audio
     let wordsToKeep = [];
 
-    if (words.length >= 2) {
+    if (isFinal) {
+      // Final chunk - keep all words, no carryover needed
+      wordsToKeep = words;
+      splitPoint = audioDuration; // No carryover
+    } else if (words.length >= 2) {
       // Keep all words except the last one
       wordsToKeep = words.slice(0, -1);
       const secondToLastWord = words[words.length - 2];
