@@ -50,6 +50,8 @@ src/
 ├── worker.js               # Web Worker (model loading, inference)
 ├── styles.css              # All styling
 └── utils/
+    ├── vadProcessor.js     # VAD-triggered speech detection (Silero VAD)
+    ├── overlapMerger.js    # Text-based overlap deduplication between chunks
     ├── audioCapture.js     # Microphone capture, resampling to 16kHz
     ├── phraseDetector.js   # Detects phrase boundaries from word timestamps
     ├── transcriptMerger.js # Processes phrases with speaker assignments
@@ -63,12 +65,12 @@ src/
 
 ### Recording Flow
 
-1. **Audio Capture**: Microphone → 5-second chunks → 16kHz mono Float32Array
-2. **ASR**: Whisper produces text with word-level timestamps
-3. **Carryover**: Last word discarded, audio from that point carried to next chunk for re-transcription (ensures words aren't cut off at chunk boundaries)
-4. **Phrase Detection**: Words grouped into phrases based on gaps > 300ms
-5. **Frame Features**: Single WavLM call extracts frame-level features for entire chunk
-6. **Per-Phrase Embeddings**: Frame features sliced and mean-pooled per phrase → 768-dim vectors
+1. **VAD Detection**: Silero VAD (legacy model) detects speech boundaries in real-time
+2. **Audio Chunking**: Speech segments emitted as chunks (1-15s) with 1.5s overlap prepended
+3. **ASR**: Whisper produces text with word-level timestamps
+4. **Overlap Merging**: Text comparison (Levenshtein similarity) deduplicates words in overlap region
+5. **Phrase Detection**: Words grouped into phrases based on gaps > 300ms
+6. **Per-Phrase Embeddings**: WavLM extracts embeddings, mean-pooled per phrase → 512-dim vectors
 7. **Sound Classification**: Environmental sounds ([MUSIC], [APPLAUSE]) separated from speech; [BLANK_AUDIO] filtered out
 8. **Clustering**: Cosine similarity matches phrase embeddings to known speakers (environmental sounds skip clustering)
 9. **Display**: Transcript rendered with speaker labels (or gray box for environmental sounds)
@@ -116,7 +118,10 @@ Whisper may output bracketed markers for non-speech sounds:
 ## Technical Notes
 
 - **Sample rate**: All audio resampled to 16kHz (model requirement)
-- **Chunk duration**: 5 seconds with carryover-based continuity (last word re-transcribed in next chunk)
+- **VAD model**: Silero VAD legacy (v5 has issues with subsequent speech segments)
+- **Chunk duration**: VAD-triggered, 1-15 seconds based on speech boundaries
+- **Overlap duration**: 1.5 seconds prepended to each chunk for seamless merging
+- **Overlap merging**: Text-based comparison using Levenshtein similarity (≥85% threshold)
 - **Phrase gap threshold**: 300ms gap between words triggers phrase boundary
 - **Min phrase duration**: 500ms minimum for reliable embedding extraction
 - **Embedding dimensions**: 512 (WavLM SV model output)
