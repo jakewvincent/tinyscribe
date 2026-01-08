@@ -62,6 +62,7 @@ export class App {
     this.recordBtn = document.getElementById('record-btn');
     this.clearBtn = document.getElementById('clear-btn');
     this.copyBtn = document.getElementById('copy-btn');
+    this.exportTranscriptBtn = document.getElementById('export-transcript-btn');
     this.exportRawBtn = document.getElementById('export-raw-btn');
     this.micSelect = document.getElementById('mic-select');
     this.numSpeakersSelect = document.getElementById('num-speakers');
@@ -302,6 +303,7 @@ export class App {
     this.recordBtn.addEventListener('click', () => this.toggleRecording());
     this.clearBtn.addEventListener('click', () => this.clearTranscript());
     this.copyBtn.addEventListener('click', () => this.copyTranscript());
+    this.exportTranscriptBtn.addEventListener('click', () => this.exportTranscript());
     this.exportRawBtn.addEventListener('click', () => this.exportRawChunks());
     this.numSpeakersSelect.addEventListener('change', (e) => this.handleNumSpeakersChange(e));
 
@@ -974,9 +976,10 @@ export class App {
     // Auto-scroll to bottom
     this.transcriptContainer.scrollTop = this.transcriptContainer.scrollHeight;
 
-    // Enable copy button
+    // Enable copy/export buttons
     if (segments.length > 0) {
       this.copyBtn.disabled = false;
+      this.exportTranscriptBtn.disabled = false;
     }
   }
 
@@ -1369,6 +1372,7 @@ export class App {
     this.transcriptMerger.reset();
     this.clearTranscriptDisplay();
     this.copyBtn.disabled = true;
+    this.exportTranscriptBtn.disabled = true;
   }
 
   /**
@@ -1388,6 +1392,64 @@ export class App {
     } catch (err) {
       console.error('Failed to copy:', err);
     }
+  }
+
+  /**
+   * Export processed transcript as JSON file with speaker attribution metadata
+   */
+  exportTranscript() {
+    const segments = this.transcriptMerger.getTranscript();
+    if (segments.length === 0) return;
+
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      segmentCount: segments.length,
+      speakers: this.transcriptMerger.getSpeakers(),
+      segments: segments.map((seg) => ({
+        text: seg.text.trim(),
+        speaker: seg.speaker,
+        speakerLabel: seg.speakerLabel,
+        startTime: seg.startTime,
+        endTime: seg.endTime,
+        isEnvironmental: seg.isEnvironmental || false,
+        words: seg.words,
+        attribution: seg.debug?.clustering
+          ? {
+              similarity: seg.debug.clustering.similarity,
+              secondBestSimilarity: seg.debug.clustering.secondBestSimilarity,
+              margin: seg.debug.clustering.margin,
+              secondBestSpeaker: seg.debug.clustering.secondBestSpeaker,
+              isEnrolled: seg.debug.clustering.isEnrolled,
+              reason: seg.debug.clustering.reason,
+              allSimilarities: seg.debug.clustering.allSimilarities,
+            }
+          : null,
+        debug: {
+          duration: seg.debug?.duration,
+          frameCount: seg.debug?.frameCount,
+          type: seg.debug?.type,
+        },
+      })),
+    };
+
+    const json = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `transcript-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    // Brief feedback
+    const originalText = this.exportTranscriptBtn.textContent;
+    this.exportTranscriptBtn.textContent = 'Exported!';
+    setTimeout(() => {
+      this.exportTranscriptBtn.textContent = originalText;
+    }, 2000);
   }
 
   /**

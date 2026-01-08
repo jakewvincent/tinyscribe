@@ -170,8 +170,12 @@ body {
   border-bottom: 1px solid var(--border-color);
 }
 
-.panel-header-inline .btn {
+.panel-header-inline .btn:first-of-type {
   margin-left: auto;
+}
+
+.panel-header-inline .btn + .btn {
+  margin-left: 0.5rem;
 }
 
 .panel-header-inline h3 {
