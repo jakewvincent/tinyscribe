@@ -49,17 +49,47 @@ src/
 ├── app.js                  # Main controller (UI, recording, enrollment)
 ├── worker.js               # Web Worker (model loading, inference)
 ├── styles.css              # All styling
+│
+├── config/                 # Centralized configuration
+│   └── defaults.js         # All configurable constants (thresholds, colors, passages)
+│
+├── core/                   # Pure logic modules (no browser dependencies, reusable)
+│   ├── embedding/
+│   │   ├── embeddingUtils.js   # L2 normalize, cosine similarity
+│   │   ├── speakerClusterer.js # Embedding-based speaker identification
+│   │   └── pcaProjector.js     # PCA for 2D embedding projection
+│   ├── transcription/
+│   │   ├── phraseDetector.js   # Detects phrase boundaries from word timestamps
+│   │   ├── overlapMerger.js    # Text-based overlap deduplication between chunks
+│   │   └── transcriptMerger.js # Processes phrases with speaker assignments
+│   ├── sound/
+│   │   └── soundClassifier.js  # Classifies bracketed markers (speech vs environmental)
+│   └── validation/
+│       └── audioValidator.js   # Audio quality checks for enrollment
+│
+├── audio/                  # Browser audio layer (reusable)
+│   ├── audioCapture.js     # Microphone capture, resampling to 16kHz
+│   └── vadProcessor.js     # VAD-triggered speech detection (Silero VAD)
+│
+├── worker/                 # Worker abstraction
+│   └── workerClient.js     # Promise-based API for worker communication
+│
+├── ui/                     # UI components
+│   └── components/
+│       └── speakerVisualizer.js # Canvas visualization of speaker embeddings
+│
 └── utils/
-    ├── vadProcessor.js     # VAD-triggered speech detection (Silero VAD)
-    ├── overlapMerger.js    # Text-based overlap deduplication between chunks
-    ├── audioCapture.js     # Microphone capture, resampling to 16kHz
-    ├── phraseDetector.js   # Detects phrase boundaries from word timestamps
-    ├── transcriptMerger.js # Processes phrases with speaker assignments
-    ├── speakerClusterer.js # Embedding-based speaker identification
-    ├── enrollmentManager.js # Multi-speaker enrollment with Rainbow Passage
-    ├── pcaProjector.js     # PCA for 2D embedding projection
-    └── speakerVisualizer.js # Canvas visualization of speaker embeddings
+    └── enrollmentManager.js # Multi-speaker enrollment with Rainbow Passage
 ```
+
+### Module Reusability
+
+The codebase is organized for easy extraction:
+
+- **`core/`**: Pure algorithms with zero browser dependencies. Can be copied directly to other JS projects.
+- **`audio/`**: Browser audio capture. Reusable for any web audio application.
+- **`worker/`**: WorkerClient provides promise-based async API for ML inference.
+- **`config/`**: All thresholds and constants in one place for easy tuning.
 
 ## How It Works
 
@@ -109,7 +139,7 @@ Whisper may output bracketed markers for non-speech sounds:
 ### Speaker Visualization
 
 2D scatter plot showing speaker embedding relationships:
-- Uses PCA (power iteration) to project 768-dim embeddings to 2D
+- Uses PCA (power iteration) to project 512-dim embeddings to 2D
 - Enrolled speakers shown as colored, labeled dots
 - Discovered speakers shown as hollow gray dots
 - Closer dots = more similar voice characteristics
@@ -133,9 +163,17 @@ Whisper may output bracketed markers for non-speech sounds:
 
 ## Configuration
 
-**Expected Speakers**: Dropdown to set max speaker count (1-6). Limits how many unique speakers the clusterer will create.
+All configurable constants are centralized in `src/config/defaults.js`:
 
-**Enrollment**: Optional. Enroll up to 6 speakers for reliable identification across sessions. Stored in localStorage (`speaker-enrollments` key).
+- **Clustering**: similarity threshold, confidence margin, max speakers
+- **VAD**: min/max speech duration, overlap duration, thresholds
+- **Phrases**: gap threshold, min duration
+- **Enrollment**: min samples, outlier threshold, Rainbow Passage sentences
+- **UI**: speaker colors
+
+**Runtime options**:
+- **Expected Speakers**: Dropdown to set max speaker count (1-6). Limits how many unique speakers the clusterer will create.
+- **Enrollment**: Optional. Enroll up to 6 speakers for reliable identification across sessions. Stored in localStorage (`speaker-enrollments` key).
 
 ## Limitations
 
