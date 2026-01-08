@@ -75,41 +75,6 @@
 
       <!-- Debug Sidebar (right) -->
       <aside id="sidebar">
-        <!-- Speaker Visualization Panel -->
-        <div class="sidebar-panel" id="panel-speaker-plot" data-default-expanded="true">
-          <div class="panel-header" data-panel="speaker-plot">
-            <span class="panel-chevron">&#9662;</span>
-            <h3>Speaker Embedding Space</h3>
-          </div>
-          <div class="panel-content">
-            <div class="viz-info">Dots closer together = more similar voices</div>
-            <canvas id="speaker-canvas"></canvas>
-          </div>
-        </div>
-
-        <!-- Chunk Queue Panel -->
-        <div class="sidebar-panel" id="panel-chunk-queue" data-default-expanded="true">
-          <div class="panel-header" data-panel="chunk-queue">
-            <span class="panel-chevron">&#9662;</span>
-            <h3>Chunk Queue</h3>
-          </div>
-          <div class="panel-content">
-            <div id="chunk-queue-viz">
-              <div class="chunk-slots">
-                <div class="chunk-slot" data-slot="0"></div>
-                <div class="chunk-slot" data-slot="1"></div>
-                <div class="chunk-slot" data-slot="2"></div>
-                <div class="chunk-slot" data-slot="3"></div>
-                <div class="chunk-slot" data-slot="4"></div>
-              </div>
-              <div class="chunk-stats">
-                <span id="chunk-processing">Idle</span>
-                <span id="chunk-counts"></span>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- Phrase Stats Panel -->
         <div class="sidebar-panel" id="panel-phrase-stats" data-default-expanded="true">
           <div class="panel-header" data-panel="phrase-stats">
@@ -150,12 +115,12 @@
         </div>
 
         <!-- Speaker Enrollment Panel -->
-        <section id="enrollment-section" class="sidebar-panel" data-default-expanded="false">
+        <section id="enrollment-section" class="sidebar-panel" data-default-expanded="true">
           <div class="panel-header" data-panel="enrollment">
-            <span class="panel-chevron">&#9656;</span>
+            <span class="panel-chevron">&#9662;</span>
             <h3>Speaker Enrollment <span class="optional-badge">Optional</span></h3>
           </div>
-          <div class="panel-content collapsed">
+          <div class="panel-content">
             <!-- Intro state (before enrollment starts) -->
             <div id="enrollment-intro">
               <p>Record your voice to help identify you in conversations.</p>
@@ -200,6 +165,14 @@
             </div>
 
             <div id="enroll-status"></div>
+
+            <!-- Speaker Embedding Visualization -->
+            <div class="enrollment-viz-section">
+              <div class="viz-divider"></div>
+              <div class="viz-header">Speaker Embedding Space</div>
+              <div class="viz-info">Dots closer together = more similar voices</div>
+              <canvas id="speaker-canvas"></canvas>
+            </div>
           </div>
         </section>
 
@@ -238,6 +211,16 @@
           <span class="metric-label">Total:</span>
           <span class="metric-value" id="metric-total">-</span>
         </div>
+      </div>
+      <div class="status-chunks">
+        <div class="chunk-slots">
+          <div class="chunk-slot" data-slot="0"></div>
+          <div class="chunk-slot" data-slot="1"></div>
+          <div class="chunk-slot" data-slot="2"></div>
+          <div class="chunk-slot" data-slot="3"></div>
+          <div class="chunk-slot" data-slot="4"></div>
+        </div>
+        <span class="chunk-status" id="chunk-processing">Idle</span>
       </div>
       <div class="status-buffer">
         <span class="metric-label">Buffer:</span>

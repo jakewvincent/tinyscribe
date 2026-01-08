@@ -118,10 +118,9 @@ export class App {
     this.bufferFill = document.getElementById('buffer-fill');
     this.bufferPercent = document.getElementById('buffer-percent');
 
-    // DOM elements - Chunk queue
+    // DOM elements - Chunk queue (in status bar)
     this.chunkProcessing = document.getElementById('chunk-processing');
-    this.chunkCounts = document.getElementById('chunk-counts');
-    this.chunkSlots = document.querySelectorAll('.chunk-slot');
+    this.chunkSlots = document.querySelectorAll('.status-chunks .chunk-slot');
 
     // DOM elements - Phrase stats
     this.phrasePreview = document.getElementById('phrase-preview');
@@ -1078,34 +1077,27 @@ export class App {
   }
 
   /**
-   * Update chunk queue visualization
-   * Shows current processing activity, not history
+   * Update chunk queue visualization in status bar
+   * Shows current processing activity with compact display
    */
   updateChunkQueueViz() {
-    if (!this.chunkSlots || !this.chunkCounts || !this.chunkProcessing) return;
+    if (!this.chunkSlots || !this.chunkProcessing) return;
 
     const pendingCount = this.pendingChunks.size;
     const queuedCount = this.chunkQueue.length;
     const isActive = this.isRecording || this.isProcessingChunk || pendingCount > 0 || queuedCount > 0;
 
-    // Update processing text
+    // Update processing text (compact for status bar)
     if (this.isProcessingChunk) {
-      this.chunkProcessing.textContent = `Processing chunk #${this.completedChunks + 1}`;
+      this.chunkProcessing.textContent = `#${this.completedChunks + 1} processing`;
     } else if (pendingCount > 0 || queuedCount > 0) {
-      this.chunkProcessing.textContent = 'Waiting...';
+      this.chunkProcessing.textContent = `${queuedCount} queued`;
     } else if (this.isRecording) {
-      this.chunkProcessing.textContent = 'Recording...';
+      this.chunkProcessing.textContent = 'Listening...';
+    } else if (this.completedChunks > 0) {
+      this.chunkProcessing.textContent = `${this.completedChunks} done`;
     } else {
       this.chunkProcessing.textContent = 'Idle';
-    }
-
-    // Update counts - only show when there's activity
-    if (isActive) {
-      this.chunkCounts.textContent = `Completed: ${this.completedChunks} | Queued: ${queuedCount}`;
-    } else {
-      this.chunkCounts.textContent = this.completedChunks > 0
-        ? `${this.completedChunks} chunks processed`
-        : '';
     }
 
     // Update slot visuals - show current activity only

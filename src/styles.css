@@ -480,6 +480,26 @@ body {
   margin-bottom: 0.5rem;
 }
 
+/* Enrollment Visualization Section */
+.enrollment-viz-section {
+  margin-top: 1rem;
+}
+
+.viz-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin-bottom: 0.75rem;
+}
+
+.viz-header {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+
 /* Chunk Queue */
 #chunk-queue-viz {
   display: flex;
@@ -883,6 +903,45 @@ body {
   background: var(--speaker-0);
   transition: width 0.1s;
   border-radius: 3px;
+}
+
+/* Compact chunk queue in status bar */
+.status-chunks {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-chunks .chunk-slots {
+  display: flex;
+  gap: 4px;
+}
+
+.status-chunks .chunk-slot {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--border-color);
+  border-radius: 2px;
+  background: var(--panel-bg);
+  transition: all 0.2s;
+}
+
+.status-chunks .chunk-slot.processing {
+  border-color: var(--speaker-0);
+  background: var(--speaker-0);
+  animation: chunkPulse 1s infinite;
+}
+
+.status-chunks .chunk-slot.queued {
+  border-color: var(--text-muted);
+  border-style: dashed;
+  background: transparent;
+}
+
+.chunk-status {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  min-width: 100px;
 }
 
 /* ==================== BUTTONS ==================== */
