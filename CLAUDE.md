@@ -63,13 +63,15 @@ src/
 
 ### Recording Flow
 
-1. **Audio Capture**: Microphone → 5-second chunks (0.5s overlap) → 16kHz mono Float32Array
+1. **Audio Capture**: Microphone → 5-second chunks → 16kHz mono Float32Array
 2. **ASR**: Whisper produces text with word-level timestamps
-3. **Phrase Detection**: Words grouped into phrases based on gaps > 300ms
-4. **Frame Features**: Single WavLM call extracts frame-level features for entire chunk
-5. **Per-Phrase Embeddings**: Frame features sliced and mean-pooled per phrase → 768-dim vectors
-6. **Clustering**: Cosine similarity matches phrase embeddings to known speakers
-7. **Display**: Transcript rendered with speaker labels and timestamps
+3. **Carryover**: Last word discarded, audio from that point carried to next chunk for re-transcription (ensures words aren't cut off at chunk boundaries)
+4. **Phrase Detection**: Words grouped into phrases based on gaps > 300ms
+5. **Frame Features**: Single WavLM call extracts frame-level features for entire chunk
+6. **Per-Phrase Embeddings**: Frame features sliced and mean-pooled per phrase → 768-dim vectors
+7. **Sound Classification**: Environmental sounds ([MUSIC], [APPLAUSE]) separated from speech; [BLANK_AUDIO] filtered out
+8. **Clustering**: Cosine similarity matches phrase embeddings to known speakers (environmental sounds skip clustering)
+9. **Display**: Transcript rendered with speaker labels (or gray box for environmental sounds)
 
 ### Speaker Enrollment (Optional)
 
@@ -91,7 +93,16 @@ Without enrollment:
 With enrollment:
 - All enrolled speakers matched first (indices 0, 1, 2...)
 - Each shows their custom name and assigned color
+- Enrolled centroids stay fixed (prevents voice contamination)
 - Additional speakers discovered during recording clustered normally
+
+### Non-Speech Sound Handling
+
+Whisper may output bracketed markers for non-speech sounds:
+- **Human voice sounds** ([LAUGHTER], [COUGH], [SIGH], etc.) → attributed to speaker via clustering
+- **Environmental sounds** ([MUSIC], [APPLAUSE], [NOISE], etc.) → shown in gray box, no speaker
+- **Silence** ([BLANK_AUDIO]) → filtered out entirely
+- **Unknown markers** → default to environmental (safer)
 
 ### Speaker Visualization
 
@@ -105,12 +116,14 @@ With enrollment:
 ## Technical Notes
 
 - **Sample rate**: All audio resampled to 16kHz (model requirement)
-- **Chunk duration**: 5 seconds with 0.5s overlap for continuity
+- **Chunk duration**: 5 seconds with carryover-based continuity (last word re-transcribed in next chunk)
 - **Phrase gap threshold**: 300ms gap between words triggers phrase boundary
 - **Min phrase duration**: 500ms minimum for reliable embedding extraction
 - **Embedding dimensions**: 768 (WavLM base output)
 - **Frame rate**: WavLM outputs ~50 frames/second (20ms per frame)
 - **Similarity threshold**: 0.7 cosine similarity for speaker matching
+- **Confidence margin**: 0.05 minimum difference between best and second-best match
+- **Enrolled centroids**: Fixed during recording (not updated with new embeddings)
 - **WebGPU**: Used for Whisper if available, otherwise WASM fallback
 - **WavLM**: Always uses WASM with fp32 for accurate frame features
 
