@@ -10,6 +10,9 @@ export class SpeakerClusterer {
     this.speakers = [];
     // Similarity threshold for matching (cosine similarity)
     this.similarityThreshold = 0.7;
+    // Minimum margin between best and second-best match to be confident
+    // If margin is smaller, we're uncertain and should be more conservative
+    this.confidenceMargin = 0.05;
   }
 
   /**
@@ -40,25 +43,29 @@ export class SpeakerClusterer {
   }
 
   /**
-   * Find the best matching speaker for an embedding
+   * Find the best and second-best matching speakers for an embedding
    * @param {Float32Array|Array} embedding - The speaker embedding
-   * @returns {{ speakerId: number, similarity: number } | null}
+   * @returns {{ speakerId: number, similarity: number, secondBestSimilarity: number } | null}
    */
   findBestMatch(embedding) {
     if (!embedding || this.speakers.length === 0) return null;
 
     let bestSpeaker = -1;
     let bestSimilarity = -1;
+    let secondBestSimilarity = -1;
 
     for (let i = 0; i < this.speakers.length; i++) {
       const similarity = this.cosineSimilarity(embedding, this.speakers[i].centroid);
       if (similarity > bestSimilarity) {
+        secondBestSimilarity = bestSimilarity;
         bestSimilarity = similarity;
         bestSpeaker = i;
+      } else if (similarity > secondBestSimilarity) {
+        secondBestSimilarity = similarity;
       }
     }
 
-    return { speakerId: bestSpeaker, similarity: bestSimilarity };
+    return { speakerId: bestSpeaker, similarity: bestSimilarity, secondBestSimilarity };
   }
 
   /**
@@ -104,9 +111,25 @@ export class SpeakerClusterer {
     // Find best matching speaker
     const match = this.findBestMatch(embedding);
 
-    // If similarity is above threshold, assign to that speaker
+    // If similarity is above threshold, consider assigning to that speaker
     if (match.similarity >= this.similarityThreshold) {
-      this.updateCentroid(match.speakerId, embedding);
+      // Check confidence margin when we have multiple speakers
+      // The best match should be significantly better than second-best
+      const margin = match.similarity - match.secondBestSimilarity;
+      const hasMultipleSpeakers = this.speakers.length > 1;
+
+      if (hasMultipleSpeakers && margin < this.confidenceMargin) {
+        // Ambiguous match - similarities too close to be confident
+        // Don't update any centroids, just return best match
+        // This prevents voice contamination when uncertain
+        return match.speakerId;
+      }
+
+      // Confident match - only update centroid for non-enrolled speakers
+      const speaker = this.speakers[match.speakerId];
+      if (!speaker.enrolled) {
+        this.updateCentroid(match.speakerId, embedding);
+      }
       return match.speakerId;
     }
 
@@ -121,7 +144,11 @@ export class SpeakerClusterer {
     }
 
     // We've reached max speakers - assign to closest one even if below threshold
-    this.updateCentroid(match.speakerId, embedding);
+    // Only update centroid for non-enrolled speakers
+    const speaker = this.speakers[match.speakerId];
+    if (!speaker.enrolled) {
+      this.updateCentroid(match.speakerId, embedding);
+    }
     return match.speakerId;
   }
 
