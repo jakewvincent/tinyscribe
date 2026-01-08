@@ -4,7 +4,10 @@
  * Supports multiple speaker enrollments
  */
 
+import { l2Normalize, l2NormalizeCopy, cosineSimilarity } from './embeddingUtils.js';
+
 const STORAGE_KEY = 'speaker-enrollments';
+const OUTLIER_SIMILARITY_THRESHOLD = 0.7;
 const OLD_STORAGE_KEY = 'speaker-enrollment'; // For migration
 
 const RAINBOW_SENTENCES = [
@@ -18,9 +21,11 @@ const RAINBOW_SENTENCES = [
 
 export class EnrollmentManager {
   constructor() {
-    this.samples = []; // Array of embeddings (Float32Array or Array)
+    this.samples = []; // Array of normalized embeddings (Float32Array)
     this.speakerName = '';
     this.currentSentenceIndex = 0;
+    this.rejectedSamples = []; // Track samples rejected during centroid computation
+    this.usedFallback = false; // True if >50% rejected and fallback was used
   }
 
   /**
@@ -74,9 +79,12 @@ export class EnrollmentManager {
 
   /**
    * Add a sample embedding
+   * Normalizes the embedding before storing to ensure equal contribution to centroid
    */
   addSample(embedding) {
-    this.samples.push(embedding);
+    // L2 normalize the sample so each contributes equally to centroid
+    const normalizedEmbedding = l2NormalizeCopy(embedding);
+    this.samples.push(normalizedEmbedding);
     this.currentSentenceIndex++;
   }
 
@@ -90,10 +98,10 @@ export class EnrollmentManager {
   }
 
   /**
-   * Check if minimum samples collected (2+)
+   * Check if minimum samples collected (3+)
    */
   canComplete() {
-    return this.samples.length >= 2;
+    return this.samples.length >= 3;
   }
 
   /**
@@ -111,26 +119,93 @@ export class EnrollmentManager {
   }
 
   /**
-   * Compute average embedding from all samples
+   * Compute average embedding from all samples with outlier rejection
+   * Samples that are too dissimilar from the group are rejected to prevent
+   * contamination from noise or different speakers
    * @returns {Float32Array|null}
    */
   computeAverageEmbedding() {
     if (this.samples.length === 0) return null;
 
     const dim = this.samples[0].length;
-    const avg = new Float32Array(dim);
 
+    // Step 1: Compute initial centroid from all samples
+    const initialCentroid = new Float32Array(dim);
     for (const sample of this.samples) {
+      for (let i = 0; i < dim; i++) {
+        initialCentroid[i] += sample[i];
+      }
+    }
+    for (let i = 0; i < dim; i++) {
+      initialCentroid[i] /= this.samples.length;
+    }
+    l2Normalize(initialCentroid);
+
+    // Step 2: Reject outliers (similarity < threshold to initial centroid)
+    const validSamples = [];
+    this.rejectedSamples = [];
+
+    for (let idx = 0; idx < this.samples.length; idx++) {
+      const sample = this.samples[idx];
+      const similarity = cosineSimilarity(sample, initialCentroid);
+      if (similarity >= OUTLIER_SIMILARITY_THRESHOLD) {
+        validSamples.push(sample);
+      } else {
+        this.rejectedSamples.push({ index: idx, sample, similarity });
+        console.warn(
+          `Enrollment: Outlier sample ${idx + 1} rejected (similarity ${similarity.toFixed(3)} < ${OUTLIER_SIMILARITY_THRESHOLD})`
+        );
+      }
+    }
+
+    // Step 3: Fallback if too many rejected (need at least 2 for meaningful average)
+    const samplesToUse = validSamples.length >= 2 ? validSamples : this.samples;
+
+    // Track if we had to use fallback due to >50% rejection
+    const rejectionRatio = this.rejectedSamples.length / this.samples.length;
+    this.usedFallback = validSamples.length < 2 && this.rejectedSamples.length > 0;
+
+    if (this.usedFallback) {
+      console.warn(
+        `Enrollment: Too many outliers rejected (${this.rejectedSamples.length}/${this.samples.length}), using all samples`
+      );
+    } else if (rejectionRatio > 0.5) {
+      // Even if we didn't fall back, warn if >50% were rejected
+      this.usedFallback = true;
+      console.warn(
+        `Enrollment: High outlier rate (${this.rejectedSamples.length}/${this.samples.length} rejected), enrollment quality may be affected`
+      );
+    }
+
+    // Step 4: Recompute centroid from valid samples only
+    const avg = new Float32Array(dim);
+    for (const sample of samplesToUse) {
       for (let i = 0; i < dim; i++) {
         avg[i] += sample[i];
       }
     }
-
     for (let i = 0; i < dim; i++) {
-      avg[i] /= this.samples.length;
+      avg[i] /= samplesToUse.length;
     }
 
-    return avg;
+    // L2 normalize the final centroid
+    return l2Normalize(avg);
+  }
+
+  /**
+   * Get the number of samples rejected during last centroid computation
+   * @returns {number}
+   */
+  getRejectedCount() {
+    return this.rejectedSamples?.length || 0;
+  }
+
+  /**
+   * Check if fallback was used due to high outlier rate (>50% rejected)
+   * @returns {boolean}
+   */
+  hadHighOutlierRate() {
+    return this.usedFallback;
   }
 
   /**
@@ -140,6 +215,8 @@ export class EnrollmentManager {
     this.samples = [];
     this.speakerName = '';
     this.currentSentenceIndex = 0;
+    this.rejectedSamples = [];
+    this.usedFallback = false;
   }
 
   // ==================== Static localStorage methods (multi-enrollment) ====================

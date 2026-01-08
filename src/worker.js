@@ -160,6 +160,9 @@ self.addEventListener('message', async (event) => {
     case 'extract-embedding':
       await handleExtractEmbedding(data);
       break;
+    case 'transcribe-for-validation':
+      await handleTranscribeForValidation(data);
+      break;
     case 'check-webgpu':
       await checkWebGPU();
       break;
@@ -445,6 +448,39 @@ async function handleExtractEmbedding({ audio, sampleId }) {
     console.error('Embedding extraction error:', error);
     self.postMessage({
       type: 'embedding-result',
+      data: {
+        sampleId,
+        success: false,
+        error: error.message,
+      },
+    });
+  }
+}
+
+/**
+ * Transcribe audio for enrollment validation
+ * Returns just the text for comparison against expected sentence
+ */
+async function handleTranscribeForValidation({ audio, sampleId }) {
+  try {
+    const audioData = audio instanceof Float32Array ? audio : new Float32Array(audio);
+
+    // Run transcription
+    const result = await ModelManager.runTranscription(audioData);
+    const text = result.text || '';
+
+    self.postMessage({
+      type: 'transcription-validation-result',
+      data: {
+        sampleId,
+        text,
+        success: true,
+      },
+    });
+  } catch (error) {
+    console.error('Transcription validation error:', error);
+    self.postMessage({
+      type: 'transcription-validation-result',
       data: {
         sampleId,
         success: false,

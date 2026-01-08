@@ -9,6 +9,7 @@ import { OverlapMerger } from './utils/overlapMerger.js';
 import { TranscriptMerger } from './utils/transcriptMerger.js';
 import { EnrollmentManager } from './utils/enrollmentManager.js';
 import { SpeakerVisualizer } from './utils/speakerVisualizer.js';
+import { AudioValidator } from './utils/audioValidator.js';
 
 export class App {
   constructor() {
@@ -20,6 +21,9 @@ export class App {
     this.numSpeakers = 2;
     this.pendingChunks = new Map();
     this.pendingEnrollmentSampleId = null;
+    this.pendingExpectedSentence = null;
+    this.pendingTranscriptionResult = null;
+    this.pendingEmbeddingResult = null;
 
     // VAD + overlap-based chunk management
     this.vadProcessor = null; // VAD processor for speech detection
@@ -337,6 +341,10 @@ export class App {
 
       case 'embedding-result':
         this.handleEnrollmentEmbedding(data);
+        break;
+
+      case 'transcription-validation-result':
+        this.handleTranscriptionValidation(data);
         break;
 
       case 'error':
@@ -1474,6 +1482,7 @@ export class App {
 
   /**
    * Handle recorded enrollment audio chunk
+   * Validates audio quality and speech content before processing
    */
   handleEnrollmentChunk(chunk) {
     // Check if we have enough audio (at least 1 second)
@@ -1483,10 +1492,47 @@ export class App {
       return;
     }
 
+    // Phase 1: Audio quality checks (synchronous, fast)
+    const audioQuality = AudioValidator.validateAudioQuality(chunk.audio);
+
+    if (!audioQuality.passed) {
+      this.setEnrollStatus(audioQuality.errors[0], true);
+      this.updateCurrentDot('');
+      return;
+    }
+
+    // Log warnings but allow to continue
+    if (audioQuality.warnings.length > 0) {
+      console.warn('Audio quality warnings:', audioQuality.warnings);
+    }
+
+    // Phase 2: Speech content analysis (synchronous, fast)
+    const speechAnalysis = AudioValidator.analyzeSpeechContent(chunk.audio);
+    const speechValidation = AudioValidator.validateSpeechContent(speechAnalysis);
+
+    if (!speechValidation.passed) {
+      this.setEnrollStatus(speechValidation.errors[0], true);
+      this.updateCurrentDot('');
+      return;
+    }
+
+    // Phase 3: Send both transcription and embedding requests in parallel
     this.setEnrollStatus('Processing...');
     this.pendingEnrollmentSampleId = this.enrollmentManager.getCurrentIndex();
+    this.pendingExpectedSentence = this.enrollmentManager.getCurrentSentence();
+    this.pendingTranscriptionResult = null;
+    this.pendingEmbeddingResult = null;
 
-    // Send to worker for embedding extraction
+    // Request transcription for validation
+    this.worker.postMessage({
+      type: 'transcribe-for-validation',
+      data: {
+        audio: chunk.audio,
+        sampleId: this.pendingEnrollmentSampleId,
+      },
+    });
+
+    // Request embedding extraction
     this.worker.postMessage({
       type: 'extract-embedding',
       data: {
@@ -1497,19 +1543,61 @@ export class App {
   }
 
   /**
+   * Handle transcription validation result from worker
+   */
+  handleTranscriptionValidation(data) {
+    this.pendingTranscriptionResult = data;
+    this.checkEnrollmentResultsComplete();
+  }
+
+  /**
    * Handle embedding result from worker
    */
   handleEnrollmentEmbedding(data) {
-    const { sampleId, embedding, success, error } = data;
+    this.pendingEmbeddingResult = data;
+    this.checkEnrollmentResultsComplete();
+  }
 
-    if (!success) {
-      this.setEnrollStatus(`Failed to process: ${error}`, true);
+  /**
+   * Check if both transcription and embedding results are ready
+   * If so, validate and complete the enrollment sample
+   */
+  checkEnrollmentResultsComplete() {
+    // Wait for both results
+    if (!this.pendingTranscriptionResult || !this.pendingEmbeddingResult) {
+      return;
+    }
+
+    const transcription = this.pendingTranscriptionResult;
+    const embedding = this.pendingEmbeddingResult;
+    const sampleId = this.pendingEnrollmentSampleId;
+
+    // Reset pending state
+    this.pendingTranscriptionResult = null;
+    this.pendingEmbeddingResult = null;
+
+    // Check embedding extraction success
+    if (!embedding.success) {
+      this.setEnrollStatus(`Failed to process: ${embedding.error}`, true);
       this.updateCurrentDot('');
       return;
     }
 
+    // Check transcription validation (warning only, doesn't block)
+    let transcriptionWarning = null;
+    if (transcription.success && this.pendingExpectedSentence) {
+      const validation = AudioValidator.validateTranscription(
+        transcription.text,
+        this.pendingExpectedSentence
+      );
+      if (!validation.passed && validation.warnings.length > 0) {
+        transcriptionWarning = validation.warnings[0];
+        console.warn('Transcription validation:', transcriptionWarning, `(${(validation.matchRatio * 100).toFixed(0)}% match)`);
+      }
+    }
+
     // Add sample to enrollment manager
-    this.enrollmentManager.addSample(embedding);
+    this.enrollmentManager.addSample(embedding.embedding);
 
     // Update UI
     this.updateDotComplete(sampleId);
@@ -1518,8 +1606,11 @@ export class App {
     // Check if we can finish
     this.enrollFinishBtn.disabled = !this.enrollmentManager.canComplete();
 
+    // Show status with optional transcription warning
     if (this.enrollmentManager.isComplete()) {
       this.setEnrollStatus('All sentences recorded! Click Finish to complete enrollment.');
+    } else if (transcriptionWarning) {
+      this.setEnrollStatus(`Sample ${this.enrollmentManager.getSampleCount()} recorded. Note: ${transcriptionWarning}`);
     } else {
       this.setEnrollStatus(`Sample ${this.enrollmentManager.getSampleCount()} recorded.`);
     }
@@ -1538,7 +1629,7 @@ export class App {
       if (this.enrollmentManager.canComplete()) {
         this.setEnrollStatus('All sentences processed. Click Finish to complete.');
       } else {
-        this.setEnrollStatus('Need at least 2 recordings. Please go back and record more.', true);
+        this.setEnrollStatus('Need at least 3 recordings. Please go back and record more.', true);
       }
     }
   }
@@ -1548,13 +1639,14 @@ export class App {
    */
   finishEnrollment() {
     if (!this.enrollmentManager.canComplete()) {
-      this.setEnrollStatus('Need at least 2 samples to complete enrollment.', true);
+      this.setEnrollStatus('Need at least 3 samples to complete enrollment.', true);
       return;
     }
 
-    // Compute average embedding
+    // Compute average embedding (includes outlier rejection)
     const avgEmbedding = this.enrollmentManager.computeAverageEmbedding();
     const name = this.enrollmentManager.getName();
+    const rejectedCount = this.enrollmentManager.getRejectedCount();
 
     // Save to localStorage and get the created enrollment
     const newEnrollment = EnrollmentManager.addEnrollment(name, avgEmbedding);
@@ -1567,11 +1659,35 @@ export class App {
       newEnrollment.colorIndex
     );
 
+    // Check for inter-enrollment similarity warnings
+    const similarityWarnings = this.transcriptMerger.speakerClusterer.checkEnrolledSpeakerSimilarities(true);
+
     // Update UI
     this.renderEnrolledList(EnrollmentManager.loadAll());
     this.showEnrollmentComplete();
     this.updateVisualization();
-    this.setEnrollStatus('');
+
+    // Build status message with any warnings
+    const statusParts = [];
+
+    if (this.enrollmentManager.hadHighOutlierRate()) {
+      statusParts.push(`High outlier rate detected - enrollment quality may be affected`);
+    } else if (rejectedCount > 0) {
+      statusParts.push(`${rejectedCount} sample(s) excluded as outliers`);
+    }
+
+    if (similarityWarnings.length > 0) {
+      const warningMsg = similarityWarnings.map(w =>
+        `"${w.speaker1}" and "${w.speaker2}" sound similar (${(w.similarity * 100).toFixed(0)}%)`
+      ).join('; ');
+      statusParts.push(warningMsg + ' - they may be confused during transcription');
+    }
+
+    if (statusParts.length > 0) {
+      this.setEnrollStatus(`Enrollment complete. Note: ${statusParts.join('. ')}`);
+    } else {
+      this.setEnrollStatus('');
+    }
   }
 
   /**
