@@ -3,13 +3,18 @@
  * Uses speaker embeddings to cluster and identify unique speakers across audio chunks
  */
 
+// Special speaker ID for unknown/unassignable speakers
+export const UNKNOWN_SPEAKER_ID = -1;
+
 export class SpeakerClusterer {
   constructor(numSpeakers = 2) {
     this.numSpeakers = numSpeakers;
     // Each speaker has { centroid: Float32Array, count: number }
     this.speakers = [];
-    // Similarity threshold for matching (cosine similarity)
+    // Similarity threshold for confident matching (cosine similarity)
     this.similarityThreshold = 0.7;
+    // Minimum similarity - below this, assign to Unknown (don't force match)
+    this.minimumSimilarityThreshold = 0.4;
     // Minimum margin between best and second-best match to be confident
     // If margin is smaller, we're uncertain and should be more conservative
     this.confidenceMargin = 0.10; // Raised from 0.05 since SV model gives better margins
@@ -164,6 +169,13 @@ export class SpeakerClusterer {
       }
     }
 
+    // If similarity is below minimum threshold, assign to Unknown
+    // This prevents forcing bad matches onto enrolled speakers
+    if (match.similarity < this.minimumSimilarityThreshold) {
+      debug.reason = 'below_minimum_threshold';
+      return makeResult(UNKNOWN_SPEAKER_ID, debug);
+    }
+
     // If similarity is above threshold, consider assigning to that speaker
     if (match.similarity >= this.similarityThreshold) {
       // Check confidence margin when we have multiple speakers
@@ -200,14 +212,10 @@ export class SpeakerClusterer {
       return makeResult(newId, debug);
     }
 
-    // We've reached max speakers - assign to closest one even if below threshold
-    // Only update centroid for non-enrolled speakers
-    const speaker = this.speakers[match.speakerId];
-    if (!speaker.enrolled) {
-      this.updateCentroid(match.speakerId, embedding);
-    }
-    debug.reason = 'forced_match';
-    return makeResult(match.speakerId, debug);
+    // We've reached max speakers and similarity is between minimum and threshold
+    // Assign to Unknown rather than forcing a potentially incorrect match
+    debug.reason = 'no_confident_match';
+    return makeResult(UNKNOWN_SPEAKER_ID, debug);
   }
 
   /**
@@ -312,6 +320,10 @@ export class SpeakerClusterer {
    * @returns {string}
    */
   getSpeakerLabel(speakerId) {
+    // Handle Unknown speaker
+    if (speakerId === UNKNOWN_SPEAKER_ID) {
+      return 'Unknown';
+    }
     const speaker = this.speakers[speakerId];
     if (speaker?.name) {
       return speaker.name;

@@ -235,6 +235,79 @@ async function handleLoad({ device }) {
 }
 
 /**
+ * Join adjacent words that form bracketed markers (e.g., "[BLANK" + "_AUDIO]" → "[BLANK_AUDIO]")
+ * Whisper sometimes splits bracketed markers across multiple word tokens
+ * Note: Whisper words often have leading whitespace, so we trim when checking patterns
+ * @param {Array} words - Array of word objects with text and timestamp
+ * @returns {Array} Words with split markers joined
+ */
+function joinSplitBracketedMarkers(words) {
+  if (!words || words.length < 2) return words;
+
+  const result = [];
+  let i = 0;
+
+  while (i < words.length) {
+    const word = words[i];
+    const text = word.text || '';
+    const trimmedText = text.trim();
+
+    // Check if this word starts a bracketed marker (starts with "[" but doesn't end with "]")
+    if (trimmedText.startsWith('[') && !trimmedText.endsWith(']')) {
+      // Look ahead to find the closing bracket
+      let combined = text;
+      let endTimestamp = word.timestamp?.[1];
+      let j = i + 1;
+      let foundClosing = false;
+
+      while (j < words.length) {
+        const nextWord = words[j];
+        const nextText = nextWord.text || '';
+        const nextTrimmed = nextText.trim();
+        combined += nextText;
+        endTimestamp = nextWord.timestamp?.[1];
+
+        if (nextTrimmed.endsWith(']')) {
+          // Found the closing bracket - create combined word
+          result.push({
+            text: combined,
+            timestamp: [word.timestamp?.[0], endTimestamp],
+          });
+          i = j + 1;
+          foundClosing = true;
+          break;
+        }
+        j++;
+      }
+
+      // If we didn't find closing bracket, just add the original word
+      if (!foundClosing) {
+        result.push(word);
+        i++;
+      }
+    } else {
+      result.push(word);
+      i++;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Check if a word is a blank audio marker
+ * Handles various formats: [BLANK_AUDIO], [BLANK AUDIO], [BLANK _AUDIO], etc.
+ * @param {Object} word - Word object with text property
+ * @returns {boolean}
+ */
+function isBlankAudioMarker(word) {
+  const text = (word.text || '').trim().toUpperCase();
+  // Normalize by removing extra spaces and underscores, then check
+  const normalized = text.replace(/[\s_]+/g, '');
+  return normalized === '[BLANKAUDIO]';
+}
+
+/**
  * Transcribe audio chunk using phrase-based diarization
  * Flow: ASR → Detect phrases from word gaps → Extract audio per phrase → SV embedding per phrase
  */
@@ -252,7 +325,9 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, carryoverD
     const asrResult = await ModelManager.runTranscription(audioData);
     const asrTime = performance.now() - asrStartTime;
 
-    const words = asrResult.chunks || [];
+    // Join split bracketed markers (e.g., "[BLANK" + "_AUDIO]" → "[BLANK_AUDIO]")
+    const rawWords = asrResult.chunks || [];
+    const words = joinSplitBracketedMarkers(rawWords);
 
     // 2. Calculate split point for carryover
     // Split point = end of second-to-last word (so last word gets re-transcribed next chunk)
@@ -314,6 +389,11 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, carryoverD
     const embeddingTime = performance.now() - embeddingStartTime;
     const processingTime = performance.now() - startTime;
 
+    // Check if the result is effectively empty (only blank audio markers)
+    // This helps app.js know to recover previously discarded words
+    const nonBlankWords = wordsToKeep.filter(w => !isBlankAudioMarker(w));
+    const isEffectivelyEmpty = wordsToKeep.length > 0 && nonBlankWords.length === 0;
+
     self.postMessage({
       type: 'result',
       data: {
@@ -324,11 +404,19 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, carryoverD
           // Reconstruct text from kept words
           text: wordsToKeep.map(w => w.text).join(''),
         },
+        // Raw ASR output for debugging display
+        rawAsr: {
+          allWords: words, // All words from Whisper (before carryover removal)
+          keptWords: wordsToKeep, // Words we're keeping this chunk
+          audioDuration: audioDuration,
+        },
         phrases: phrasesWithEmbeddings,
         chunkIndex,
         processingTime,
         splitPoint, // seconds - app.js uses this to calculate carryover audio
         carryoverDuration, // echo back so app.js can adjust timestamps
+        isFinal, // echo back so app.js knows this is the final chunk
+        isEffectivelyEmpty, // true if only blank audio markers (no real speech)
         // Debug timing breakdown
         debug: {
           asrTime: Math.round(asrTime),

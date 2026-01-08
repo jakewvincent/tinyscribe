@@ -24,6 +24,7 @@ export class App {
     this.globalTimeOffset = 0; // Tracks global time in the recording
     this.chunkQueue = []; // Queue of pending audio chunks
     this.isProcessingChunk = false; // Flag to ensure sequential processing
+    this.lastDiscardedWord = null; // Track last discarded word for recovery if final chunk is blank
 
     // Debug stats
     this.completedChunks = 0;
@@ -52,6 +53,7 @@ export class App {
     this.deviceInfo = document.getElementById('device-info');
     this.recordingStatus = document.getElementById('recording-status');
     this.transcriptContainer = document.getElementById('transcript-container');
+    this.rawChunksContainer = document.getElementById('raw-chunks-container');
     this.audioVisualizer = document.getElementById('audio-visualizer');
 
     // DOM elements - Enrollment
@@ -491,6 +493,7 @@ export class App {
     // Reset for new session
     this.transcriptMerger.reset();
     this.clearTranscriptDisplay();
+    this.clearRawChunksDisplay();
     this.pendingChunks.clear();
     this.carryoverAudio = null;
     this.globalTimeOffset = 0;
@@ -499,6 +502,7 @@ export class App {
     this.completedChunks = 0;
     this.lastDebugTiming = null;
     this.lastPhraseDebug = null;
+    this.lastDiscardedWord = null;
 
     // Reset UI
     this.updateChunkQueueViz();
@@ -634,7 +638,23 @@ export class App {
    * Handle transcription result from worker
    */
   handleTranscriptionResult(data) {
-    const { transcript, phrases, chunkIndex, processingTime, splitPoint, carryoverDuration, debug } = data;
+    const {
+      transcript,
+      phrases,
+      chunkIndex,
+      processingTime,
+      splitPoint,
+      carryoverDuration,
+      debug,
+      rawAsr,
+      isFinal: isFinalFromWorker,
+      isEffectivelyEmpty,
+    } = data;
+
+    // Render raw chunk data for debugging
+    if (rawAsr) {
+      this.renderRawChunk(chunkIndex, rawAsr, splitPoint, carryoverDuration);
+    }
 
     // Get chunk info
     const chunkInfo = this.pendingChunks.get(chunkIndex);
@@ -665,6 +685,22 @@ export class App {
       this.hideProcessingIndicator();
     }
 
+    // Track discarded words for recovery if final chunk is blank
+    // For non-final chunks, save the last discarded word
+    if (!isFinal && rawAsr && rawAsr.allWords && rawAsr.keptWords) {
+      const allWords = rawAsr.allWords;
+      const keptWords = rawAsr.keptWords;
+      if (allWords.length > keptWords.length) {
+        // The discarded word is the last one in allWords that's not in keptWords
+        this.lastDiscardedWord = {
+          word: allWords[allWords.length - 1],
+          globalStartTime: globalStartTime, // For calculating absolute timestamp
+        };
+      } else {
+        this.lastDiscardedWord = null;
+      }
+    }
+
     // Extract carryover audio for next chunk (unless this is final)
     if (!isFinal && combinedAudio) {
       const sampleRate = 16000;
@@ -688,6 +724,37 @@ export class App {
       const audioDuration = combinedAudio ? combinedAudio.length / 16000 : 0;
       const newAudioProcessed = audioDuration - carryoverDuration;
       this.globalTimeOffset += Math.max(0, newAudioProcessed);
+    }
+
+    // Handle final chunk that's effectively empty (only blank audio markers)
+    // Recover the previously discarded word
+    if (isFinal && isEffectivelyEmpty && this.lastDiscardedWord) {
+      const recoveredWord = this.lastDiscardedWord.word;
+      const baseTime = this.lastDiscardedWord.globalStartTime;
+
+      // Create a simple segment for the recovered word
+      const startTime = baseTime + (recoveredWord.timestamp?.[0] || 0);
+      const endTime = baseTime + (recoveredWord.timestamp?.[1] || 0);
+
+      // Get the last speaker from the transcript or default to 0
+      const lastSegment = this.transcriptMerger.segments[this.transcriptMerger.segments.length - 1];
+      const speakerId = lastSegment?.speaker ?? 0;
+
+      const recoveredSegment = {
+        text: recoveredWord.text,
+        startTime,
+        endTime,
+        speaker: speakerId,
+        speakerLabel: this.transcriptMerger.speakerClusterer.getSpeakerLabel(speakerId),
+        isRecovered: true, // Flag for debugging
+      };
+
+      this.renderSegments([recoveredSegment]);
+      this.transcriptMerger.segments.push(recoveredSegment);
+      console.log('Recovered discarded word from previous chunk:', recoveredWord.text);
+
+      // Clear the discarded word
+      this.lastDiscardedWord = null;
     }
 
     // Process transcript if we have one
@@ -793,6 +860,15 @@ export class App {
         labelEl.className = 'speaker-label environmental';
         labelEl.innerHTML = `
           <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
+        `;
+      } else if (segment.speaker === -1) {
+        // Unknown speaker - distinct styling to indicate unassignable
+        segmentEl.className = 'transcript-segment unknown-speaker';
+        labelEl.className = 'speaker-label unknown-speaker';
+        labelEl.innerHTML = `
+          ${segment.speakerLabel || 'Unknown'}
+          <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
+          ${confidenceHtml}
         `;
       } else {
         // Regular speaker segment
@@ -1074,6 +1150,100 @@ export class App {
   clearTranscriptDisplay() {
     this.transcriptContainer.innerHTML =
       '<p class="placeholder">Transcript will appear here when you start recording...</p>';
+  }
+
+  /**
+   * Clear raw chunks display
+   */
+  clearRawChunksDisplay() {
+    if (this.rawChunksContainer) {
+      this.rawChunksContainer.innerHTML =
+        '<p class="placeholder">Raw chunk data will appear here...</p>';
+    }
+  }
+
+  /**
+   * Render raw chunk data from Whisper
+   * Shows word-by-word output with timestamps, split points, and carryover info
+   */
+  renderRawChunk(chunkIndex, rawAsr, splitPoint, carryoverDuration) {
+    if (!this.rawChunksContainer || !rawAsr) return;
+
+    // Remove placeholder if present
+    const placeholder = this.rawChunksContainer.querySelector('.placeholder');
+    if (placeholder) {
+      placeholder.remove();
+    }
+
+    const { allWords, keptWords, audioDuration } = rawAsr;
+
+    // Create chunk element
+    const chunkEl = document.createElement('div');
+    chunkEl.className = 'raw-chunk';
+
+    // Header with chunk info
+    const headerEl = document.createElement('div');
+    headerEl.className = 'raw-chunk-header';
+    headerEl.innerHTML = `
+      <span class="chunk-label">Chunk #${chunkIndex + 1}</span>
+      <span class="chunk-meta">
+        ${audioDuration.toFixed(1)}s audio |
+        ${allWords.length} words |
+        split: ${splitPoint.toFixed(2)}s |
+        carryover: ${carryoverDuration.toFixed(2)}s
+      </span>
+    `;
+    chunkEl.appendChild(headerEl);
+
+    // Words container
+    const wordsEl = document.createElement('div');
+    wordsEl.className = 'raw-words';
+
+    // Create a set of kept word indices for quick lookup
+    const keptSet = new Set(keptWords.map((w) => `${w.text}-${w.timestamp?.[0]}-${w.timestamp?.[1]}`));
+
+    for (const word of allWords) {
+      const wordEl = document.createElement('span');
+      const wordKey = `${word.text}-${word.timestamp?.[0]}-${word.timestamp?.[1]}`;
+      const isKept = keptSet.has(wordKey);
+      const startTime = word.timestamp?.[0] ?? 0;
+      const endTime = word.timestamp?.[1] ?? 0;
+
+      // Check if word is in carryover region (start time < carryover duration)
+      const isCarryover = startTime < carryoverDuration;
+
+      wordEl.className = 'raw-word';
+      if (isKept) {
+        wordEl.classList.add('kept');
+      } else {
+        wordEl.classList.add('discarded');
+      }
+      if (isCarryover) {
+        wordEl.classList.add('carryover');
+      }
+
+      wordEl.innerHTML = `
+        <span class="word-text">${this.escapeHtml(word.text)}</span>
+        <span class="word-time">${startTime.toFixed(2)}-${endTime.toFixed(2)}</span>
+      `;
+      wordEl.title = `${startTime.toFixed(3)}s - ${endTime.toFixed(3)}s${isCarryover ? ' (carryover)' : ''}${!isKept ? ' (discarded)' : ''}`;
+
+      wordsEl.appendChild(wordEl);
+    }
+
+    chunkEl.appendChild(wordsEl);
+
+    // Summary line
+    const summaryEl = document.createElement('div');
+    summaryEl.className = 'raw-chunk-summary';
+    const discardedCount = allWords.length - keptWords.length;
+    summaryEl.textContent = `Kept ${keptWords.length} words, discarded ${discardedCount} (will re-transcribe in next chunk)`;
+    chunkEl.appendChild(summaryEl);
+
+    this.rawChunksContainer.appendChild(chunkEl);
+
+    // Auto-scroll to bottom
+    this.rawChunksContainer.scrollTop = this.rawChunksContainer.scrollHeight;
   }
 
   /**
