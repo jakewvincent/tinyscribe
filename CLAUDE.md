@@ -146,4 +146,7 @@ Whisper may output bracketed markers for non-speech sounds:
 
 ## Development Preferences
 
-- **Commits**: Do not include Co-Authored-By or similar AI attribution lines in commit messages
+- **Commits**:
+  - Use conventional commit format (e.g., `feat:`, `fix:`, `refactor:`, `docs:`)
+  - Add detailed description in the commit body (lines below the subject)
+  - Do not include Co-Authored-By or similar AI attribution lines
