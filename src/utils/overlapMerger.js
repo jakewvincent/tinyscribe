@@ -79,11 +79,13 @@ export class OverlapMerger {
 
   /**
    * Get words from the start of a chunk that fall within the overlap duration
+   * Uses wordStart (not wordEnd) to match logic in getOverlapWordsFromEnd.
+   * A word that starts within overlap should be included even if it extends past.
    */
   getOverlapWordsFromStart(words, overlapDuration) {
     return words.filter((w) => {
-      const wordEnd = w.timestamp?.[1] || 0;
-      return wordEnd <= overlapDuration;
+      const wordStart = w.timestamp?.[0] || 0;
+      return wordStart < overlapDuration;
     });
   }
 
