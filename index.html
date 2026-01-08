@@ -247,6 +247,64 @@
         <span class="metric-value" id="buffer-percent">0%</span>
       </div>
     </footer>
+
+    <!-- Enrollment Modal -->
+    <div id="enrollment-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-content" role="document">
+        <!-- Header -->
+        <div class="modal-header">
+          <h2 id="modal-title">Speaker Enrollment</h2>
+          <span id="modal-speaker-name" class="modal-speaker-name"></span>
+        </div>
+
+        <!-- Passage -->
+        <div class="modal-passage-section">
+          <div class="passage-label">Read aloud:</div>
+          <blockquote id="modal-passage-text" class="modal-passage-text"></blockquote>
+        </div>
+
+        <!-- Feedback (volume bar, VAD indicator, timer) -->
+        <div class="modal-feedback-section">
+          <div class="modal-volume-wrapper">
+            <label class="feedback-label">Mic Level</label>
+            <div class="modal-volume-bar">
+              <div id="modal-volume-fill" class="volume-fill"></div>
+            </div>
+          </div>
+          <div class="modal-vad-wrapper">
+            <label class="feedback-label">Speech</label>
+            <div id="modal-vad-indicator" class="vad-indicator listening">
+              <span class="vad-dot"></span>
+              <span id="modal-vad-text" class="vad-text">Listening...</span>
+            </div>
+          </div>
+          <div class="modal-timer-wrapper">
+            <label class="feedback-label">Duration</label>
+            <span id="modal-recording-timer" class="recording-timer">0:00</span>
+          </div>
+        </div>
+
+        <!-- Progress dots -->
+        <div class="modal-progress-section">
+          <span class="progress-label">Passages:</span>
+          <div id="modal-progress-dots" class="modal-progress-dots"></div>
+        </div>
+
+        <!-- Status -->
+        <div id="modal-status" class="modal-status"></div>
+
+        <!-- Actions -->
+        <div class="modal-actions">
+          <div class="modal-record-group">
+            <button id="modal-record-btn" class="btn primary">Record</button>
+            <button id="modal-upload-btn" class="btn secondary">Upload</button>
+            <input type="file" id="modal-file-input" accept="audio/*" class="hidden">
+          </div>
+          <button id="modal-finish-btn" class="btn" disabled>Finish</button>
+          <button id="modal-cancel-btn" class="btn secondary">Cancel</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="/src/main.js"></script>

@@ -26,6 +26,13 @@ export class App {
     this.pendingTranscriptionResult = null;
     this.pendingEmbeddingResult = null;
 
+    // Enrollment modal state
+    this.enrollmentVAD = null; // VADProcessor instance for enrollment
+    this.enrollmentAudioChunks = []; // Accumulated VAD speech chunks during recording
+    this.enrollmentRecordingTimer = null; // Timer interval for recording duration display
+    this.enrollmentStartTime = null; // When current recording started
+    this.modalFocusTrap = null; // For accessibility focus management
+
     // VAD + overlap-based chunk management
     this.vadProcessor = null; // VAD processor for speech detection
     this.overlapMerger = new OverlapMerger(); // For comparing overlapping transcriptions
@@ -85,6 +92,22 @@ export class App {
     this.addSpeakerBtn = document.getElementById('add-speaker-btn');
     this.clearAllEnrollmentsBtn = document.getElementById('clear-all-enrollments-btn');
     this.speakerCanvas = document.getElementById('speaker-canvas');
+
+    // DOM elements - Enrollment Modal
+    this.enrollmentModal = document.getElementById('enrollment-modal');
+    this.modalSpeakerName = document.getElementById('modal-speaker-name');
+    this.modalPassageText = document.getElementById('modal-passage-text');
+    this.modalVolumeFill = document.getElementById('modal-volume-fill');
+    this.modalVadIndicator = document.getElementById('modal-vad-indicator');
+    this.modalVadText = document.getElementById('modal-vad-text');
+    this.modalRecordingTimer = document.getElementById('modal-recording-timer');
+    this.modalProgressDots = document.getElementById('modal-progress-dots');
+    this.modalStatus = document.getElementById('modal-status');
+    this.modalRecordBtn = document.getElementById('modal-record-btn');
+    this.modalFinishBtn = document.getElementById('modal-finish-btn');
+    this.modalCancelBtn = document.getElementById('modal-cancel-btn');
+    this.modalUploadBtn = document.getElementById('modal-upload-btn');
+    this.modalFileInput = document.getElementById('modal-file-input');
 
     // DOM elements - Status bar
     this.statusDot = document.getElementById('status-dot');
@@ -303,6 +326,21 @@ export class App {
         if (item && item.dataset.id) {
           this.removeEnrollment(item.dataset.id);
         }
+      }
+    });
+
+    // Enrollment modal controls
+    this.modalRecordBtn.addEventListener('click', () => this.toggleModalRecording());
+    this.modalFinishBtn.addEventListener('click', () => this.finishModalEnrollment());
+    this.modalCancelBtn.addEventListener('click', () => this.cancelModalEnrollment());
+    this.modalUploadBtn.addEventListener('click', () => this.handleUploadClick());
+    this.modalFileInput.addEventListener('change', (e) => this.handleFileSelected(e));
+    this.enrollmentModal.addEventListener('keydown', (e) => this.handleModalKeydown(e));
+
+    // Close modal on backdrop click (only when not recording)
+    this.enrollmentModal.addEventListener('click', (e) => {
+      if (e.target === this.enrollmentModal && !this.isEnrollmentRecording) {
+        this.closeEnrollmentModal();
       }
     });
   }
@@ -1406,15 +1444,8 @@ export class App {
     this.enrollmentManager.reset();
     this.enrollmentManager.setName(name);
 
-    // Switch to recording UI
-    this.enrollmentIntro.classList.add('hidden');
-    this.enrollmentRecording.classList.remove('hidden');
-
-    // Initialize progress dots
-    this.initEnrollmentDots();
-
-    // Show first passage
-    this.updateEnrollmentUI();
+    // Open the enrollment modal instead of sidebar UI
+    this.openEnrollmentModal(name);
   }
 
   /**
@@ -1578,12 +1609,19 @@ export class App {
 
     const transcription = this.pendingTranscriptionResult;
     const embedding = this.pendingEmbeddingResult;
-    const sampleId = this.pendingEnrollmentSampleId;
 
     // Reset pending state
     this.pendingTranscriptionResult = null;
     this.pendingEmbeddingResult = null;
 
+    // Check if modal is open - route to modal handler
+    const isModalOpen = !this.enrollmentModal.classList.contains('hidden');
+    if (isModalOpen) {
+      this.handleModalEnrollmentComplete(embedding, transcription);
+      return;
+    }
+
+    // Legacy sidebar flow (kept for backwards compatibility)
     // Check embedding extraction success
     if (!embedding.success) {
       this.setEnrollStatus(`Failed to process: ${embedding.error}`, true);
@@ -1937,5 +1975,738 @@ export class App {
   setEnrollStatus(message, isError = false) {
     this.enrollStatus.textContent = message;
     this.enrollStatus.className = isError ? 'error' : '';
+  }
+
+  // ==================== Enrollment Modal Methods ====================
+
+  /**
+   * Open the enrollment modal
+   * @param {string} name - Speaker name for enrollment
+   */
+  openEnrollmentModal(name) {
+    // Store last focused element for accessibility
+    this.lastFocusedElement = document.activeElement;
+
+    // Set speaker name in header
+    this.modalSpeakerName.textContent = name;
+
+    // Initialize modal progress dots
+    this.initModalProgressDots();
+
+    // Show first passage
+    this.updateModalPassage();
+
+    // Reset UI state
+    this.modalRecordBtn.textContent = 'Record';
+    this.modalRecordBtn.classList.remove('recording');
+    this.modalFinishBtn.disabled = true;
+    this.modalRecordingTimer.textContent = '0:00';
+    this.modalVolumeFill.style.width = '0%';
+    this.modalVadIndicator.classList.remove('speech-detected');
+    this.modalVadIndicator.classList.add('listening');
+    this.modalVadText.textContent = 'Listening...';
+    this.setModalStatus('');
+
+    // Show modal with animation
+    this.enrollmentModal.classList.remove('hidden');
+
+    // Focus the record button for accessibility
+    setTimeout(() => {
+      this.modalRecordBtn.focus();
+    }, 100);
+  }
+
+  /**
+   * Close the enrollment modal
+   */
+  closeEnrollmentModal() {
+    // Stop any ongoing recording
+    if (this.isEnrollmentRecording) {
+      this.stopModalRecording(false); // Don't process
+    }
+
+    // Hide modal
+    this.enrollmentModal.classList.add('hidden');
+
+    // Restore focus for accessibility
+    if (this.lastFocusedElement) {
+      this.lastFocusedElement.focus();
+    }
+
+    // Clean up VAD
+    if (this.enrollmentVAD) {
+      this.enrollmentVAD.destroy();
+      this.enrollmentVAD = null;
+    }
+
+    // Clear timer
+    if (this.enrollmentRecordingTimer) {
+      clearInterval(this.enrollmentRecordingTimer);
+      this.enrollmentRecordingTimer = null;
+    }
+  }
+
+  /**
+   * Handle keyboard events in modal
+   */
+  handleModalKeydown(e) {
+    if (e.key === 'Escape') {
+      // Don't close during recording (prevents accidental data loss)
+      if (!this.isEnrollmentRecording) {
+        this.cancelModalEnrollment();
+      }
+    } else if (e.key === 'Tab') {
+      // Focus trap within modal
+      this.trapFocus(e);
+    }
+  }
+
+  /**
+   * Trap focus within modal for accessibility
+   */
+  trapFocus(e) {
+    const modal = this.enrollmentModal.querySelector('.modal-content');
+    const focusableElements = modal.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+
+    if (focusableElements.length === 0) return;
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+
+    if (e.shiftKey && document.activeElement === firstElement) {
+      e.preventDefault();
+      lastElement.focus();
+    } else if (!e.shiftKey && document.activeElement === lastElement) {
+      e.preventDefault();
+      firstElement.focus();
+    }
+  }
+
+  /**
+   * Initialize progress dots in modal
+   */
+  initModalProgressDots() {
+    this.modalProgressDots.innerHTML = '';
+    const total = this.enrollmentManager.getTotalSentences();
+
+    for (let i = 0; i < total; i++) {
+      const dot = document.createElement('div');
+      dot.className = 'progress-dot';
+      dot.dataset.index = i;
+      dot.textContent = i + 1; // Number inside dot
+
+      // Click to select passage (for re-recording)
+      dot.addEventListener('click', () => {
+        if (!this.isEnrollmentRecording) {
+          this.selectModalPassage(i);
+        }
+      });
+
+      this.modalProgressDots.appendChild(dot);
+    }
+
+    this.syncModalProgressDots();
+  }
+
+  /**
+   * Sync modal progress dots with recording state
+   */
+  syncModalProgressDots() {
+    const statuses = this.enrollmentManager.getRecordingStatuses();
+    const currentIndex = this.enrollmentManager.getCurrentIndex();
+
+    statuses.forEach((status, i) => {
+      const dot = this.modalProgressDots.querySelector(`[data-index="${i}"]`);
+      if (dot) {
+        dot.className = 'progress-dot';
+
+        if (status === 'recorded') {
+          dot.classList.add('complete');
+        }
+
+        if (i === currentIndex && !this.isEnrollmentRecording) {
+          dot.classList.add('selected');
+        }
+      }
+    });
+  }
+
+  /**
+   * Select a passage in modal for recording/re-recording
+   */
+  selectModalPassage(index) {
+    this.enrollmentManager.selectGroup(index);
+    this.syncModalProgressDots();
+    this.updateModalPassage();
+  }
+
+  /**
+   * Update the passage text and button state in modal
+   */
+  updateModalPassage() {
+    const currentSentence = this.enrollmentManager.getCurrentSentence();
+    const currentIndex = this.enrollmentManager.getCurrentIndex();
+    const hasRecording = this.enrollmentManager.hasRecording(currentIndex);
+
+    if (currentSentence) {
+      this.modalPassageText.textContent = currentSentence;
+      this.modalRecordBtn.disabled = false;
+      this.modalRecordBtn.textContent = hasRecording ? 'Re-record' : 'Record';
+    } else {
+      this.modalPassageText.textContent = 'All passages completed!';
+      this.modalRecordBtn.disabled = true;
+    }
+
+    // Update finish button
+    this.modalFinishBtn.disabled = !this.enrollmentManager.canComplete();
+  }
+
+  /**
+   * Set modal status message
+   */
+  setModalStatus(message, isError = false) {
+    this.modalStatus.textContent = message;
+    this.modalStatus.className = 'modal-status' + (isError ? ' error' : '');
+  }
+
+  /**
+   * Toggle recording in modal
+   */
+  toggleModalRecording() {
+    if (this.isEnrollmentRecording) {
+      this.stopModalRecording(true); // Process the recording
+    } else {
+      this.startModalRecording();
+    }
+  }
+
+  /**
+   * Start VAD-based recording in modal
+   */
+  async startModalRecording() {
+    // Reset accumulated chunks
+    this.enrollmentAudioChunks = [];
+    this.enrollmentStartTime = Date.now();
+
+    // Get selected microphone device ID
+    const selectedDeviceId = this.micSelect.value || null;
+
+    // Create VAD processor for enrollment (different config than main recording)
+    this.enrollmentVAD = new VADProcessor({
+      minSpeechDuration: 0.5, // Catch all speech (lower than main recording)
+      maxSpeechDuration: 30.0, // Allow long passages
+      overlapDuration: 0, // No overlap needed for enrollment
+      deviceId: selectedDeviceId,
+      onSpeechStart: () => this.handleEnrollmentSpeechStart(),
+      onSpeechEnd: (chunk) => this.handleEnrollmentSpeechChunk(chunk),
+      onSpeechProgress: (progress) => this.handleEnrollmentSpeechProgress(progress),
+      onError: (error) => this.handleEnrollmentVADError(error),
+      onAudioLevel: (level) => this.handleEnrollmentAudioLevel(level),
+    });
+
+    const initSuccess = await this.enrollmentVAD.init();
+    if (!initSuccess) {
+      this.setModalStatus('Failed to initialize VAD. Please check permissions.', true);
+      return;
+    }
+
+    try {
+      await this.enrollmentVAD.start();
+      this.isEnrollmentRecording = true;
+
+      // Update UI
+      this.modalRecordBtn.textContent = 'Stop';
+      this.modalRecordBtn.classList.add('recording');
+      this.setModalStatus('Recording... Speak clearly, then click Stop.');
+
+      // Mark current dot as recording
+      const currentIndex = this.enrollmentManager.getCurrentIndex();
+      const dot = this.modalProgressDots.querySelector(`[data-index="${currentIndex}"]`);
+      if (dot) {
+        dot.classList.add('recording');
+      }
+
+      // Start timer
+      this.startRecordingTimer();
+    } catch (error) {
+      this.setModalStatus('Failed to start recording: ' + error.message, true);
+      console.error('Failed to start enrollment VAD:', error);
+    }
+  }
+
+  /**
+   * Stop VAD-based recording in modal
+   * @param {boolean} shouldProcess - Whether to process the accumulated audio
+   */
+  async stopModalRecording(shouldProcess) {
+    // Stop VAD
+    if (this.enrollmentVAD) {
+      await this.enrollmentVAD.stop();
+      await this.enrollmentVAD.destroy();
+      this.enrollmentVAD = null;
+    }
+
+    this.isEnrollmentRecording = false;
+
+    // Stop timer
+    if (this.enrollmentRecordingTimer) {
+      clearInterval(this.enrollmentRecordingTimer);
+      this.enrollmentRecordingTimer = null;
+    }
+
+    // Reset UI
+    const currentIndex = this.enrollmentManager.getCurrentIndex();
+    const hasRecording = this.enrollmentManager.hasRecording(currentIndex);
+    this.modalRecordBtn.textContent = hasRecording ? 'Re-record' : 'Record';
+    this.modalRecordBtn.classList.remove('recording');
+
+    // Reset VAD indicator
+    this.modalVadIndicator.classList.remove('speech-detected');
+    this.modalVadIndicator.classList.add('listening');
+    this.modalVadText.textContent = 'Listening...';
+
+    // Remove recording class from dot
+    const dot = this.modalProgressDots.querySelector(`[data-index="${currentIndex}"]`);
+    if (dot) {
+      dot.classList.remove('recording');
+    }
+
+    // Process if requested
+    if (shouldProcess) {
+      this.processEnrollmentRecording();
+    } else {
+      this.syncModalProgressDots();
+    }
+  }
+
+  /**
+   * Handle speech start from enrollment VAD
+   */
+  handleEnrollmentSpeechStart() {
+    this.modalVadIndicator.classList.remove('listening');
+    this.modalVadIndicator.classList.add('speech-detected');
+    this.modalVadText.textContent = 'Speech detected!';
+  }
+
+  /**
+   * Handle speech chunk from enrollment VAD
+   */
+  handleEnrollmentSpeechChunk(chunk) {
+    // Accumulate speech chunks
+    this.enrollmentAudioChunks.push(chunk.audio);
+
+    // Reset VAD indicator for next speech segment
+    this.modalVadIndicator.classList.remove('speech-detected');
+    this.modalVadIndicator.classList.add('listening');
+    this.modalVadText.textContent = 'Listening...';
+  }
+
+  /**
+   * Handle speech progress from enrollment VAD
+   */
+  handleEnrollmentSpeechProgress(progress) {
+    // Keep showing "Speech detected!" while speech is ongoing
+    this.modalVadIndicator.classList.remove('listening');
+    this.modalVadIndicator.classList.add('speech-detected');
+    this.modalVadText.textContent = `Speaking... (${progress.duration.toFixed(1)}s)`;
+  }
+
+  /**
+   * Handle audio level from enrollment VAD
+   */
+  handleEnrollmentAudioLevel(level) {
+    // Amplify for visibility (typical speech is quiet)
+    const normalizedLevel = Math.min(level * 8, 1);
+    this.modalVolumeFill.style.width = `${normalizedLevel * 100}%`;
+  }
+
+  /**
+   * Handle VAD error during enrollment
+   */
+  handleEnrollmentVADError(error) {
+    console.error('Enrollment VAD error:', error);
+    this.setModalStatus(`VAD Error: ${error.message}`, true);
+    this.stopModalRecording(false);
+  }
+
+  /**
+   * Start the recording timer display
+   */
+  startRecordingTimer() {
+    this.enrollmentRecordingTimer = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - this.enrollmentStartTime) / 1000);
+      const mins = Math.floor(elapsed / 60);
+      const secs = elapsed % 60;
+      this.modalRecordingTimer.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+    }, 1000);
+  }
+
+  /**
+   * Process the accumulated enrollment recording
+   */
+  processEnrollmentRecording() {
+    // Check if we have any audio chunks
+    if (this.enrollmentAudioChunks.length === 0) {
+      this.setModalStatus('No speech detected. Please try again.', true);
+      this.syncModalProgressDots();
+      return;
+    }
+
+    // Concatenate all speech chunks
+    const totalLength = this.enrollmentAudioChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const combinedAudio = new Float32Array(totalLength);
+
+    let offset = 0;
+    for (const chunk of this.enrollmentAudioChunks) {
+      combinedAudio.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    // Calculate total speech duration from VAD chunks
+    const totalDuration = totalLength / 16000;
+
+    // Validate using VAD-based validation
+    const vadValidation = AudioValidator.validateVADSpeechContent(
+      totalDuration,
+      this.enrollmentAudioChunks.length
+    );
+
+    if (!vadValidation.passed) {
+      this.setModalStatus(vadValidation.errors[0], true);
+      this.syncModalProgressDots();
+      return;
+    }
+
+    // Run audio quality checks
+    const audioQuality = AudioValidator.validateAudioQuality(combinedAudio);
+
+    if (!audioQuality.passed) {
+      this.setModalStatus(audioQuality.errors[0], true);
+      this.syncModalProgressDots();
+      return;
+    }
+
+    // Log warnings but allow to continue
+    if (audioQuality.warnings.length > 0) {
+      console.warn('Audio quality warnings:', audioQuality.warnings);
+    }
+
+    // Process the audio - send to worker for embedding extraction
+    this.setModalStatus('Processing...');
+
+    this.pendingEnrollmentSampleId = this.enrollmentManager.getCurrentIndex();
+    this.pendingExpectedSentence = this.enrollmentManager.getCurrentSentence();
+    this.pendingTranscriptionResult = null;
+    this.pendingEmbeddingResult = null;
+
+    // Request transcription for validation
+    this.worker.postMessage({
+      type: 'transcribe-for-validation',
+      data: {
+        audio: combinedAudio,
+        sampleId: this.pendingEnrollmentSampleId,
+      },
+    });
+
+    // Request embedding extraction
+    this.worker.postMessage({
+      type: 'extract-embedding',
+      data: {
+        audio: combinedAudio,
+        sampleId: this.pendingEnrollmentSampleId,
+      },
+    });
+  }
+
+  /**
+   * Finish enrollment from modal
+   */
+  finishModalEnrollment() {
+    if (!this.enrollmentManager.canComplete()) {
+      this.setModalStatus('Need at least 2 recordings to complete enrollment.', true);
+      return;
+    }
+
+    // Compute average embedding
+    const avgEmbedding = this.enrollmentManager.computeAverageEmbedding();
+    const name = this.enrollmentManager.getName();
+    const rejectedCount = this.enrollmentManager.getRejectedCount();
+
+    // Save to localStorage
+    const newEnrollment = EnrollmentManager.addEnrollment(name, avgEmbedding);
+
+    // Import into speaker clusterer
+    this.transcriptMerger.speakerClusterer.enrollSpeaker(
+      name,
+      avgEmbedding,
+      newEnrollment.id,
+      newEnrollment.colorIndex
+    );
+
+    // Check for inter-enrollment similarity warnings
+    const similarityWarnings = this.transcriptMerger.speakerClusterer.checkEnrolledSpeakerSimilarities(true);
+
+    // Close modal
+    this.closeEnrollmentModal();
+
+    // Update sidebar UI
+    this.renderEnrolledList(EnrollmentManager.loadAll());
+    this.showEnrollmentComplete();
+    this.updateVisualization();
+
+    // Build status message
+    const statusParts = [];
+
+    if (this.enrollmentManager.hadHighOutlierRate()) {
+      statusParts.push('High outlier rate - enrollment quality may be affected');
+    } else if (rejectedCount > 0) {
+      statusParts.push(`${rejectedCount} sample(s) excluded as outliers`);
+    }
+
+    if (similarityWarnings.length > 0) {
+      const warningMsg = similarityWarnings
+        .map((w) => `"${w.speaker1}" and "${w.speaker2}" sound similar`)
+        .join('; ');
+      statusParts.push(warningMsg);
+    }
+
+    if (statusParts.length > 0) {
+      this.setEnrollStatus(`Enrolled "${name}". Note: ${statusParts.join('. ')}`);
+    } else {
+      this.setEnrollStatus(`Successfully enrolled "${name}".`);
+    }
+  }
+
+  /**
+   * Cancel enrollment from modal
+   */
+  cancelModalEnrollment() {
+    this.closeEnrollmentModal();
+    this.enrollmentManager.reset();
+
+    // Return to appropriate sidebar state
+    const enrollments = EnrollmentManager.loadAll();
+    if (enrollments.length > 0) {
+      this.showEnrollmentComplete();
+    } else {
+      this.enrollmentIntro.classList.remove('hidden');
+    }
+
+    this.setEnrollStatus('Enrollment cancelled.');
+  }
+
+  /**
+   * Handle enrollment results completing (called from checkEnrollmentResultsComplete)
+   * This is called after both transcription and embedding are ready
+   */
+  handleModalEnrollmentComplete(embedding, transcription) {
+    const sampleId = this.pendingEnrollmentSampleId;
+
+    // Check embedding extraction success
+    if (!embedding.success) {
+      this.setModalStatus(`Failed to process: ${embedding.error}`, true);
+      this.syncModalProgressDots();
+      return;
+    }
+
+    // Check transcription validation (warning only)
+    let transcriptionWarning = null;
+    if (transcription.success && this.pendingExpectedSentence) {
+      const validation = AudioValidator.validateTranscription(
+        transcription.text,
+        this.pendingExpectedSentence
+      );
+      if (!validation.passed && validation.warnings.length > 0) {
+        transcriptionWarning = validation.warnings[0];
+        console.warn('Transcription validation:', transcriptionWarning);
+      }
+    }
+
+    // Add sample to enrollment manager
+    this.enrollmentManager.addSample(embedding.embedding);
+
+    // Update modal UI
+    this.syncModalProgressDots();
+    this.updateModalPassage();
+
+    // Update finish button
+    this.modalFinishBtn.disabled = !this.enrollmentManager.canComplete();
+
+    // Show status
+    const sampleCount = this.enrollmentManager.getSampleCount();
+    const total = this.enrollmentManager.getTotalSentences();
+
+    if (this.enrollmentManager.isComplete()) {
+      this.setModalStatus('All passages recorded! Click Finish to complete.');
+    } else if (transcriptionWarning) {
+      this.setModalStatus(`Recorded (${sampleCount}/${total}). Note: ${transcriptionWarning}`);
+    } else {
+      this.setModalStatus(`Recorded (${sampleCount}/${total}). ${total - sampleCount} remaining.`);
+    }
+  }
+
+  // ==================== File Upload Methods ====================
+
+  /**
+   * Handle upload button click - trigger file input
+   */
+  handleUploadClick() {
+    // Don't allow upload during recording
+    if (this.isEnrollmentRecording) {
+      return;
+    }
+    this.modalFileInput.click();
+  }
+
+  /**
+   * Handle file selection from file input
+   */
+  async handleFileSelected(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Clear file input so same file can be selected again
+    this.modalFileInput.value = '';
+
+    // Check file type
+    if (!file.type.startsWith('audio/')) {
+      this.setModalStatus('Please select an audio file.', true);
+      return;
+    }
+
+    // Check file size (max 50MB)
+    const maxSize = 50 * 1024 * 1024;
+    if (file.size > maxSize) {
+      this.setModalStatus('File too large. Maximum size is 50MB.', true);
+      return;
+    }
+
+    this.setModalStatus(`Processing "${file.name}"...`);
+
+    try {
+      // Read file as ArrayBuffer
+      const arrayBuffer = await file.arrayBuffer();
+
+      // Decode audio
+      const audioContext = new AudioContext();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      await audioContext.close();
+
+      // Resample to 16kHz mono
+      const audio16k = await this.resampleAudio(audioBuffer, 16000);
+
+      // Process through VAD (same as recorded audio)
+      await this.processUploadedAudio(audio16k);
+    } catch (error) {
+      console.error('Failed to process audio file:', error);
+      this.setModalStatus(`Failed to process file: ${error.message}`, true);
+    }
+  }
+
+  /**
+   * Resample audio to target sample rate (mono)
+   * @param {AudioBuffer} audioBuffer - Input audio buffer
+   * @param {number} targetSampleRate - Target sample rate (e.g., 16000)
+   * @returns {Promise<Float32Array>} - Resampled mono audio
+   */
+  async resampleAudio(audioBuffer, targetSampleRate) {
+    const numChannels = audioBuffer.numberOfChannels;
+    const sourceSampleRate = audioBuffer.sampleRate;
+    const duration = audioBuffer.duration;
+
+    // Calculate output length
+    const outputLength = Math.ceil(duration * targetSampleRate);
+
+    // Create offline context at target sample rate
+    const offlineContext = new OfflineAudioContext(1, outputLength, targetSampleRate);
+
+    // Create buffer source
+    const source = offlineContext.createBufferSource();
+    source.buffer = audioBuffer;
+
+    // Connect to destination
+    source.connect(offlineContext.destination);
+    source.start(0);
+
+    // Render
+    const renderedBuffer = await offlineContext.startRendering();
+
+    // Get mono channel data
+    return renderedBuffer.getChannelData(0);
+  }
+
+  /**
+   * Process uploaded audio file
+   * Uses energy-based speech detection since VAD requires real-time microphone input
+   * @param {Float32Array} audio - 16kHz mono audio
+   */
+  async processUploadedAudio(audio) {
+    // Check minimum duration (0.5 seconds)
+    const duration = audio.length / 16000;
+    if (duration < 0.5) {
+      this.setModalStatus('Audio too short. Minimum 0.5 seconds required.', true);
+      return;
+    }
+
+    this.setModalStatus('Analyzing audio file...');
+
+    // Use energy-based speech analysis (same as original enrollment validation)
+    const speechAnalysis = AudioValidator.analyzeSpeechContent(audio, 16000);
+
+    // Check for sufficient speech (at least 5 seconds)
+    if (speechAnalysis.speechDuration < 5.0) {
+      this.setModalStatus(
+        `Not enough speech detected (${speechAnalysis.speechDuration.toFixed(1)}s). Need at least 5s of speech.`,
+        true
+      );
+      return;
+    }
+
+    // Run audio quality checks
+    const audioQuality = AudioValidator.validateAudioQuality(audio);
+
+    if (!audioQuality.passed) {
+      this.setModalStatus(audioQuality.errors[0], true);
+      return;
+    }
+
+    if (audioQuality.warnings.length > 0) {
+      console.warn('Audio quality warnings:', audioQuality.warnings);
+    }
+
+    // Process the audio - send to worker for embedding extraction
+    this.setModalStatus('Extracting voice characteristics...');
+
+    this.pendingEnrollmentSampleId = this.enrollmentManager.getCurrentIndex();
+    this.pendingExpectedSentence = this.enrollmentManager.getCurrentSentence();
+    this.pendingTranscriptionResult = null;
+    this.pendingEmbeddingResult = null;
+
+    // Mark current dot as processing
+    const currentIndex = this.enrollmentManager.getCurrentIndex();
+    const dot = this.modalProgressDots.querySelector(`[data-index="${currentIndex}"]`);
+    if (dot) {
+      dot.classList.add('recording');
+    }
+
+    // Request transcription for validation
+    this.worker.postMessage({
+      type: 'transcribe-for-validation',
+      data: {
+        audio: audio,
+        sampleId: this.pendingEnrollmentSampleId,
+      },
+    });
+
+    // Request embedding extraction
+    this.worker.postMessage({
+      type: 'extract-embedding',
+      data: {
+        audio: audio,
+        sampleId: this.pendingEnrollmentSampleId,
+      },
+    });
   }
 }

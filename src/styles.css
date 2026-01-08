@@ -1011,3 +1011,344 @@ body {
     display: none;
   }
 }
+
+/* ==================== ENROLLMENT MODAL ==================== */
+
+/* Overlay */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0.2s;
+}
+
+.modal-overlay:not(.hidden) {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Modal Content Box */
+.modal-content {
+  background: var(--panel-bg);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  width: 90%;
+  max-width: 540px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 1.5rem;
+  transform: scale(0.95);
+  transition: transform 0.2s;
+}
+
+.modal-overlay:not(.hidden) .modal-content {
+  transform: scale(1);
+}
+
+/* Modal Header */
+.modal-header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.modal-header h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.modal-speaker-name {
+  font-size: 1rem;
+  color: var(--speaker-0);
+  font-weight: 500;
+}
+
+/* Passage Section */
+.modal-passage-section {
+  margin-bottom: 1.5rem;
+}
+
+.modal-passage-section .passage-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.modal-passage-text {
+  background: #f8fafc;
+  border-left: 4px solid var(--speaker-0);
+  padding: 1rem 1.25rem;
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: 1.7;
+  font-style: italic;
+  color: var(--text-color);
+  border-radius: 0 6px 6px 0;
+}
+
+/* Feedback Section */
+.modal-feedback-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 1.5rem;
+  align-items: start;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.feedback-label {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+}
+
+/* Volume Bar */
+.modal-volume-wrapper {
+  flex: 1;
+}
+
+.modal-volume-bar {
+  height: 8px;
+  background: var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.modal-volume-bar .volume-fill {
+  height: 100%;
+  background: var(--speaker-1);
+  width: 0%;
+  transition: width 0.05s ease-out;
+  border-radius: 4px;
+}
+
+.modal-volume-bar .volume-fill.medium {
+  background: linear-gradient(to right, var(--speaker-1), var(--speaker-2));
+}
+
+.modal-volume-bar .volume-fill.high {
+  background: linear-gradient(to right, var(--speaker-2), var(--speaker-3));
+}
+
+.modal-volume-bar .volume-fill.clipping {
+  background: var(--speaker-3);
+}
+
+/* VAD Indicator */
+.modal-vad-wrapper {
+  flex: 1;
+}
+
+.vad-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.vad-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--border-color);
+  transition: background 0.2s, box-shadow 0.2s;
+}
+
+.vad-indicator.listening .vad-dot {
+  background: var(--text-muted);
+}
+
+.vad-indicator.speech-detected .vad-dot {
+  background: var(--speaker-1);
+  box-shadow: 0 0 8px var(--speaker-1);
+  animation: vadPulse 0.8s infinite;
+}
+
+@keyframes vadPulse {
+  0%, 100% { box-shadow: 0 0 4px var(--speaker-1); }
+  50% { box-shadow: 0 0 12px var(--speaker-1); }
+}
+
+.vad-text {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  transition: color 0.2s;
+}
+
+.vad-indicator.speech-detected .vad-text {
+  color: var(--speaker-1);
+  font-weight: 500;
+}
+
+/* Recording Timer */
+.modal-timer-wrapper {
+  text-align: center;
+  min-width: 60px;
+}
+
+.recording-timer {
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.recording-timer.recording {
+  color: var(--speaker-3);
+}
+
+/* Progress Section */
+.modal-progress-section {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.modal-progress-section .progress-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.modal-progress-dots {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.modal-progress-dots .progress-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--border-color);
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.modal-progress-dots .progress-dot:hover {
+  border-color: var(--text-muted);
+  transform: scale(1.1);
+}
+
+.modal-progress-dots .progress-dot.complete {
+  background: var(--speaker-1);
+  color: white;
+}
+
+.modal-progress-dots .progress-dot.selected {
+  border-color: var(--speaker-0);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.modal-progress-dots .progress-dot.recording {
+  background: var(--speaker-0);
+  border-color: var(--speaker-0);
+  animation: dotPulse 1s infinite;
+  color: white;
+}
+
+@keyframes dotPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); }
+}
+
+/* Status Message */
+.modal-status {
+  min-height: 1.5rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.modal-status.error {
+  color: var(--speaker-3);
+}
+
+.modal-status.success {
+  color: var(--speaker-1);
+}
+
+/* Action Buttons */
+.modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.modal-actions .btn {
+  min-width: 100px;
+}
+
+.modal-record-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.modal-record-group .btn {
+  min-width: 80px;
+}
+
+/* Focus styling */
+.modal-content *:focus {
+  outline: 2px solid var(--speaker-0);
+  outline-offset: 2px;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .modal-content {
+    padding: 1rem;
+    margin: 1rem;
+    max-height: calc(100vh - 2rem);
+  }
+
+  .modal-passage-text {
+    font-size: 1rem;
+  }
+
+  .modal-feedback-section {
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+
+  .modal-timer-wrapper {
+    grid-column: span 2;
+    text-align: center;
+  }
+
+  .modal-actions {
+    flex-wrap: wrap;
+  }
+
+  .modal-actions .btn {
+    flex: 1;
+    min-width: 80px;
+  }
+}

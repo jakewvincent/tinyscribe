@@ -20,6 +20,9 @@ const TRANSCRIPTION_MATCH_THRESHOLD = 0.7; // 70% word overlap
 const ENERGY_FRAME_SIZE = 512; // ~32ms at 16kHz
 const ENERGY_THRESHOLD = 0.02;
 
+// VAD-based speech validation thresholds
+const MIN_VAD_SPEECH_DURATION = 5.0; // seconds - minimum total speech detected by VAD
+
 export class AudioValidator {
   /**
    * Check for audio clipping (samples at or near max amplitude)
@@ -298,6 +301,32 @@ export class AudioValidator {
       passed: errors.length === 0,
       errors,
       warnings,
+    };
+  }
+
+  /**
+   * Validate speech content from VAD-segmented audio
+   * Since VAD already identified speech segments, we trust it more than energy-based analysis
+   * @param {number} totalDuration - Total duration of combined speech chunks in seconds
+   * @param {number} chunkCount - Number of VAD speech chunks detected
+   * @returns {{ passed: boolean, errors: string[] }}
+   */
+  static validateVADSpeechContent(totalDuration, chunkCount) {
+    const errors = [];
+
+    if (chunkCount < 1) {
+      errors.push('No speech detected. Please speak clearly into the microphone.');
+    }
+
+    if (totalDuration < MIN_VAD_SPEECH_DURATION) {
+      errors.push(
+        `Not enough speech recorded (${totalDuration.toFixed(1)}s). Need at least ${MIN_VAD_SPEECH_DURATION}s of speech.`
+      );
+    }
+
+    return {
+      passed: errors.length === 0,
+      errors,
     };
   }
 }
