@@ -5,6 +5,20 @@
 
 import { SpeakerClusterer } from './speakerClusterer.js';
 
+// Human voice sounds - can be attributed to a speaker
+const HUMAN_VOICE_PATTERNS = [
+  'laugh', 'chuckle', 'giggle', 'cough', 'sigh', 'sneeze', 'cry', 'sob',
+  'scream', 'groan', 'moan', 'yawn', 'gasp', 'breath', 'hum', 'whistle',
+  'sing', 'clear', 'throat', 'hiccup', 'snore', 'sniff', 'whimper',
+];
+
+// Environmental sounds - should NOT be attributed to a speaker
+const ENVIRONMENTAL_PATTERNS = [
+  'blank', 'music', 'noise', 'applause', 'silence', 'static', 'beep',
+  'ring', 'click', 'bang', 'crash', 'thunder', 'rain', 'wind', 'door',
+  'phone', 'alarm', 'siren', 'horn', 'engine', 'background',
+];
+
 export class TranscriptMerger {
   constructor(numSpeakers = 2) {
     this.segments = [];
@@ -19,12 +33,51 @@ export class TranscriptMerger {
   }
 
   /**
-   * Check if text is a non-speech marker that should be excluded
+   * Check if text is a bracketed marker like [MUSIC] or [LAUGHTER]
    */
-  isNonSpeechMarker(text) {
-    if (!text) return true;
+  isBracketedMarker(text) {
+    if (!text) return false;
     const trimmed = text.trim();
-    // Match [BLANK_AUDIO], [BLANK AUDIO], [BLANK, AUDIO], etc.
+    return /^\[.*\]$/.test(trimmed) || /^\(.*\)$/.test(trimmed);
+  }
+
+  /**
+   * Check if text is a human voice sound (can be attributed to speaker)
+   */
+  isHumanVoiceSound(text) {
+    if (!text) return false;
+    const lower = text.toLowerCase();
+    return HUMAN_VOICE_PATTERNS.some((pattern) => lower.includes(pattern));
+  }
+
+  /**
+   * Check if text is an environmental sound (should NOT be attributed to speaker)
+   * Default: unknown bracketed markers are treated as environmental (safer)
+   */
+  isEnvironmentalSound(text) {
+    if (!text) return false;
+    const trimmed = text.trim();
+
+    // Check if it's a bracketed marker
+    if (!this.isBracketedMarker(trimmed)) {
+      return false; // Regular speech, not environmental
+    }
+
+    // If it matches human voice patterns, it's NOT environmental
+    if (this.isHumanVoiceSound(trimmed)) {
+      return false;
+    }
+
+    // All other bracketed markers are environmental (safer default)
+    return true;
+  }
+
+  /**
+   * Check if text is BLANK_AUDIO specifically (should be filtered out entirely)
+   */
+  isBlankAudio(text) {
+    if (!text) return false;
+    const trimmed = text.trim();
     return /^\[BLANK/i.test(trimmed) || /^AUDIO\]$/i.test(trimmed);
   }
 
@@ -33,8 +86,19 @@ export class TranscriptMerger {
    */
   isBlankAudioOnly(phrase) {
     if (!phrase.words || phrase.words.length === 0) return true;
-    // Check if ALL words are blank/non-speech markers
-    return phrase.words.every((w) => this.isNonSpeechMarker(w.text));
+    return phrase.words.every((w) => this.isBlankAudio(w.text));
+  }
+
+  /**
+   * Check if phrase contains only environmental sounds (no speech)
+   */
+  isEnvironmentalOnly(phrase) {
+    if (!phrase.words || phrase.words.length === 0) return true;
+    return phrase.words.every((w) => {
+      const text = w.text?.trim();
+      if (!text) return true;
+      return this.isEnvironmentalSound(text);
+    });
   }
 
   /**
@@ -68,18 +132,34 @@ export class TranscriptMerger {
       return result;
     }
 
-    // Filter out BLANK_AUDIO-only phrases BEFORE speaker clustering
-    // This prevents silence embeddings from affecting speaker assignment
-    const speechPhrases = phrases.filter((p) => !this.isBlankAudioOnly(p));
+    // Categorize phrases:
+    // 1. BLANK_AUDIO only → filter out entirely
+    // 2. Environmental only (music, applause, etc.) → show without speaker
+    // 3. Speech/human sounds → normal speaker clustering
+    const speechPhrases = [];
+    const environmentalPhrases = [];
 
-    // Process only speech phrases through speaker clustering
-    const processedPhrases = this.speakerClusterer.processPhrases(speechPhrases);
+    for (const phrase of phrases) {
+      if (this.isBlankAudioOnly(phrase)) {
+        // Filter out completely - silence/blank audio
+        continue;
+      } else if (this.isEnvironmentalOnly(phrase)) {
+        // Environmental sound - keep but don't attribute to speaker
+        environmentalPhrases.push(phrase);
+      } else {
+        // Speech or human voice sounds - cluster normally
+        speechPhrases.push(phrase);
+      }
+    }
 
-    // Convert phrases to output segments
-    for (const phrase of processedPhrases) {
-      // Filter out any remaining non-speech markers (in case of mixed phrases)
+    // Process speech phrases through speaker clustering
+    const processedSpeechPhrases = this.speakerClusterer.processPhrases(speechPhrases);
+
+    // Convert speech phrases to output segments
+    for (const phrase of processedSpeechPhrases) {
+      // Filter out BLANK_AUDIO tokens but keep other markers (human sounds)
       const words = (phrase.words || []).filter(
-        (w) => !this.isNonSpeechMarker(w.text)
+        (w) => !this.isBlankAudio(w.text)
       );
 
       if (words.length === 0) continue;
@@ -99,6 +179,31 @@ export class TranscriptMerger {
         })),
       });
     }
+
+    // Convert environmental phrases to segments without speaker attribution
+    for (const phrase of environmentalPhrases) {
+      const words = (phrase.words || []).filter((w) => w.text?.trim());
+      if (words.length === 0) continue;
+
+      const text = words.map((w) => w.text).join('');
+
+      result.push({
+        speaker: null,
+        speakerLabel: null,
+        text,
+        startTime: chunkStartTime + phrase.start,
+        endTime: chunkStartTime + phrase.end,
+        isEnvironmental: true,
+        words: words.map((w) => ({
+          text: w.text,
+          start: chunkStartTime + (w.timestamp?.[0] || phrase.start),
+          end: chunkStartTime + (w.timestamp?.[1] || phrase.end),
+        })),
+      });
+    }
+
+    // Sort by start time to maintain chronological order
+    result.sort((a, b) => a.startTime - b.startTime);
 
     return result;
   }
@@ -145,7 +250,13 @@ export class TranscriptMerger {
    */
   exportAsText() {
     return this.segments
-      .map((seg) => `${seg.speakerLabel} [${this.formatTime(seg.startTime)} - ${this.formatTime(seg.endTime)}]: ${seg.text.trim()}`)
+      .map((seg) => {
+        const timeRange = `[${this.formatTime(seg.startTime)} - ${this.formatTime(seg.endTime)}]`;
+        if (seg.isEnvironmental || seg.speaker === null) {
+          return `${timeRange}: ${seg.text.trim()}`;
+        }
+        return `${seg.speakerLabel} ${timeRange}: ${seg.text.trim()}`;
+      })
       .join('\n');
   }
 

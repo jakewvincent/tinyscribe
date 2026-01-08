@@ -567,21 +567,29 @@ export class App {
     }
 
     for (const segment of segments) {
-      const speakerClass = `speaker-${segment.speaker % 6}`;
-
       const segmentEl = document.createElement('div');
-      segmentEl.className = `transcript-segment ${speakerClass}`;
-
       const labelEl = document.createElement('div');
-      labelEl.className = `speaker-label ${speakerClass}`;
-      labelEl.innerHTML = `
-        ${segment.speakerLabel}
-        <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
-      `;
-
       const textEl = document.createElement('div');
       textEl.className = 'segment-text';
       textEl.textContent = segment.text;
+
+      if (segment.isEnvironmental || segment.speaker === null) {
+        // Environmental sound - gray box, no speaker label
+        segmentEl.className = 'transcript-segment environmental';
+        labelEl.className = 'speaker-label environmental';
+        labelEl.innerHTML = `
+          <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
+        `;
+      } else {
+        // Regular speaker segment
+        const speakerClass = `speaker-${segment.speaker % 6}`;
+        segmentEl.className = `transcript-segment ${speakerClass}`;
+        labelEl.className = `speaker-label ${speakerClass}`;
+        labelEl.innerHTML = `
+          ${segment.speakerLabel}
+          <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
+        `;
+      }
 
       segmentEl.appendChild(labelEl);
       segmentEl.appendChild(textEl);
