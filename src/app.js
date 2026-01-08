@@ -46,6 +46,7 @@ export class App {
     this.lastDebugTiming = null;
     this.lastPhraseDebug = null;
     this.bufferFillPercent = 0;
+    this.rawChunksData = []; // Stored raw chunk data for export
 
     // Components
     this.worker = null;
@@ -61,6 +62,7 @@ export class App {
     this.recordBtn = document.getElementById('record-btn');
     this.clearBtn = document.getElementById('clear-btn');
     this.copyBtn = document.getElementById('copy-btn');
+    this.exportRawBtn = document.getElementById('export-raw-btn');
     this.micSelect = document.getElementById('mic-select');
     this.numSpeakersSelect = document.getElementById('num-speakers');
     this.loadingMessage = document.getElementById('loading-message');
@@ -300,6 +302,7 @@ export class App {
     this.recordBtn.addEventListener('click', () => this.toggleRecording());
     this.clearBtn.addEventListener('click', () => this.clearTranscript());
     this.copyBtn.addEventListener('click', () => this.copyTranscript());
+    this.exportRawBtn.addEventListener('click', () => this.exportRawChunks());
     this.numSpeakersSelect.addEventListener('change', (e) => this.handleNumSpeakersChange(e));
 
     // Enrollment controls
@@ -1227,12 +1230,16 @@ export class App {
   }
 
   /**
-   * Clear raw chunks display
+   * Clear raw chunks display and data
    */
   clearRawChunksDisplay() {
+    this.rawChunksData = [];
     if (this.rawChunksContainer) {
       this.rawChunksContainer.innerHTML =
         '<p class="placeholder">Raw chunk data will appear here...</p>';
+    }
+    if (this.exportRawBtn) {
+      this.exportRawBtn.disabled = true;
     }
   }
 
@@ -1242,6 +1249,20 @@ export class App {
    */
   renderRawChunk(chunkIndex, rawAsr, overlapDuration, mergeInfo) {
     if (!this.rawChunksContainer || !rawAsr) return;
+
+    // Store raw chunk data for export
+    this.rawChunksData.push({
+      chunkIndex,
+      rawAsr,
+      overlapDuration,
+      mergeInfo,
+      timestamp: Date.now(),
+    });
+
+    // Enable export button
+    if (this.exportRawBtn) {
+      this.exportRawBtn.disabled = false;
+    }
 
     // Remove placeholder if present
     const placeholder = this.rawChunksContainer.querySelector('.placeholder');
@@ -1367,6 +1388,38 @@ export class App {
     } catch (err) {
       console.error('Failed to copy:', err);
     }
+  }
+
+  /**
+   * Export raw chunks as JSON file
+   */
+  exportRawChunks() {
+    if (this.rawChunksData.length === 0) return;
+
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      chunkCount: this.rawChunksData.length,
+      chunks: this.rawChunksData,
+    };
+
+    const json = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `whisper-raw-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    // Brief feedback
+    const originalText = this.exportRawBtn.textContent;
+    this.exportRawBtn.textContent = 'Exported!';
+    setTimeout(() => {
+      this.exportRawBtn.textContent = originalText;
+    }, 2000);
   }
 
   /**
