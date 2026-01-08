@@ -138,3 +138,7 @@ Whisper may output bracketed markers for non-speech sounds:
 - Speaker IDs can drift without enrollment
 - Short phrases (<0.5s) may not get reliable embeddings
 - Phrase boundaries depend on Whisper word timing accuracy
+
+## Development Preferences
+
+- **Commits**: Do not include Co-Authored-By or similar AI attribution lines in commit messages
