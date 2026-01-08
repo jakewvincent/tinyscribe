@@ -28,3 +28,6 @@ npm-debug.log*
 # Claude Code (user-specific, not project config)
 .claude/settings.local.json
 .claude/plans/
+
+# Data directory
+data/
