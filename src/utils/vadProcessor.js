@@ -175,8 +175,11 @@ export class VADProcessor {
 
   /**
    * Handle a completed speech segment
+   * @param {Float32Array} audio - The audio samples
+   * @param {boolean} isFinal - Whether this is the final segment (stop requested)
+   * @param {boolean} wasForced - Whether this was a forced emit due to max duration
    */
-  handleSpeechSegment(audio, isFinal) {
+  handleSpeechSegment(audio, isFinal, wasForced = false) {
     const duration = audio.length / this.sampleRate;
 
     // Skip if too short (shouldn't happen due to minSpeechMs, but safety check)
@@ -184,12 +187,13 @@ export class VADProcessor {
       return;
     }
 
-    // Prepare chunk with overlap from previous segment
+    // Prepare chunk - only add overlap for forced splits (max duration reached)
+    // Natural VAD boundaries don't need overlap since they occur at pauses
     let chunkWithOverlap;
     let overlapDuration = 0;
 
-    if (this.lastSegmentTail && this.lastSegmentTail.length > 0) {
-      // Prepend overlap from previous segment
+    if (wasForced && this.lastSegmentTail && this.lastSegmentTail.length > 0) {
+      // Prepend overlap from previous segment (only for forced splits)
       overlapDuration = this.lastSegmentTail.length / this.sampleRate;
       chunkWithOverlap = new Float32Array(this.lastSegmentTail.length + audio.length);
       chunkWithOverlap.set(this.lastSegmentTail, 0);
@@ -198,8 +202,9 @@ export class VADProcessor {
       chunkWithOverlap = audio;
     }
 
-    // Save tail for next segment's overlap (unless final)
-    if (!isFinal && audio.length > this.overlapSamples) {
+    // Save tail only for forced splits - next segment might need it if speech continues
+    // Natural VAD boundaries don't need this since they occur at pauses
+    if (wasForced && !isFinal && audio.length > this.overlapSamples) {
       this.lastSegmentTail = audio.slice(-this.overlapSamples);
     } else {
       this.lastSegmentTail = null;
@@ -256,7 +261,7 @@ export class VADProcessor {
     if (this.currentSpeechBuffer.length === 0) return;
 
     const audio = this.concatenateFrames(this.currentSpeechBuffer);
-    this.handleSpeechSegment(audio, false);
+    this.handleSpeechSegment(audio, false, true); // wasForced = true
 
     // Reset for continued speech - keep the overlap portion in buffer
     if (audio.length > this.overlapSamples) {
