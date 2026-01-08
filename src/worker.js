@@ -310,8 +310,13 @@ function isBlankAudioMarker(word) {
 /**
  * Transcribe audio chunk using phrase-based diarization
  * Flow: ASR → Detect phrases from word gaps → Extract audio per phrase → SV embedding per phrase
+ *
+ * With VAD + overlap merging:
+ * - Chunks are VAD-triggered (variable duration, 1-15s)
+ * - Overlap audio is prepended by AudioCapture
+ * - ALL words are kept (no discard) - overlap merging happens in app.js
  */
-async function handleTranscribe({ audio, language = 'en', chunkIndex, carryoverDuration = 0, isFinal = false }) {
+async function handleTranscribe({ audio, language = 'en', chunkIndex, overlapDuration = 0, isFinal = false }) {
   try {
     const startTime = performance.now();
 
@@ -329,33 +334,11 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, carryoverD
     const rawWords = asrResult.chunks || [];
     const words = joinSplitBracketedMarkers(rawWords);
 
-    // 2. Calculate split point for carryover
-    // Split point = end of second-to-last word (so last word gets re-transcribed next chunk)
-    // For final chunk, keep ALL words (no next chunk to re-transcribe)
-    // If < 2 words, carry over everything
-    let splitPoint = 0; // seconds from start of this chunk's audio
-    let wordsToKeep = [];
+    // 2. Keep ALL words - overlap merging handled by app.js
+    // No more last-word-discard or splitPoint calculation
+    const wordsToKeep = words;
 
-    if (isFinal) {
-      // Final chunk - keep all words, no carryover needed
-      wordsToKeep = words;
-      splitPoint = audioDuration; // No carryover
-    } else if (words.length >= 2) {
-      // Keep all words except the last one
-      wordsToKeep = words.slice(0, -1);
-      const secondToLastWord = words[words.length - 2];
-      splitPoint = secondToLastWord.timestamp?.[1] || 0;
-    } else if (words.length === 1) {
-      // Only one word - don't keep it, carry over entire chunk
-      wordsToKeep = [];
-      splitPoint = 0;
-    } else {
-      // No words - nothing to keep, carry over entire chunk
-      wordsToKeep = [];
-      splitPoint = 0;
-    }
-
-    // 3. Detect phrase boundaries from the words we're keeping
+    // 3. Detect phrase boundaries from all words
     const phrases = phraseDetector.detectPhrases(wordsToKeep);
 
     // 4. Extract audio segments for each phrase and get SV embeddings
@@ -390,7 +373,6 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, carryoverD
     const processingTime = performance.now() - startTime;
 
     // Check if the result is effectively empty (only blank audio markers)
-    // This helps app.js know to recover previously discarded words
     const nonBlankWords = wordsToKeep.filter(w => !isBlankAudioMarker(w));
     const isEffectivelyEmpty = wordsToKeep.length > 0 && nonBlankWords.length === 0;
 
@@ -399,28 +381,26 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, carryoverD
       data: {
         transcript: {
           ...asrResult,
-          // Override chunks with only the words we're keeping
+          // All words are kept now
           chunks: wordsToKeep,
-          // Reconstruct text from kept words
           text: wordsToKeep.map(w => w.text).join(''),
         },
         // Raw ASR output for debugging display
         rawAsr: {
-          allWords: words, // All words from Whisper (before carryover removal)
-          keptWords: wordsToKeep, // Words we're keeping this chunk
+          allWords: words, // All words from Whisper
+          keptWords: wordsToKeep, // Same as allWords now (no discard)
           audioDuration: audioDuration,
         },
         phrases: phrasesWithEmbeddings,
         chunkIndex,
         processingTime,
-        splitPoint, // seconds - app.js uses this to calculate carryover audio
-        carryoverDuration, // echo back so app.js can adjust timestamps
-        isFinal, // echo back so app.js knows this is the final chunk
-        isEffectivelyEmpty, // true if only blank audio markers (no real speech)
+        overlapDuration, // Echo back for app.js merge logic
+        isFinal,
+        isEffectivelyEmpty,
         // Debug timing breakdown
         debug: {
           asrTime: Math.round(asrTime),
-          featureTime: 0, // No longer using frame features
+          featureTime: 0,
           embeddingTime: Math.round(embeddingTime),
         },
       },

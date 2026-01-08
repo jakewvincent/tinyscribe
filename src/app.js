@@ -4,6 +4,8 @@
  */
 
 import { AudioCapture } from './utils/audioCapture.js';
+import { VADProcessor } from './utils/vadProcessor.js';
+import { OverlapMerger } from './utils/overlapMerger.js';
 import { TranscriptMerger } from './utils/transcriptMerger.js';
 import { EnrollmentManager } from './utils/enrollmentManager.js';
 import { SpeakerVisualizer } from './utils/speakerVisualizer.js';
@@ -19,12 +21,13 @@ export class App {
     this.pendingChunks = new Map();
     this.pendingEnrollmentSampleId = null;
 
-    // Carryover audio management (for seamless chunk boundaries)
-    this.carryoverAudio = null; // Float32Array of audio to prepend to next chunk
+    // VAD + overlap-based chunk management
+    this.vadProcessor = null; // VAD processor for speech detection
+    this.overlapMerger = new OverlapMerger(); // For comparing overlapping transcriptions
+    this.lastChunkResult = null; // Previous chunk's result for overlap comparison
     this.globalTimeOffset = 0; // Tracks global time in the recording
     this.chunkQueue = []; // Queue of pending audio chunks
     this.isProcessingChunk = false; // Flag to ensure sequential processing
-    this.lastDiscardedWord = null; // Track last discarded word for recovery if final chunk is blank
 
     // Debug stats
     this.completedChunks = 0;
@@ -34,8 +37,7 @@ export class App {
 
     // Components
     this.worker = null;
-    this.audioCapture = null;
-    this.enrollmentAudioCapture = null;
+    this.enrollmentAudioCapture = null; // Still use AudioCapture for enrollment
     this.transcriptMerger = new TranscriptMerger(this.numSpeakers);
     this.enrollmentManager = new EnrollmentManager();
     this.speakerVisualizer = null;
@@ -532,14 +534,13 @@ export class App {
     this.clearTranscriptDisplay();
     this.clearRawChunksDisplay();
     this.pendingChunks.clear();
-    this.carryoverAudio = null;
+    this.lastChunkResult = null;
     this.globalTimeOffset = 0;
     this.chunkQueue = [];
     this.isProcessingChunk = false;
     this.completedChunks = 0;
     this.lastDebugTiming = null;
     this.lastPhraseDebug = null;
-    this.lastDiscardedWord = null;
 
     // Reset UI
     this.updateChunkQueueViz();
@@ -548,37 +549,64 @@ export class App {
     // Get selected microphone device ID
     const selectedDeviceId = this.micSelect.value || null;
 
-    // Create audio capture instance (no overlap - we handle carryover manually)
-    this.audioCapture = new AudioCapture({
-      chunkDuration: 5,
+    // Create VAD processor for speech-triggered chunking
+    this.vadProcessor = new VADProcessor({
+      minSpeechDuration: 1.0, // Min 1s of speech before emitting
+      maxSpeechDuration: 15.0, // Max 15s - force emit at this point
+      overlapDuration: 1.5, // 1.5s overlap between chunks
       deviceId: selectedDeviceId,
-      onChunkReady: (chunk) => this.handleAudioChunk(chunk),
+      onSpeechStart: () => this.handleSpeechStart(),
+      onSpeechEnd: (chunk) => this.handleAudioChunk(chunk),
+      onSpeechProgress: (progress) => this.handleSpeechProgress(progress),
       onError: (error) => this.handleError(error),
       onAudioLevel: (level) => this.updateAudioLevel(level),
     });
 
-    const success = await this.audioCapture.start();
+    const initSuccess = await this.vadProcessor.init();
+    if (!initSuccess) {
+      this.recordingStatus.textContent =
+        'Failed to initialize VAD. Please check permissions and try again.';
+      return;
+    }
 
-    if (success) {
+    try {
+      await this.vadProcessor.start();
       this.isRecording = true;
       this.recordBtn.textContent = 'Stop Recording';
       this.recordBtn.classList.add('recording');
-      this.recordingStatus.textContent = 'Recording... Speak into your microphone.';
+      this.recordingStatus.textContent = 'Listening for speech...';
       this.audioVisualizer.classList.add('active');
       this.updateStatusBar('recording');
-    } else {
+    } catch (error) {
       this.recordingStatus.textContent =
         'Failed to access microphone. Please check permissions and try again.';
+      console.error('Failed to start VAD:', error);
     }
+  }
+
+  /**
+   * Handle speech start from VAD
+   */
+  handleSpeechStart() {
+    this.recordingStatus.textContent = 'Detecting speech...';
+  }
+
+  /**
+   * Handle speech progress from VAD
+   */
+  handleSpeechProgress(progress) {
+    const { duration, probability } = progress;
+    this.recordingStatus.textContent = `Speaking... (${duration.toFixed(1)}s)`;
   }
 
   /**
    * Stop recording
    */
-  stopRecording() {
-    if (this.audioCapture) {
-      this.audioCapture.stop();
-      this.audioCapture = null;
+  async stopRecording() {
+    if (this.vadProcessor) {
+      await this.vadProcessor.stop();
+      await this.vadProcessor.destroy();
+      this.vadProcessor = null;
     }
 
     this.isRecording = false;
@@ -627,52 +655,41 @@ export class App {
     this.isProcessingChunk = true;
     const chunk = this.chunkQueue.shift();
 
+    const durationStr = chunk.rawDuration ? `${chunk.rawDuration.toFixed(1)}s` : '';
     const processingText = chunk.isFinal
       ? `Processing final chunk...`
-      : `Processing chunk ${chunk.index + 1}...`;
+      : `Processing chunk ${chunk.index + 1} (${durationStr})...`;
     this.recordingStatus.textContent = processingText;
 
     // Update chunk queue visualization
     this.updateChunkQueueViz();
 
-    // Prepend carryover audio from previous chunk (if any)
-    let combinedAudio;
-    let carryoverDuration = 0;
+    // VADProcessor now handles overlap prepending
+    // chunk.audio already includes overlap from previous segment
+    // chunk.overlapDuration tells us how much overlap is at the start
 
-    if (this.carryoverAudio && this.carryoverAudio.length > 0) {
-      carryoverDuration = this.carryoverAudio.length / 16000; // 16kHz sample rate
-      combinedAudio = new Float32Array(this.carryoverAudio.length + chunk.audio.length);
-      combinedAudio.set(this.carryoverAudio, 0);
-      combinedAudio.set(chunk.audio, this.carryoverAudio.length);
-    } else {
-      combinedAudio = chunk.audio;
-    }
-
-    // Track pending chunk with the combined audio for carryover extraction later
+    // Track pending chunk info
     this.pendingChunks.set(chunk.index, {
       globalStartTime: this.globalTimeOffset,
-      carryoverDuration,
-      combinedAudio, // Store so we can extract carryover after results come back
+      overlapDuration: chunk.overlapDuration || 0,
+      audio: chunk.audio,
       isFinal: chunk.isFinal,
     });
 
     // Show processing indicator
     this.showProcessingIndicator();
 
-    // Send combined audio to worker for transcription
+    // Send audio to worker for transcription
     this.worker.postMessage({
       type: 'transcribe',
       data: {
-        audio: combinedAudio,
+        audio: chunk.audio,
         language: 'en',
         chunkIndex: chunk.index,
-        carryoverDuration,
+        overlapDuration: chunk.overlapDuration || 0,
         isFinal: chunk.isFinal,
       },
     });
-
-    // Clear carryover - will be set again when results come back
-    this.carryoverAudio = null;
   }
 
   /**
@@ -684,18 +701,12 @@ export class App {
       phrases,
       chunkIndex,
       processingTime,
-      splitPoint,
-      carryoverDuration,
+      overlapDuration,
       debug,
       rawAsr,
       isFinal: isFinalFromWorker,
       isEffectivelyEmpty,
     } = data;
-
-    // Render raw chunk data for debugging
-    if (rawAsr) {
-      this.renderRawChunk(chunkIndex, rawAsr, splitPoint, carryoverDuration);
-    }
 
     // Get chunk info
     const chunkInfo = this.pendingChunks.get(chunkIndex);
@@ -707,7 +718,7 @@ export class App {
       return;
     }
 
-    const { globalStartTime, combinedAudio, isFinal } = chunkInfo;
+    const { globalStartTime, audio, isFinal } = chunkInfo;
 
     // Remove from pending
     this.pendingChunks.delete(chunkIndex);
@@ -726,88 +737,73 @@ export class App {
       this.hideProcessingIndicator();
     }
 
-    // Track discarded words for recovery if final chunk is blank
-    // For non-final chunks, save the last discarded word
-    if (!isFinal && rawAsr && rawAsr.allWords && rawAsr.keptWords) {
-      const allWords = rawAsr.allWords;
-      const keptWords = rawAsr.keptWords;
-      if (allWords.length > keptWords.length) {
-        // The discarded word is the last one in allWords that's not in keptWords
-        this.lastDiscardedWord = {
-          word: allWords[allWords.length - 1],
-          globalStartTime: globalStartTime, // For calculating absolute timestamp
-        };
-      } else {
-        this.lastDiscardedWord = null;
+    // Overlap-based merging: compare with previous chunk's words
+    let wordsToUse = transcript?.chunks || [];
+    let phrasesToUse = phrases || [];
+    let mergeInfo = null;
+
+    if (this.lastChunkResult && overlapDuration > 0 && wordsToUse.length > 0) {
+      // Find merge point by comparing overlap regions
+      mergeInfo = this.overlapMerger.findMergePoint(
+        this.lastChunkResult.words,
+        wordsToUse,
+        overlapDuration
+      );
+
+      // Remove overlapping words from current transcript
+      if (mergeInfo.mergeIndex > 0) {
+        wordsToUse = wordsToUse.slice(mergeInfo.mergeIndex);
+
+        // Also filter phrases to only include those after merge point
+        const mergeTimestamp = mergeInfo.timestamp || overlapDuration;
+        phrasesToUse = phrases.filter((p) => p.start >= mergeTimestamp);
+
+        // Adjust timestamps for the words we keep (subtract overlap)
+        wordsToUse = this.overlapMerger.adjustTimestamps(wordsToUse, overlapDuration);
       }
     }
 
-    // Extract carryover audio for next chunk (unless this is final)
-    if (!isFinal && combinedAudio) {
-      const sampleRate = 16000;
-      const splitSample = Math.floor(splitPoint * sampleRate);
+    // Render raw chunk data for debugging (with merge info)
+    if (rawAsr) {
+      this.renderRawChunk(chunkIndex, rawAsr, overlapDuration, mergeInfo);
+    }
 
-      if (splitSample < combinedAudio.length) {
-        // Carry over audio from split point to end
-        this.carryoverAudio = combinedAudio.slice(splitSample);
-      } else {
-        this.carryoverAudio = null;
-      }
+    // Update global time offset
+    // With overlap merging, we process the full audio minus overlap
+    const audioDuration = audio ? audio.length / 16000 : 0;
+    const newAudioProcessed = audioDuration - (overlapDuration || 0);
+    this.globalTimeOffset += Math.max(0, newAudioProcessed);
 
-      // Update global time offset: we've processed up to splitPoint
-      // But splitPoint is relative to combined audio which includes carryover
-      // The "new" audio processed = splitPoint - carryoverDuration
-      const newAudioProcessed = splitPoint - carryoverDuration;
-      this.globalTimeOffset += Math.max(0, newAudioProcessed);
+    // Store result for next chunk's overlap comparison (unless final)
+    if (!isFinal && transcript?.chunks?.length > 0) {
+      this.lastChunkResult = {
+        words: transcript.chunks, // Original words (not the filtered ones)
+        endTime: globalStartTime + audioDuration,
+      };
     } else {
-      // Final chunk - process everything, no carryover
-      this.carryoverAudio = null;
-      const audioDuration = combinedAudio ? combinedAudio.length / 16000 : 0;
-      const newAudioProcessed = audioDuration - carryoverDuration;
-      this.globalTimeOffset += Math.max(0, newAudioProcessed);
+      this.lastChunkResult = null;
     }
 
-    // Handle final chunk that's effectively empty (only blank audio markers)
-    // Recover the previously discarded word
-    if (isFinal && isEffectivelyEmpty && this.lastDiscardedWord) {
-      const recoveredWord = this.lastDiscardedWord.word;
-      const baseTime = this.lastDiscardedWord.globalStartTime;
-
-      // Create a simple segment for the recovered word
-      const startTime = baseTime + (recoveredWord.timestamp?.[0] || 0);
-      const endTime = baseTime + (recoveredWord.timestamp?.[1] || 0);
-
-      // Get the last speaker from the transcript or default to 0
-      const lastSegment = this.transcriptMerger.segments[this.transcriptMerger.segments.length - 1];
-      const speakerId = lastSegment?.speaker ?? 0;
-
-      const recoveredSegment = {
-        text: recoveredWord.text,
-        startTime,
-        endTime,
-        speaker: speakerId,
-        speakerLabel: this.transcriptMerger.speakerClusterer.getSpeakerLabel(speakerId),
-        isRecovered: true, // Flag for debugging
+    // Process transcript if we have words to use
+    if (wordsToUse.length > 0) {
+      // Create a modified transcript with the filtered words
+      const filteredTranscript = {
+        ...transcript,
+        chunks: wordsToUse,
+        text: wordsToUse.map((w) => w.text).join(''),
       };
 
-      this.renderSegments([recoveredSegment]);
-      this.transcriptMerger.segments.push(recoveredSegment);
-      console.log('Recovered discarded word from previous chunk:', recoveredWord.text);
-
-      // Clear the discarded word
-      this.lastDiscardedWord = null;
-    }
-
-    // Process transcript if we have one
-    if (transcript && transcript.text && transcript.text.trim()) {
       // Calculate chunk start time for transcript display
-      // Word timestamps from Whisper are relative to combined audio start
-      const chunkStartTime = globalStartTime;
+      const chunkStartTime = globalStartTime + (overlapDuration || 0);
 
       // Merge ASR with phrase-based diarization
-      const mergedSegments = this.transcriptMerger.merge(transcript, phrases, chunkStartTime);
+      const mergedSegments = this.transcriptMerger.merge(
+        filteredTranscript,
+        phrasesToUse,
+        chunkStartTime
+      );
 
-      // Render and store segments directly (no deduplication needed with carryover approach)
+      // Render and store segments
       if (mergedSegments.length > 0) {
         this.renderSegments(mergedSegments);
         this.transcriptMerger.segments.push(...mergedSegments);
@@ -1205,9 +1201,9 @@ export class App {
 
   /**
    * Render raw chunk data from Whisper
-   * Shows word-by-word output with timestamps, split points, and carryover info
+   * Shows word-by-word output with timestamps, overlap regions, and merge info
    */
-  renderRawChunk(chunkIndex, rawAsr, splitPoint, carryoverDuration) {
+  renderRawChunk(chunkIndex, rawAsr, overlapDuration, mergeInfo) {
     if (!this.rawChunksContainer || !rawAsr) return;
 
     // Remove placeholder if present
@@ -1216,7 +1212,7 @@ export class App {
       placeholder.remove();
     }
 
-    const { allWords, keptWords, audioDuration } = rawAsr;
+    const { allWords, audioDuration } = rawAsr;
 
     // Create chunk element
     const chunkEl = document.createElement('div');
@@ -1225,13 +1221,20 @@ export class App {
     // Header with chunk info
     const headerEl = document.createElement('div');
     headerEl.className = 'raw-chunk-header';
+
+    // Build merge info string
+    let mergeStr = '';
+    if (mergeInfo) {
+      const conf = (mergeInfo.confidence * 100).toFixed(0);
+      mergeStr = ` | merge: ${mergeInfo.method} (${conf}%)`;
+    }
+
     headerEl.innerHTML = `
       <span class="chunk-label">Chunk #${chunkIndex + 1}</span>
       <span class="chunk-meta">
         ${audioDuration.toFixed(1)}s audio |
         ${allWords.length} words |
-        split: ${splitPoint.toFixed(2)}s |
-        carryover: ${carryoverDuration.toFixed(2)}s
+        overlap: ${overlapDuration.toFixed(2)}s${mergeStr}
       </span>
     `;
     chunkEl.appendChild(headerEl);
@@ -1240,34 +1243,43 @@ export class App {
     const wordsEl = document.createElement('div');
     wordsEl.className = 'raw-words';
 
-    // Create a set of kept word indices for quick lookup
-    const keptSet = new Set(keptWords.map((w) => `${w.text}-${w.timestamp?.[0]}-${w.timestamp?.[1]}`));
+    // Determine merge point for highlighting
+    const mergeIndex = mergeInfo?.mergeIndex || 0;
 
-    for (const word of allWords) {
+    for (let i = 0; i < allWords.length; i++) {
+      const word = allWords[i];
       const wordEl = document.createElement('span');
-      const wordKey = `${word.text}-${word.timestamp?.[0]}-${word.timestamp?.[1]}`;
-      const isKept = keptSet.has(wordKey);
       const startTime = word.timestamp?.[0] ?? 0;
       const endTime = word.timestamp?.[1] ?? 0;
 
-      // Check if word is in carryover region (start time < carryover duration)
-      const isCarryover = startTime < carryoverDuration;
+      // Check if word is in overlap region
+      const isInOverlap = startTime < overlapDuration;
+
+      // Check if word was merged (removed due to overlap)
+      const isMerged = isInOverlap && i < mergeIndex;
+
+      // Check if word is kept (after merge point)
+      const isKept = !isMerged;
 
       wordEl.className = 'raw-word';
       if (isKept) {
         wordEl.classList.add('kept');
       } else {
-        wordEl.classList.add('discarded');
+        wordEl.classList.add('merged');
       }
-      if (isCarryover) {
-        wordEl.classList.add('carryover');
+      if (isInOverlap) {
+        wordEl.classList.add('overlap');
       }
 
       wordEl.innerHTML = `
         <span class="word-text">${this.escapeHtml(word.text)}</span>
         <span class="word-time">${startTime.toFixed(2)}-${endTime.toFixed(2)}</span>
       `;
-      wordEl.title = `${startTime.toFixed(3)}s - ${endTime.toFixed(3)}s${isCarryover ? ' (carryover)' : ''}${!isKept ? ' (discarded)' : ''}`;
+
+      let tooltip = `${startTime.toFixed(3)}s - ${endTime.toFixed(3)}s`;
+      if (isInOverlap) tooltip += ' (overlap)';
+      if (isMerged) tooltip += ' (merged out)';
+      wordEl.title = tooltip;
 
       wordsEl.appendChild(wordEl);
     }
@@ -1277,8 +1289,13 @@ export class App {
     // Summary line
     const summaryEl = document.createElement('div');
     summaryEl.className = 'raw-chunk-summary';
-    const discardedCount = allWords.length - keptWords.length;
-    summaryEl.textContent = `Kept ${keptWords.length} words, discarded ${discardedCount} (will re-transcribe in next chunk)`;
+    if (mergeInfo && mergeInfo.mergeIndex > 0) {
+      summaryEl.textContent = `Merged ${mergeInfo.mergeIndex} overlapping words (${mergeInfo.method}, ${(mergeInfo.confidence * 100).toFixed(0)}% confidence)`;
+    } else if (overlapDuration > 0) {
+      summaryEl.textContent = `${allWords.length} words (first chunk or no overlap match)`;
+    } else {
+      summaryEl.textContent = `${allWords.length} words`;
+    }
     chunkEl.appendChild(summaryEl);
 
     this.rawChunksContainer.appendChild(chunkEl);

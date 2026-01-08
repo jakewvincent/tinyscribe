@@ -271,18 +271,24 @@ body {
   border-color: var(--speaker-1);
 }
 
-.raw-word.discarded {
+.raw-word.merged {
   background: rgba(239, 68, 68, 0.08);
   border-color: rgba(239, 68, 68, 0.3);
+  opacity: 0.6;
 }
 
-.raw-word.carryover {
+.raw-word.overlap {
   background: rgba(245, 158, 11, 0.15);
   border-color: var(--speaker-2);
 }
 
-.raw-word.carryover .word-text {
+.raw-word.overlap .word-text {
   font-style: italic;
+}
+
+.raw-word.overlap.merged {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
 }
 
 .raw-chunk-summary {
