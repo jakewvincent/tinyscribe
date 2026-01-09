@@ -10,7 +10,6 @@ import { CONVERSATION_INFERENCE_DEFAULTS, CLUSTERING_DEFAULTS } from '../../conf
 /**
  * @typedef {Object} ParticipantHypothesis
  * @property {string} speakerName - Name of the hypothesized participant
- * @property {number} speakerId - Speaker ID from clusterer
  * @property {number} confidence - Confidence score (0-1)
  * @property {number} segmentCount - Number of segments where this speaker was competitive
  * @property {number} avgSimilarity - Average similarity when competitive
@@ -56,7 +55,7 @@ export class ConversationInference {
     this.segmentAttributions = [];
 
     // Per-speaker statistics for hypothesis building
-    this.speakerStats = new Map(); // speakerId -> { name, competitiveCount, similarities[], bestMatchCount }
+    this.speakerStats = new Map(); // speakerName -> { name, competitiveCount, similarities[], bestMatchCount }
 
     // Expected number of speakers (from UI dropdown)
     this.expectedSpeakers = 2;
@@ -99,16 +98,22 @@ export class ConversationInference {
     // Build original attribution from segment's clustering data
     // Segment structure: { speaker, speakerLabel, debug: { clustering: { allSimilarities, ... } } }
     const clustering = segment.debug?.clustering;
+
+    // Map and SORT allSimilarities by similarity (descending)
+    // Note: allSimilarities from clusterer is NOT sorted - it's in enrollment order
+    const allMatches = clustering?.allSimilarities
+      ?.map(s => ({
+        speakerName: s.speaker,
+        similarity: s.similarity,
+        enrolled: s.enrolled,
+      }))
+      .sort((a, b) => b.similarity - a.similarity) || [];
+
     const originalAttribution = clustering ? {
       speakerId: segment.speaker,
       speakerName: segment.speakerLabel || 'Unknown',
       debug: {
-        allMatches: clustering.allSimilarities?.map(s => ({
-          speakerId: s.speakerId,
-          speakerName: s.speaker,
-          similarity: s.similarity,
-          enrolled: s.enrolled,
-        })) || [],
+        allMatches,
         similarity: clustering.similarity,
         margin: clustering.margin,
         reason: clustering.reason,
@@ -167,11 +172,13 @@ export class ConversationInference {
     if (!debug || !debug.allMatches) return;
 
     // Track top 2 speakers as "competitive"
+    // Note: allMatches is already sorted by similarity (descending)
     const topMatches = debug.allMatches.slice(0, this.config.boostEligibilityRank);
 
     for (const match of topMatches) {
-      if (!this.speakerStats.has(match.speakerId)) {
-        this.speakerStats.set(match.speakerId, {
+      // Use speakerName as the unique key (speakerId not available in allSimilarities)
+      if (!this.speakerStats.has(match.speakerName)) {
+        this.speakerStats.set(match.speakerName, {
           name: match.speakerName,
           competitiveCount: 0,
           similarities: [],
@@ -179,7 +186,7 @@ export class ConversationInference {
         });
       }
 
-      const stats = this.speakerStats.get(match.speakerId);
+      const stats = this.speakerStats.get(match.speakerName);
       stats.competitiveCount++;
       stats.similarities.push(match.similarity);
 
@@ -216,9 +223,10 @@ export class ConversationInference {
 
     const candidates = [];
 
-    for (const [speakerId, stats] of this.speakerStats) {
+    // speakerStats is keyed by speakerName
+    for (const [speakerName, stats] of this.speakerStats) {
       // Only consider enrolled speakers for hypothesis
-      const isEnrolled = this.enrolledSpeakers.some(s => s.name === stats.name);
+      const isEnrolled = this.enrolledSpeakers.some(s => s.name === speakerName);
       if (!isEnrolled) continue;
 
       // Calculate average similarity when competitive
@@ -234,8 +242,7 @@ export class ConversationInference {
       const score = stats.competitiveCount * avgSimilarity;
 
       candidates.push({
-        speakerId,
-        speakerName: stats.name,
+        speakerName,
         confidence: avgSimilarity,
         segmentCount: stats.competitiveCount,
         avgSimilarity,
@@ -247,12 +254,12 @@ export class ConversationInference {
     candidates.sort((a, b) => b.score - a.score);
     const participants = candidates.slice(0, this.expectedSpeakers);
 
-    // Check if hypothesis actually changed
-    const oldParticipants = new Set(this.hypothesis.participants.map(p => p.speakerId));
-    const newParticipants = new Set(participants.map(p => p.speakerId));
+    // Check if hypothesis actually changed (compare by speakerName)
+    const oldParticipants = new Set(this.hypothesis.participants.map(p => p.speakerName));
+    const newParticipants = new Set(participants.map(p => p.speakerName));
 
     const changed = oldParticipants.size !== newParticipants.size ||
-      [...oldParticipants].some(id => !newParticipants.has(id));
+      [...oldParticipants].some(name => !newParticipants.has(name));
 
     if (changed) {
       this.hypothesis.version++;
@@ -312,13 +319,11 @@ export class ConversationInference {
     const margin = second ? best.similarity - second.similarity : 1.0;
 
     // Determine final attribution
-    let finalSpeakerId = best.speakerId;
     let finalSpeakerName = best.speakerName;
     let reason = 'boosted_match';
 
     // Still need minimum threshold even with boost
     if (best.similarity < minSimilarityAfterBoost) {
-      finalSpeakerId = -1; // Unknown
       finalSpeakerName = 'Unknown';
       reason = 'below_boost_threshold';
     }
@@ -328,7 +333,6 @@ export class ConversationInference {
     }
 
     return {
-      speakerId: finalSpeakerId,
       speakerName: finalSpeakerName,
       similarity: best.similarity,
       originalSimilarity: best.originalSimilarity,
@@ -382,7 +386,7 @@ export class ConversationInference {
     let alternateLabel = null;
     let showAlternate = false;
 
-    if (boostedAttribution.speakerId === -1) {
+    if (boostedAttribution.speakerName === 'Unknown') {
       label = 'Unknown';
     } else if (isUnexpected) {
       label = `Unexpected: ${best.speakerName}`;
