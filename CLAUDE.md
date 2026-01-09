@@ -2,6 +2,22 @@
 
 Browser-based speech recognition with speaker identification. All processing runs locally - no audio sent to servers.
 
+## Project Purpose
+
+This is an **experimental/educational project** for exploring ASR (Automatic Speech Recognition) and speaker diarization systems. The primary goals are:
+
+- **Gaining insight** into how speech recognition and speaker identification architectures work
+- **Experimenting** with different approaches to clustering, hypothesis-building, and speaker attribution
+- **Surfacing internals** that production systems typically hide - similarity scores, confidence margins, decision reasons, boosted vs unboosted attributions, etc.
+
+The UI is designed for **nerdy exploration**, not polished end-user experience. When adding features, consider: "Does this help the user understand what the system is doing and why?" Data that reveals the decision-making process is inherently interesting and valuable here.
+
+This means:
+- Verbose debug information is welcome, not clutter
+- Showing alternative hypotheses, runner-up candidates, and confidence metrics adds value
+- Visualizations of embeddings, similarity distributions, and clustering behavior are encouraged
+- "Why did it decide X?" should be answerable from the UI
+
 ## Quick Start
 
 ```bash

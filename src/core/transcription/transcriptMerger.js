@@ -115,6 +115,8 @@ export class TranscriptMerger {
           start: chunkStartTime + (w.timestamp?.[0] || phrase.start),
           end: chunkStartTime + (w.timestamp?.[1] || phrase.end),
         })),
+        // Feature 7: Preserve embedding for segment comparison mode
+        embedding: phrase.embedding ? Array.from(phrase.embedding) : null,
         // Debug info for phrase stats panel
         debug: {
           duration: duration,

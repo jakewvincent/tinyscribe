@@ -76,6 +76,13 @@
           <div class="panel-header-inline">
             <h3>Processed Transcript</h3>
             <span class="panel-subtitle">Grouped into phrases with speaker assignment</span>
+            <!-- Feature 7: Comparison mode toggle -->
+            <div x-data="comparisonMode" class="comparison-mode-controls">
+              <button class="comparison-toggle" :class="{ 'active': enabled }" @click="toggle()" title="Compare segment embeddings">
+                <span class="comparison-toggle-icon">&#x2194;</span>
+                <span x-text="enabled ? 'Exit Compare' : 'Compare'"></span>
+              </button>
+            </div>
             <button id="copy-btn" class="btn secondary small" disabled>Copy</button>
             <button id="export-transcript-btn" class="btn secondary small" disabled>Export</button>
           </div>
@@ -331,6 +338,46 @@
           <button id="modal-cancel-btn" class="btn secondary">Cancel</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Feature 7: Comparison result overlay -->
+  <div x-data="comparisonMode" x-show="result" x-cloak class="comparison-result" x-transition>
+    <div class="comparison-result-header">
+      <span class="comparison-result-title">Segment Comparison</span>
+      <button class="comparison-result-close" @click="toggle()">&times;</button>
+    </div>
+
+    <template x-if="result && !result.error">
+      <div>
+        <div class="comparison-segments">
+          <div class="comparison-segment">
+            <span class="comparison-segment-label" x-text="result.segment1?.speaker || 'Segment 1'"></span>
+            <span class="comparison-segment-text" x-text="(result.segment1?.text || '') + '...'"></span>
+          </div>
+          <div class="comparison-segment">
+            <span class="comparison-segment-label" x-text="result.segment2?.speaker || 'Segment 2'"></span>
+            <span class="comparison-segment-text" x-text="(result.segment2?.text || '') + '...'"></span>
+          </div>
+        </div>
+
+        <div class="comparison-similarity">
+          <span class="similarity-value" :class="similarityClass" x-text="similarityPercent + '%'"></span>
+          <div class="similarity-bar-container">
+            <div class="similarity-bar-fill" :class="similarityClass" :style="'width: ' + similarityPercent + '%'"></div>
+          </div>
+        </div>
+
+        <div class="comparison-verdict" :class="verdictClass" x-text="verdictText"></div>
+      </div>
+    </template>
+
+    <template x-if="result && result.error">
+      <div class="comparison-verdict verdict-error" x-text="result.error"></div>
+    </template>
+
+    <div class="comparison-hint" x-show="enabled && !result">
+      Click two segments to compare their voice embeddings
     </div>
   </div>
 

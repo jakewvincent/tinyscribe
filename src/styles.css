@@ -429,6 +429,271 @@ body.resizing * {
   background: rgba(239, 68, 68, 0.1);
 }
 
+/* ==================== ATTRIBUTION DEBUG UI ==================== */
+
+/* Ambiguity highlighting - colored left border based on margin confidence */
+.transcript-segment.margin-high {
+  border-left: 4px solid var(--speaker-1);
+}
+
+.transcript-segment.margin-medium {
+  border-left: 4px solid var(--speaker-2);
+}
+
+.transcript-segment.margin-low {
+  border-left: 4px solid var(--speaker-3);
+}
+
+/* Segment header layout for new debug elements */
+.segment-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.segment-header .speaker-name {
+  font-weight: 600;
+}
+
+.segment-header .timestamp {
+  margin-left: auto;
+}
+
+/* Feature 3: Decision Reason Badges */
+.reason-badge {
+  font-size: 0.6rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.reason-confident {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.reason-ambiguous {
+  background: rgba(245, 158, 11, 0.15);
+  color: #d97706;
+}
+
+.reason-below {
+  background: rgba(239, 68, 68, 0.15);
+  color: #dc2626;
+}
+
+.reason-new {
+  background: rgba(59, 130, 246, 0.15);
+  color: #2563eb;
+}
+
+.reason-inherited {
+  background: rgba(156, 163, 175, 0.15);
+  color: #6b7280;
+}
+
+.reason-nodata {
+  background: rgba(156, 163, 175, 0.15);
+  color: #6b7280;
+}
+
+.reason-uncertain {
+  background: rgba(249, 115, 22, 0.15);
+  color: #ea580c;
+}
+
+.reason-boosted {
+  background: rgba(234, 179, 8, 0.15);
+  color: #ca8a04;
+}
+
+/* Feature 1: Similarity Breakdown Bar */
+.similarity-breakdown {
+  margin-top: 0.35rem;
+  font-size: 0.7rem;
+}
+
+.similarity-bar {
+  display: flex;
+  height: 6px;
+  background: var(--border-color);
+  border-radius: 3px;
+  overflow: hidden;
+  gap: 2px;
+}
+
+.bar-segment {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+  min-width: 4px;
+}
+
+.bar-segment.enrolled {
+  background: var(--speaker-0);
+}
+
+.bar-segment.enrolled:nth-child(2) {
+  background: var(--speaker-1);
+}
+
+.bar-segment.enrolled:nth-child(3) {
+  background: var(--speaker-2);
+}
+
+.bar-segment.enrolled:nth-child(4) {
+  background: var(--speaker-3);
+}
+
+.bar-segment.discovered {
+  background: #9ca3af;
+}
+
+.similarity-labels {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.2rem;
+  flex-wrap: wrap;
+}
+
+.similarity-label {
+  color: var(--text-muted);
+  font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+  font-size: 0.65rem;
+}
+
+/* Feature 2: Enhanced Boost Indicator */
+.boost-indicator.enhanced {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.4rem;
+  background: rgba(245, 158, 11, 0.12);
+  border-radius: 3px;
+  font-size: 0.65rem;
+  width: auto;
+  height: auto;
+  border-radius: 3px;
+}
+
+.boost-indicator.enhanced::before {
+  display: none;
+}
+
+.boost-delta {
+  color: #d97706;
+  font-weight: 600;
+  font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+}
+
+.boost-original {
+  color: var(--text-muted);
+  font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+}
+
+/* Feature 4: Expandable Candidates List */
+.candidates-expand {
+  margin-top: 0.5rem;
+}
+
+.candidates-summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.3rem;
+  border-radius: 3px;
+  transition: background 0.15s;
+}
+
+.candidates-summary:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.candidates-summary::-webkit-details-marker {
+  display: none;
+}
+
+.expand-icon {
+  font-weight: bold;
+  font-size: 0.75rem;
+  transition: transform 0.2s;
+  color: var(--text-muted);
+}
+
+details[open] .expand-icon {
+  transform: rotate(45deg);
+}
+
+.candidates-list {
+  margin-top: 0.4rem;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 4px;
+  font-size: 0.7rem;
+  border: 1px solid var(--border-color);
+}
+
+.candidate-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.25rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.candidate-row:last-child {
+  border-bottom: none;
+}
+
+.candidate-row.best-match {
+  font-weight: 600;
+  background: rgba(16, 185, 129, 0.06);
+  margin: -0.3rem -0.25rem 0.3rem -0.25rem;
+  padding: 0.3rem 0.25rem;
+  border-radius: 3px;
+  border-bottom: none;
+}
+
+.candidate-rank {
+  color: var(--text-muted);
+  min-width: 20px;
+  font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+}
+
+.candidate-name {
+  flex-grow: 1;
+}
+
+.candidate-sim {
+  font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+  color: var(--text-muted);
+}
+
+.enrolled-tag,
+.boost-tag {
+  font-size: 0.55rem;
+  padding: 0.05rem 0.25rem;
+  border-radius: 2px;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.enrolled-tag {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--speaker-0);
+}
+
+.boost-tag {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+
 .interim-text {
   opacity: 0.6;
   font-style: italic;
@@ -1529,6 +1794,363 @@ body.resizing * {
 
 .participants-status.status-idle {
   color: var(--text-muted);
+}
+
+/* ==================== PARTICIPANTS PANEL ENHANCEMENTS ==================== */
+
+/* Feature 6: Hypothesis version badge */
+.hypothesis-version {
+  display: inline-block;
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--speaker-0);
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  margin-right: 0.4rem;
+  font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+}
+
+.participants-status .status-text {
+  font-size: 0.75rem;
+}
+
+/* Feature 5: Enhanced participant stats */
+.participant-extended-stats {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--border-color);
+  font-size: 0.65rem;
+}
+
+.stat-item {
+  color: var(--text-muted);
+  padding: 0.1rem 0.3rem;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.stat-split {
+  font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+}
+
+.stat-range {
+  font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+}
+
+/* Feature 8: Trend indicators */
+.stat-trend {
+  font-weight: bold;
+  font-size: 0.8rem;
+  margin-left: auto;
+}
+
+.stat-trend.improving {
+  color: var(--speaker-1);
+}
+
+.stat-trend.declining {
+  color: var(--speaker-3);
+}
+
+.stat-trend.stable {
+  color: var(--text-muted);
+}
+
+/* Feature 8: Sparkline visualization */
+.sparkline {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 20px;
+  padding: 2px 4px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+}
+
+.sparkline-bar {
+  width: 4px;
+  min-height: 2px;
+  border-radius: 1px;
+  transition: height 0.2s ease;
+}
+
+.sparkline-bar-best {
+  background: var(--speaker-1);
+}
+
+.sparkline-bar-second {
+  background: var(--speaker-2);
+  opacity: 0.6;
+}
+
+/* Feature 9: Hypothesis history */
+.hypothesis-history {
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-color);
+  font-size: 0.7rem;
+}
+
+.history-summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0;
+}
+
+.history-summary::-webkit-details-marker {
+  display: none;
+}
+
+.history-icon {
+  font-size: 0.8rem;
+}
+
+.history-list {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.history-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.35rem;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 3px;
+}
+
+.history-version {
+  font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+  font-weight: 600;
+  color: var(--speaker-0);
+  min-width: 24px;
+}
+
+.history-changes {
+  flex-grow: 1;
+}
+
+.history-added {
+  color: var(--speaker-1);
+  font-weight: 500;
+}
+
+.history-removed {
+  color: var(--speaker-3);
+  font-weight: 500;
+}
+
+.history-segment {
+  color: var(--text-muted);
+  font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+  font-size: 0.6rem;
+}
+
+/* ==================== COMPARISON MODE (Feature 7) ==================== */
+
+/* Transcript container in comparison mode */
+.transcript-container.comparison-mode .transcript-segment {
+  cursor: pointer;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+
+.transcript-container.comparison-mode .transcript-segment:hover {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+.transcript-container.comparison-mode .transcript-segment.comparison-selected {
+  box-shadow: 0 0 0 3px var(--speaker-0);
+  transform: translateX(4px);
+}
+
+/* Comparison toggle button */
+.comparison-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  background: var(--panel-bg);
+  color: var(--text-muted);
+  transition: all 0.15s;
+}
+
+.comparison-toggle:hover {
+  background: #f8fafc;
+  border-color: var(--speaker-0);
+}
+
+.comparison-toggle.active {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: var(--speaker-0);
+  color: var(--speaker-0);
+}
+
+.comparison-toggle-icon {
+  font-size: 0.9rem;
+}
+
+/* Comparison result overlay */
+.comparison-result {
+  position: fixed;
+  bottom: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  min-width: 320px;
+  max-width: 480px;
+}
+
+.comparison-result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.comparison-result-title {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.comparison-result-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  padding: 0;
+  line-height: 1;
+}
+
+.comparison-segments {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.75rem;
+}
+
+.comparison-segment {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 4px;
+}
+
+.comparison-segment-label {
+  font-weight: 600;
+  min-width: 80px;
+}
+
+.comparison-segment-text {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comparison-similarity {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.similarity-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+}
+
+.similarity-value.similarity-high {
+  color: var(--speaker-1);
+}
+
+.similarity-value.similarity-medium {
+  color: var(--speaker-2);
+}
+
+.similarity-value.similarity-low {
+  color: var(--speaker-3);
+}
+
+.similarity-bar-container {
+  flex-grow: 1;
+  height: 8px;
+  background: var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.similarity-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.similarity-bar-fill.similarity-high {
+  background: var(--speaker-1);
+}
+
+.similarity-bar-fill.similarity-medium {
+  background: var(--speaker-2);
+}
+
+.similarity-bar-fill.similarity-low {
+  background: var(--speaker-3);
+}
+
+.comparison-verdict {
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+}
+
+.comparison-verdict.verdict-match {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--speaker-1);
+}
+
+.comparison-verdict.verdict-mismatch {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+
+.comparison-verdict.verdict-error {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--speaker-3);
+}
+
+/* Comparison mode hint */
+.comparison-hint {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  background: rgba(59, 130, 246, 0.05);
+  border-radius: 4px;
 }
 
 /* Alternate speaker display in transcript */

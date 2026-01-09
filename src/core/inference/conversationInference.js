@@ -5,7 +5,7 @@
  * applies boosting to competitive matches, and handles retroactive re-attribution.
  */
 
-import { CONVERSATION_INFERENCE_DEFAULTS, CLUSTERING_DEFAULTS } from '../../config/defaults.js';
+import { CONVERSATION_INFERENCE_DEFAULTS, CLUSTERING_DEFAULTS, ATTRIBUTION_UI_DEFAULTS } from '../../config/defaults.js';
 
 /**
  * @typedef {Object} ParticipantHypothesis
@@ -55,7 +55,11 @@ export class ConversationInference {
     this.segmentAttributions = [];
 
     // Per-speaker statistics for hypothesis building
-    this.speakerStats = new Map(); // speakerName -> { name, competitiveCount, similarities[], bestMatchCount }
+    // speakerName -> { name, competitiveCount, similarities[], bestMatchCount, timeSeries[] }
+    this.speakerStats = new Map();
+
+    // Hypothesis change history for Feature 9
+    this.hypothesisHistory = [];
 
     // Expected number of speakers (from UI dropdown)
     this.expectedSpeakers = 2;
@@ -183,12 +187,21 @@ export class ConversationInference {
           competitiveCount: 0,
           similarities: [],
           bestMatchCount: 0,
+          timeSeries: [], // Feature 8: Time series for trend tracking
         });
       }
 
       const stats = this.speakerStats.get(match.speakerName);
       stats.competitiveCount++;
       stats.similarities.push(match.similarity);
+
+      // Feature 8: Track time series data
+      stats.timeSeries.push({
+        segmentIndex: this.hypothesis.totalSegments,
+        similarity: match.similarity,
+        timestamp: Date.now(),
+        rank: match === topMatches[0] ? 1 : 2,
+      });
 
       if (match === topMatches[0]) {
         stats.bestMatchCount++;
@@ -262,6 +275,19 @@ export class ConversationInference {
       [...oldParticipants].some(name => !newParticipants.has(name));
 
     if (changed) {
+      // Feature 9: Track hypothesis change history
+      const added = [...newParticipants].filter(name => !oldParticipants.has(name));
+      const removed = [...oldParticipants].filter(name => !newParticipants.has(name));
+
+      this.hypothesisHistory.push({
+        version: this.hypothesis.version + 1,
+        timestamp: Date.now(),
+        totalSegments: this.hypothesis.totalSegments,
+        changes: { added, removed },
+        participantsBefore: [...oldParticipants],
+        participantsAfter: [...newParticipants],
+      });
+
       this.hypothesis.version++;
     }
 
@@ -502,6 +528,7 @@ export class ConversationInference {
     };
     this.segmentAttributions = [];
     this.speakerStats.clear();
+    this.hypothesisHistory = [];
   }
 
   /**
@@ -514,6 +541,68 @@ export class ConversationInference {
       totalAttributions: this.segmentAttributions.length,
       config: this.config,
     };
+  }
+
+  /**
+   * Feature 5: Get per-speaker statistics for UI display
+   * @param {string} speakerName
+   * @returns {Object|null} Stats for the speaker
+   */
+  getSpeakerStatsForUI(speakerName) {
+    const stats = this.speakerStats.get(speakerName);
+    if (!stats) return null;
+
+    const similarities = stats.similarities;
+    const runnerUpCount = stats.competitiveCount - stats.bestMatchCount;
+    const minSim = similarities.length > 0 ? Math.min(...similarities) : null;
+    const maxSim = similarities.length > 0 ? Math.max(...similarities) : null;
+
+    // Calculate trend by comparing first half vs second half averages
+    let trend = 'stable';
+    if (similarities.length >= 4) {
+      const mid = Math.floor(similarities.length / 2);
+      const firstHalf = similarities.slice(0, mid);
+      const secondHalf = similarities.slice(mid);
+      const firstAvg = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
+      const secondAvg = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
+      const delta = secondAvg - firstAvg;
+      const threshold = ATTRIBUTION_UI_DEFAULTS.trendThreshold;
+      if (delta > threshold) trend = 'improving';
+      else if (delta < -threshold) trend = 'declining';
+    }
+
+    return {
+      bestMatchCount: stats.bestMatchCount,
+      runnerUpCount,
+      competitiveCount: stats.competitiveCount,
+      minSimilarity: minSim,
+      maxSimilarity: maxSim,
+      avgSimilarity: similarities.length > 0
+        ? similarities.reduce((a, b) => a + b, 0) / similarities.length
+        : null,
+      trend,
+      timeSeries: stats.timeSeries || [],
+    };
+  }
+
+  /**
+   * Feature 5: Get all speaker stats for participants panel
+   * @returns {Object} Map of speakerName -> stats
+   */
+  getAllSpeakerStatsForUI() {
+    const result = {};
+    for (const [name] of this.speakerStats) {
+      result[name] = this.getSpeakerStatsForUI(name);
+    }
+    return result;
+  }
+
+  /**
+   * Feature 9: Get hypothesis change history
+   * @returns {Array} Array of hypothesis changes
+   */
+  getHypothesisHistory() {
+    return [...this.hypothesisHistory];
   }
 }
 

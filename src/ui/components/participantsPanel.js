@@ -63,8 +63,10 @@ export class ParticipantsPanel {
    * Render the panel with current hypothesis
    * @param {Object} hypothesis - From conversationInference.getHypothesis()
    * @param {Object} [enrolledSpeakers] - Map of enrolled speakers for color lookup
+   * @param {Object} [speakerStats] - Per-speaker statistics for enhanced display
+   * @param {Array} [hypothesisHistory] - History of hypothesis changes
    */
-  render(hypothesis, enrolledSpeakers = []) {
+  render(hypothesis, enrolledSpeakers = [], speakerStats = {}, hypothesisHistory = []) {
     const listEl = this.getListElement();
     const statusEl = this.getStatusElement();
 
@@ -73,11 +75,14 @@ export class ParticipantsPanel {
     // Check if hypothesis version changed
     const versionChanged = hypothesis.version !== this.previousVersion;
 
-    // Render participant list
-    this.renderParticipants(listEl, hypothesis.participants, enrolledSpeakers, versionChanged);
+    // Render participant list with enhanced stats
+    this.renderParticipants(listEl, hypothesis.participants, enrolledSpeakers, versionChanged, speakerStats);
 
-    // Render status
+    // Render status with version info
     this.renderStatus(statusEl, hypothesis);
+
+    // Render hypothesis history if available
+    this.renderHistory(listEl, hypothesisHistory);
 
     // Update tracking
     this.previousVersion = hypothesis.version;
@@ -87,7 +92,7 @@ export class ParticipantsPanel {
   /**
    * Render participant list
    */
-  renderParticipants(listEl, participants, enrolledSpeakers, animate = false) {
+  renderParticipants(listEl, participants, enrolledSpeakers, animate = false, speakerStats = {}) {
     if (participants.length === 0) {
       listEl.innerHTML = '<div class="participants-empty">No participants identified yet</div>';
       return;
@@ -113,6 +118,49 @@ export class ParticipantsPanel {
       // Confidence as percentage
       const confidencePct = Math.round(participant.confidence * 100);
 
+      // Get enhanced stats for this participant
+      const stats = speakerStats[participant.speakerName];
+      let enhancedStatsHtml = '';
+
+      if (stats) {
+        // Trend indicator
+        const trendIcon = stats.trend === 'improving' ? '↑' :
+                          stats.trend === 'declining' ? '↓' : '→';
+        const trendClass = stats.trend;
+
+        // Similarity range
+        const minPct = stats.minSimilarity !== null ? Math.round(stats.minSimilarity * 100) : '-';
+        const maxPct = stats.maxSimilarity !== null ? Math.round(stats.maxSimilarity * 100) : '-';
+
+        // Build sparkline from time series (last 8 data points)
+        let sparklineHtml = '';
+        if (stats.timeSeries && stats.timeSeries.length > 1) {
+          const recentData = stats.timeSeries.slice(-8);
+          const bars = recentData.map(point => {
+            // Scale similarity (0.5-1.0 range) to bar height (20-100%)
+            const normalizedHeight = Math.max(0, Math.min(100, (point.similarity - 0.5) * 200));
+            const barClass = point.rank === 1 ? 'sparkline-bar-best' : 'sparkline-bar-second';
+            return `<div class="sparkline-bar ${barClass}" style="height: ${normalizedHeight}%" title="${Math.round(point.similarity * 100)}%"></div>`;
+          }).join('');
+          sparklineHtml = `<div class="sparkline" title="Recent similarity values">${bars}</div>`;
+        }
+
+        enhancedStatsHtml = `
+          <div class="participant-extended-stats">
+            <span class="stat-item stat-split" title="Best match / Runner-up count">
+              ${stats.bestMatchCount} best / ${stats.runnerUpCount} 2nd
+            </span>
+            <span class="stat-item stat-range" title="Similarity range (min-max)">
+              ${minPct}-${maxPct}%
+            </span>
+            ${sparklineHtml}
+            <span class="stat-trend ${trendClass}" title="Trend: ${stats.trend}">
+              ${trendIcon}
+            </span>
+          </div>
+        `;
+      }
+
       return `
         <div class="participant-item${animClass}" style="--participant-color: ${color}">
           <div class="participant-header">
@@ -126,6 +174,7 @@ export class ParticipantsPanel {
           <div class="participant-stats">
             <span class="participant-segments">${participant.segmentCount} segment${participant.segmentCount !== 1 ? 's' : ''}</span>
           </div>
+          ${enhancedStatsHtml}
         </div>
       `;
     }).join('');
@@ -134,27 +183,29 @@ export class ParticipantsPanel {
   }
 
   /**
-   * Render status message
+   * Render status message with hypothesis version
    */
   renderStatus(statusEl, hypothesis) {
     let statusText;
     let statusClass = 'participants-status';
 
+    const versionBadge = hypothesis.version > 0 ? `<span class="hypothesis-version">v${hypothesis.version}</span>` : '';
+
     if (hypothesis.isForming) {
       const remaining = hypothesis.segmentsUntilHypothesis;
-      statusText = `Building hypothesis... (${remaining} more segment${remaining !== 1 ? 's' : ''} needed)`;
+      statusText = `${versionBadge}<span class="status-text">Building... (${remaining} more segment${remaining !== 1 ? 's' : ''})</span>`;
       statusClass += ' status-building';
     } else if (hypothesis.participants.length === 0) {
-      statusText = 'No confident matches yet';
+      statusText = `${versionBadge}<span class="status-text">No confident matches</span>`;
       statusClass += ' status-waiting';
     } else {
       const count = hypothesis.participants.length;
-      statusText = `${count} participant${count !== 1 ? 's' : ''} identified`;
+      statusText = `${versionBadge}<span class="status-text">${count} participant${count !== 1 ? 's' : ''} (Active)</span>`;
       statusClass += ' status-ready';
     }
 
     statusEl.className = statusClass;
-    statusEl.textContent = statusText;
+    statusEl.innerHTML = statusText;
   }
 
   /**
@@ -183,6 +234,52 @@ export class ParticipantsPanel {
       statusEl.className = 'participants-status status-building';
       statusEl.textContent = 'Listening for speech...';
     }
+  }
+
+  /**
+   * Render hypothesis change history (Feature 9)
+   */
+  renderHistory(listEl, hypothesisHistory) {
+    // Find or create history container
+    let historyEl = listEl.parentElement?.querySelector('.hypothesis-history');
+
+    if (!hypothesisHistory || hypothesisHistory.length === 0) {
+      if (historyEl) historyEl.remove();
+      return;
+    }
+
+    if (!historyEl) {
+      historyEl = document.createElement('details');
+      historyEl.className = 'hypothesis-history';
+      listEl.parentElement?.appendChild(historyEl);
+    }
+
+    // Format history entries (most recent first)
+    const entries = [...hypothesisHistory].reverse().slice(0, 5).map(entry => {
+      const changes = [];
+      if (entry.changes.added.length > 0) {
+        changes.push(`<span class="history-added">+${entry.changes.added.join(', ')}</span>`);
+      }
+      if (entry.changes.removed.length > 0) {
+        changes.push(`<span class="history-removed">-${entry.changes.removed.join(', ')}</span>`);
+      }
+      const changeText = changes.length > 0 ? changes.join(' ') : 'No changes';
+
+      return `
+        <div class="history-entry">
+          <span class="history-version">v${entry.version}</span>
+          <span class="history-changes">${changeText}</span>
+          <span class="history-segment">@ seg ${entry.totalSegments}</span>
+        </div>
+      `;
+    }).join('');
+
+    historyEl.innerHTML = `
+      <summary class="history-summary">
+        <span class="history-icon">📋</span> History (${hypothesisHistory.length} change${hypothesisHistory.length !== 1 ? 's' : ''})
+      </summary>
+      <div class="history-list">${entries}</div>
+    `;
   }
 
   /**

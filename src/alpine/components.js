@@ -231,4 +231,67 @@ document.addEventListener('alpine:init', () => {
       window.dispatchEvent(new CustomEvent('enrollment-clear-all'));
     },
   }));
+
+  /**
+   * Segment Comparison Mode component (Feature 7)
+   * Allows comparing embeddings between two transcript segments
+   */
+  Alpine.data('comparisonMode', () => ({
+    enabled: false,
+    result: null,
+
+    init() {
+      // Listen for mode changes
+      window.addEventListener('comparison-mode-changed', (e) => {
+        this.enabled = e.detail.enabled;
+        if (!this.enabled) {
+          this.result = null;
+        }
+      });
+
+      // Listen for comparison results
+      window.addEventListener('comparison-result', (e) => {
+        this.result = e.detail;
+      });
+    },
+
+    toggle() {
+      if (window.app) {
+        window.app.toggleComparisonMode();
+      }
+    },
+
+    get similarityPercent() {
+      return this.result?.similarity ? Math.round(this.result.similarity * 100) : null;
+    },
+
+    get similarityClass() {
+      if (!this.result?.similarity) return '';
+      if (this.result.similarity >= 0.75) return 'similarity-high';
+      if (this.result.similarity >= 0.5) return 'similarity-medium';
+      return 'similarity-low';
+    },
+
+    get verdictText() {
+      if (!this.result) return '';
+      if (this.result.error) return this.result.error;
+      if (this.result.sameSpeakerLikely && this.result.sameSpeakerActual) {
+        return 'Same speaker (confirmed)';
+      } else if (this.result.sameSpeakerLikely && !this.result.sameSpeakerActual) {
+        return 'Likely same speaker (mismatch!)';
+      } else if (!this.result.sameSpeakerLikely && this.result.sameSpeakerActual) {
+        return 'Different embedding, same assigned speaker';
+      } else {
+        return 'Different speakers';
+      }
+    },
+
+    get verdictClass() {
+      if (!this.result || this.result.error) return 'verdict-error';
+      if (this.result.sameSpeakerLikely === this.result.sameSpeakerActual) {
+        return 'verdict-match';
+      }
+      return 'verdict-mismatch';
+    },
+  }));
 });

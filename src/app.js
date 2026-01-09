@@ -24,6 +24,10 @@ import { PreferencesStore } from './storage/index.js';
 // Core modules (pure logic, no browser dependencies)
 import { OverlapMerger, TranscriptMerger } from './core/transcription/index.js';
 import { AudioValidator } from './core/validation/index.js';
+import { cosineSimilarity } from './core/embedding/embeddingUtils.js';
+
+// Configuration
+import { REASON_BADGES, ATTRIBUTION_UI_DEFAULTS } from './config/defaults.js';
 
 export class App {
   constructor() {
@@ -61,6 +65,10 @@ export class App {
     this.lastPhraseDebug = null;
     this.bufferFillPercent = 0;
     this.rawChunksData = []; // Stored raw chunk data for export
+
+    // Feature 7: Segment comparison mode
+    this.comparisonMode = false;
+    this.selectedSegments = []; // Indices of selected segments for comparison
 
     // Components
     this.worker = null;
@@ -1013,40 +1021,115 @@ export class App {
       placeholder.remove();
     }
 
-    for (const segment of segments) {
+    // Get the current segment count for indexing
+    const baseIndex = this.transcriptContainer.querySelectorAll('.transcript-segment').length;
+
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      const segmentIndex = baseIndex + i;
+
       const segmentEl = document.createElement('div');
       const labelEl = document.createElement('div');
       const textEl = document.createElement('div');
       textEl.className = 'segment-text';
       textEl.textContent = segment.text;
 
+      // Feature 7: Add segment index for comparison mode
+      segmentEl.dataset.segmentIndex = segmentIndex;
+
       // Get inference display info if available
       const inference = segment.inferenceAttribution;
       const displayInfo = inference?.displayInfo;
+      const clustering = segment.debug?.clustering;
 
-      // Build confidence metrics HTML if available
-      let confidenceHtml = '';
-      if (segment.debug?.clustering && !segment.isEnvironmental) {
-        const clustering = segment.debug.clustering;
-        const sim = clustering.similarity?.toFixed(2) || '-';
-        const margin = clustering.margin?.toFixed(2) || '-';
+      // Build attribution debug elements (only for non-environmental speech)
+      let reasonBadgeHtml = '';
+      let similarityBarHtml = '';
+      let boostHtml = '';
+      let candidatesHtml = '';
 
-        // Determine confidence class
-        let marginClass = '';
-        if (clustering.margin >= 0.15) {
-          marginClass = 'confidence-high';
-        } else if (clustering.margin >= 0.05) {
-          marginClass = 'confidence-medium';
-        } else if (clustering.margin > 0) {
-          marginClass = 'confidence-low';
+      if (clustering && !segment.isEnvironmental) {
+        // Feature 3: Decision reason badge
+        const reason = clustering.reason;
+        if (reason && REASON_BADGES[reason]) {
+          const badge = REASON_BADGES[reason];
+          reasonBadgeHtml = `<span class="reason-badge ${badge.cssClass}" title="${reason.replace(/_/g, ' ')}">${badge.label}</span>`;
         }
 
-        confidenceHtml = `
-          <div class="segment-confidence">
-            <span class="conf-item" title="Similarity to assigned speaker">sim: ${sim}</span>
-            <span class="conf-item ${marginClass}" title="Margin between best and second-best match">margin: ${margin}</span>
-          </div>
-        `;
+        // Feature 1: Similarity breakdown bar
+        const allSimilarities = clustering.allSimilarities;
+        if (allSimilarities && allSimilarities.length > 0) {
+          const sorted = [...allSimilarities].sort((a, b) => b.similarity - a.similarity);
+          const topCandidates = sorted.slice(0, ATTRIBUTION_UI_DEFAULTS.maxCandidatesToShow);
+
+          // Build bar segments
+          const barSegments = topCandidates.map((c, i) => {
+            const widthPct = (c.similarity * 100).toFixed(0);
+            const enrolledClass = c.enrolled ? 'enrolled' : 'discovered';
+            const speakerIdx = i % 6;
+            return `<div class="bar-segment ${enrolledClass}" style="width: ${widthPct}%; --speaker-idx: ${speakerIdx}" title="${c.speaker}: ${(c.similarity * 100).toFixed(1)}%"></div>`;
+          }).join('');
+
+          // Build labels
+          const labels = topCandidates.slice(0, 3).map(c => {
+            const name = c.speaker.length > 10 ? c.speaker.substring(0, 10) + '...' : c.speaker;
+            return `<span class="similarity-label">${name}: ${(c.similarity * 100).toFixed(0)}%</span>`;
+          }).join('');
+
+          similarityBarHtml = `
+            <div class="similarity-breakdown">
+              <div class="similarity-bar">${barSegments}</div>
+              <div class="similarity-labels">${labels}</div>
+            </div>
+          `;
+
+          // Feature 4: Expandable candidates list
+          if (sorted.length > 1) {
+            const boostedMatches = inference?.boostedAttribution?.debug?.allMatches || [];
+            const candidateRows = sorted.map((c, i) => {
+              const boostedInfo = boostedMatches.find(m => m.speakerName === c.speaker);
+              const wasBoosted = boostedInfo?.wasBoosted;
+              const enrolledTag = c.enrolled ? '<span class="enrolled-tag">enrolled</span>' : '';
+              const boostTag = wasBoosted ? '<span class="boost-tag">+boost</span>' : '';
+              const bestClass = i === 0 ? 'best-match' : '';
+              return `
+                <div class="candidate-row ${bestClass}">
+                  <span class="candidate-rank">#${i + 1}</span>
+                  <span class="candidate-name">${c.speaker}</span>
+                  ${enrolledTag}
+                  <span class="candidate-sim">${(c.similarity * 100).toFixed(1)}%</span>
+                  ${boostTag}
+                </div>
+              `;
+            }).join('');
+
+            candidatesHtml = `
+              <details class="candidates-expand">
+                <summary class="candidates-summary">
+                  <span class="expand-icon">+</span> ${sorted.length} candidates
+                </summary>
+                <div class="candidates-list">${candidateRows}</div>
+              </details>
+            `;
+          }
+        }
+
+        // Feature 2: Enhanced boost indicator with delta
+        if (displayInfo?.wasInfluenced && inference?.originalAttribution && inference?.boostedAttribution) {
+          const originalSim = inference.originalAttribution.debug?.similarity;
+          const boostedSim = inference.boostedAttribution.similarity;
+          if (originalSim != null && boostedSim != null) {
+            const delta = boostedSim - originalSim;
+            boostHtml = `
+              <span class="boost-indicator enhanced" title="Boosted by conversation context">
+                <span class="boost-delta">+${(delta * 100).toFixed(0)}%</span>
+                <span class="boost-original">(was ${(originalSim * 100).toFixed(0)}%)</span>
+              </span>
+            `;
+          } else {
+            boostHtml = '<span class="boost-indicator" title="Boosted by conversation context"></span>';
+          }
+        }
       }
 
       // Build alternate speaker HTML if inference suggests ambiguity
@@ -1055,10 +1138,16 @@ export class App {
         alternateHtml = ` <span class="alternate-speaker">(${displayInfo.alternateLabel}?)</span>`;
       }
 
-      // Build boost indicator if attribution was influenced
-      let boostHtml = '';
-      if (displayInfo?.wasInfluenced) {
-        boostHtml = '<span class="boost-indicator" title="Boosted by conversation context"></span>';
+      // Determine margin confidence class for ambiguity highlighting
+      let marginClass = '';
+      if (clustering?.margin != null && !segment.isEnvironmental) {
+        if (clustering.margin >= 0.15) {
+          marginClass = 'margin-high';
+        } else if (clustering.margin >= 0.05) {
+          marginClass = 'margin-medium';
+        } else {
+          marginClass = 'margin-low';
+        }
       }
 
       if (segment.isEnvironmental || segment.speaker === null) {
@@ -1070,33 +1159,47 @@ export class App {
         `;
       } else if (segment.speaker === -1) {
         // Unknown speaker - distinct styling to indicate unassignable
-        segmentEl.className = 'transcript-segment unknown-speaker';
+        segmentEl.className = `transcript-segment unknown-speaker ${marginClass}`.trim();
         labelEl.className = 'speaker-label unknown-speaker';
 
         // Use inference label if available (might show alternate)
         const label = displayInfo?.label || segment.speakerLabel || 'Unknown';
         labelEl.innerHTML = `
-          ${label}${alternateHtml}${boostHtml}
-          <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
-          ${confidenceHtml}
+          <div class="segment-header">
+            <span class="speaker-name">${label}</span>${alternateHtml}${reasonBadgeHtml}${boostHtml}
+            <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
+          </div>
+          ${similarityBarHtml}
+          ${candidatesHtml}
         `;
       } else {
         // Regular speaker segment
         const speakerClass = `speaker-${segment.speaker % 6}`;
-        segmentEl.className = `transcript-segment ${speakerClass}`;
+        segmentEl.className = `transcript-segment ${speakerClass} ${marginClass}`.trim();
         labelEl.className = `speaker-label ${speakerClass}`;
 
         // Use inference label if available
         const label = displayInfo?.label || segment.speakerLabel;
         labelEl.innerHTML = `
-          ${label}${alternateHtml}${boostHtml}
-          <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
-          ${confidenceHtml}
+          <div class="segment-header">
+            <span class="speaker-name">${label}</span>${alternateHtml}${reasonBadgeHtml}${boostHtml}
+            <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
+          </div>
+          ${similarityBarHtml}
+          ${candidatesHtml}
         `;
       }
 
       segmentEl.appendChild(labelEl);
       segmentEl.appendChild(textEl);
+
+      // Feature 7: Add click handler for comparison mode
+      segmentEl.addEventListener('click', () => {
+        if (this.comparisonMode) {
+          this.selectSegmentForComparison(segmentIndex);
+        }
+      });
+
       this.transcriptContainer.appendChild(segmentEl);
     }
 
@@ -1590,7 +1693,9 @@ export class App {
 
     const hypothesis = this.conversationInference.getHypothesis();
     const enrollments = EnrollmentManager.loadAll();
-    this.participantsPanel.render(hypothesis, enrollments);
+    const speakerStats = this.conversationInference.getAllSpeakerStatsForUI();
+    const hypothesisHistory = this.conversationInference.getHypothesisHistory();
+    this.participantsPanel.render(hypothesis, enrollments, speakerStats, hypothesisHistory);
   }
 
   /**
@@ -1666,6 +1771,136 @@ export class App {
     this.updateParticipantsPanel();
 
     console.log(`[Inference] Re-attributed ${changedIndices.length} segment(s) based on updated hypothesis`);
+  }
+
+  // ==================== Comparison Mode Methods (Feature 7) ====================
+
+  /**
+   * Toggle segment comparison mode on/off
+   */
+  toggleComparisonMode() {
+    this.comparisonMode = !this.comparisonMode;
+    this.selectedSegments = [];
+
+    // Update UI
+    this.updateComparisonModeUI();
+
+    // Dispatch event for Alpine components
+    window.dispatchEvent(new CustomEvent('comparison-mode-changed', {
+      detail: { enabled: this.comparisonMode },
+    }));
+
+    console.log(`[Comparison] Mode ${this.comparisonMode ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
+   * Update UI elements for comparison mode state
+   */
+  updateComparisonModeUI() {
+    // Toggle class on transcript container
+    if (this.comparisonMode) {
+      this.transcriptContainer.classList.add('comparison-mode');
+    } else {
+      this.transcriptContainer.classList.remove('comparison-mode');
+      // Clear any selected segments
+      this.transcriptContainer.querySelectorAll('.comparison-selected').forEach(el => {
+        el.classList.remove('comparison-selected');
+      });
+    }
+
+    // Hide comparison result when mode is toggled off
+    if (!this.comparisonMode) {
+      this.hideComparisonResult();
+    }
+  }
+
+  /**
+   * Handle segment click for comparison selection
+   * @param {number} index - Index of the clicked segment
+   */
+  selectSegmentForComparison(index) {
+    if (!this.comparisonMode) return;
+
+    const segmentEls = this.transcriptContainer.querySelectorAll('.transcript-segment');
+    if (index >= segmentEls.length) return;
+
+    const segmentEl = segmentEls[index];
+    const existingIdx = this.selectedSegments.indexOf(index);
+
+    if (existingIdx !== -1) {
+      // Deselect
+      this.selectedSegments.splice(existingIdx, 1);
+      segmentEl.classList.remove('comparison-selected');
+    } else if (this.selectedSegments.length < 2) {
+      // Select
+      this.selectedSegments.push(index);
+      segmentEl.classList.add('comparison-selected');
+    }
+
+    // If we have 2 segments selected, show comparison
+    if (this.selectedSegments.length === 2) {
+      this.showComparisonResult();
+    } else {
+      this.hideComparisonResult();
+    }
+  }
+
+  /**
+   * Show comparison result between two selected segments
+   */
+  showComparisonResult() {
+    const segments = this.transcriptMerger.segments;
+    const idx1 = this.selectedSegments[0];
+    const idx2 = this.selectedSegments[1];
+
+    if (idx1 >= segments.length || idx2 >= segments.length) return;
+
+    const seg1 = segments[idx1];
+    const seg2 = segments[idx2];
+
+    // Check if both segments have embeddings
+    if (!seg1.embedding || !seg2.embedding) {
+      this.displayComparisonResult({
+        error: 'One or both segments lack embeddings',
+        segment1: { index: idx1, speaker: seg1.speakerLabel, text: seg1.text.substring(0, 40) },
+        segment2: { index: idx2, speaker: seg2.speakerLabel, text: seg2.text.substring(0, 40) },
+      });
+      return;
+    }
+
+    // Compute cosine similarity
+    const similarity = cosineSimilarity(
+      new Float32Array(seg1.embedding),
+      new Float32Array(seg2.embedding),
+    );
+
+    // Determine if likely same speaker (using clustering threshold)
+    const sameSpeakerLikely = similarity >= 0.75;
+    const sameSpeakerActual = seg1.speaker === seg2.speaker;
+
+    this.displayComparisonResult({
+      segment1: { index: idx1, speaker: seg1.speakerLabel, text: seg1.text.substring(0, 40) },
+      segment2: { index: idx2, speaker: seg2.speakerLabel, text: seg2.text.substring(0, 40) },
+      similarity,
+      sameSpeakerLikely,
+      sameSpeakerActual,
+    });
+  }
+
+  /**
+   * Display comparison result in UI
+   * @param {Object} result - Comparison result data
+   */
+  displayComparisonResult(result) {
+    // Dispatch event for Alpine component to display
+    window.dispatchEvent(new CustomEvent('comparison-result', { detail: result }));
+  }
+
+  /**
+   * Hide comparison result
+   */
+  hideComparisonResult() {
+    window.dispatchEvent(new CustomEvent('comparison-result', { detail: null }));
   }
 
   // ==================== Enrollment Methods ====================

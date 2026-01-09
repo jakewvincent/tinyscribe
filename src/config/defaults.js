@@ -139,6 +139,31 @@ export const DEBUG_DEFAULTS = {
   maxSessions: 5,
 };
 
+// Attribution UI configuration (for hypothesis visibility features)
+export const ATTRIBUTION_UI_DEFAULTS = {
+  // Similarity breakdown bar
+  maxCandidatesToShow: 4,
+  minSimilarityToShow: 0.3,
+
+  // Trend detection
+  trendThreshold: 0.05, // Similarity difference to classify as improving/declining
+
+  // Comparison mode
+  comparisonEnabled: true,
+};
+
+// Decision reason badges for clustering outcomes
+export const REASON_BADGES = {
+  confident_match: { label: 'Confident', cssClass: 'reason-confident' },
+  ambiguous_match: { label: 'Ambiguous', cssClass: 'reason-ambiguous' },
+  below_minimum_threshold: { label: 'Below Min', cssClass: 'reason-below' },
+  new_speaker: { label: 'New', cssClass: 'reason-new' },
+  inherited: { label: 'Inherited', cssClass: 'reason-inherited' },
+  no_embedding: { label: 'No Embed', cssClass: 'reason-nodata' },
+  no_confident_match: { label: 'Uncertain', cssClass: 'reason-uncertain' },
+  boosted_match: { label: 'Boosted', cssClass: 'reason-boosted' },
+};
+
 // Speaker colors for UI display
 export const SPEAKER_COLORS = [
   '#4a90d9', // Blue
@@ -161,6 +186,8 @@ export const DEFAULTS = {
   speakerColors: SPEAKER_COLORS,
   rainbowPassages: RAINBOW_PASSAGES,
   debug: DEBUG_DEFAULTS,
+  attributionUI: ATTRIBUTION_UI_DEFAULTS,
+  reasonBadges: REASON_BADGES,
 };
 
 export default DEFAULTS;
