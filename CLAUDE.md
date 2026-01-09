@@ -17,20 +17,27 @@ Requires COOP/COEP headers (configured in `vite.config.js`) for SharedArrayBuffe
 ┌─────────────────────────────────────────────────────────────┐
 │                        Browser                              │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
-│  │   index.html │───▶│    App.js    │───▶│  Worker.js   │  │
-│  │   styles.css │    │              │    │              │  │
-│  └──────────────┘    │ - UI control │    │ - Whisper    │  │
-│                      │ - Audio cap  │    │ - WavLM      │  │
-│                      │ - Enrollment │    │ - Phrases    │  │
-│                      └──────────────┘    └──────────────┘  │
-│                             │                   │          │
-│                      ┌──────▼──────┐    ┌──────▼──────┐   │
-│                      │ Transcript  │    │   Models    │   │
-│                      │   Merger    │    │ (IndexedDB) │   │
-│                      │ + Clusterer │    │  ~400MB     │   │
-│                      └─────────────┘    └─────────────┘   │
+│  │   index.html │───▶│   Alpine.js  │    │  Worker.js   │  │
+│  │   styles.css │    │  (UI state)  │    │              │  │
+│  └──────────────┘    └──────┬───────┘    │ - Whisper    │  │
+│                             │            │ - WavLM      │  │
+│                      ┌──────▼───────┐    │ - Phrases    │  │
+│                      │    App.js    │───▶└──────────────┘  │
+│                      │ - Audio cap  │           │          │
+│                      │ - Enrollment │    ┌──────▼──────┐   │
+│                      │ - Modal      │    │   Models    │   │
+│                      └──────┬───────┘    │ (IndexedDB) │   │
+│                             │            │  ~400MB     │   │
+│                      ┌──────▼──────┐     └─────────────┘   │
+│                      │ Transcript  │                       │
+│                      │   Merger    │                       │
+│                      │ + Clusterer │                       │
+│                      └─────────────┘                       │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+Alpine.js handles declarative UI state (panels, status bar, controls, enrollment sidebar).
+App.js handles audio capture, modal dialogs, and worker communication.
 
 ## Models
 
@@ -46,9 +53,12 @@ Models are cached in IndexedDB after first download.
 ```
 src/
 ├── main.js                 # Entry point, instantiates App
-├── app.js                  # Main controller (UI, recording, enrollment)
+├── app.js                  # Main controller (audio, modals, worker communication)
 ├── worker.js               # Web Worker (model loading, inference)
 ├── styles.css              # All styling
+│
+├── alpine/                 # Alpine.js UI components
+│   └── components.js       # Reactive components (panels, status bar, controls, enrollment)
 │
 ├── config/                 # Centralized configuration
 │   └── defaults.js         # All configurable constants (thresholds, colors, passages)
@@ -76,7 +86,8 @@ src/
 │
 ├── ui/                     # UI components
 │   └── components/
-│       └── speakerVisualizer.js # Canvas visualization of speaker embeddings
+│       ├── speakerVisualizer.js # Canvas visualization of speaker embeddings
+│       └── debugPanel.js        # Debug logging UI controls
 │
 └── utils/
     └── enrollmentManager.js # Multi-speaker enrollment with Rainbow Passage
@@ -89,6 +100,7 @@ The codebase is organized for easy extraction:
 - **`core/`**: Pure algorithms with zero browser dependencies. Can be copied directly to other JS projects.
 - **`audio/`**: Browser audio capture. Reusable for any web audio application.
 - **`worker/`**: WorkerClient provides promise-based async API for ML inference.
+- **`alpine/`**: Declarative UI components using Alpine.js CDN (no build step required).
 - **`config/`**: All thresholds and constants in one place for easy tuning.
 
 ## How It Works
@@ -160,6 +172,7 @@ Whisper may output bracketed markers for non-speech sounds:
 - **Enrolled centroids**: Fixed during recording (not updated with new embeddings)
 - **WebGPU**: Used for Whisper if available, otherwise WASM fallback
 - **WavLM**: Always uses WASM with fp32 for accurate frame features
+- **Alpine.js**: CDN-loaded (v3 + persist plugin), no build step. Components communicate with app.js via CustomEvents. Panel states persisted to localStorage.
 
 ## Configuration
 
