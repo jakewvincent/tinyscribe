@@ -205,6 +205,31 @@
             <div id="device-info"></div>
           </div>
         </div>
+
+        <!-- Debug Logging Panel -->
+        <div class="sidebar-panel" id="panel-debug" data-default-expanded="false">
+          <div class="panel-header" data-panel="debug">
+            <span class="panel-chevron">&#9656;</span>
+            <h3>Debug Logging</h3>
+          </div>
+          <div class="panel-content collapsed">
+            <div class="debug-toggles">
+              <label class="toggle-row">
+                <input type="checkbox" id="debug-enabled">
+                <span>Enable debug logging</span>
+              </label>
+              <label class="toggle-row" id="verbose-row">
+                <input type="checkbox" id="debug-verbose" disabled>
+                <span>Verbose mode</span>
+              </label>
+            </div>
+            <div class="debug-actions">
+              <button id="debug-export" class="btn secondary small" disabled>Export Logs</button>
+              <button id="debug-clear" class="btn secondary small" disabled>Clear Logs</button>
+            </div>
+            <div id="debug-status" class="debug-status">Logging disabled</div>
+          </div>
+        </div>
       </aside>
     </main>
 

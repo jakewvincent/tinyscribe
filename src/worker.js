@@ -392,12 +392,45 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, overlapDur
     const rawWords = asrResult.chunks || [];
     const words = joinSplitBracketedMarkers(rawWords);
 
+    // Debug: Log raw Whisper output
+    self.postMessage({
+      type: 'debug-log',
+      logType: 'whisper',
+      data: {
+        chunkIndex,
+        text: asrResult.text,
+        wordCount: words.length,
+        asrTimeMs: Math.round(asrTime),
+        words: words.map(w => ({
+          text: w.text,
+          timestamp: w.timestamp,
+        })),
+      },
+    });
+
     // 2. Keep ALL words - overlap merging handled by app.js
     // No more last-word-discard or splitPoint calculation
     const wordsToKeep = words;
 
     // 3. Detect phrase boundaries from all words
     const phrases = phraseDetector.detectPhrases(wordsToKeep);
+
+    // Debug: Log phrase detection results
+    self.postMessage({
+      type: 'debug-log',
+      logType: 'phrases',
+      data: {
+        chunkIndex,
+        phraseCount: phrases.length,
+        phrases: phrases.map(p => ({
+          text: p.words.map(w => w.text).join(''),
+          start: p.start,
+          end: p.end,
+          duration: p.end - p.start,
+          wordCount: p.words.length,
+        })),
+      },
+    });
 
     // 4. Extract audio segments for each phrase and get SV embeddings
     const embeddingStartTime = performance.now();
@@ -429,6 +462,24 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, overlapDur
 
     const embeddingTime = performance.now() - embeddingStartTime;
     const processingTime = performance.now() - startTime;
+
+    // Debug: Log embedding extraction results
+    self.postMessage({
+      type: 'debug-log',
+      logType: 'embeddings',
+      data: {
+        chunkIndex,
+        embeddingTimeMs: Math.round(embeddingTime),
+        results: phrasesWithEmbeddings.map((p, i) => ({
+          phraseIndex: i,
+          text: p.words.map(w => w.text).join('').substring(0, 50),
+          duration: p.end - p.start,
+          frameCount: p.frameCount,
+          hasEmbedding: !!p.embedding,
+          reason: p.reason || 'success',
+        })),
+      },
+    });
 
     // Check if the result is effectively empty (only blank audio markers)
     const nonBlankWords = wordsToKeep.filter(w => !isBlankAudioMarker(w));

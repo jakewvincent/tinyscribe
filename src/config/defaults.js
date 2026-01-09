@@ -137,6 +137,25 @@ export const SOUND_CLASSIFICATION = {
   ],
 };
 
+// Debug logging configuration
+export const DEBUG_DEFAULTS = {
+  // Master toggle (default off)
+  enabled: false,
+
+  // Verbosity: 'normal' captures key decision points
+  //            'verbose' adds raw data (embeddings, full word lists)
+  verbose: false,
+
+  // IndexedDB storage settings
+  dbName: 'transcription-debug',
+  storageVersion: 1,
+  maxSessions: 5, // Keep last 5 sessions, auto-cleanup older
+
+  // localStorage keys for UI state persistence
+  enabledKey: 'debug-logging-enabled',
+  verboseKey: 'debug-logging-verbose',
+};
+
 // Speaker colors for UI display
 export const SPEAKER_COLORS = [
   '#4a90d9', // Blue
@@ -158,6 +177,7 @@ export const DEFAULTS = {
   soundClassification: SOUND_CLASSIFICATION,
   speakerColors: SPEAKER_COLORS,
   rainbowPassages: RAINBOW_PASSAGES,
+  debug: DEBUG_DEFAULTS,
 };
 
 export default DEFAULTS;

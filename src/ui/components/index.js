@@ -5,3 +5,4 @@
 
 export { SpeakerVisualizer } from './speakerVisualizer.js';
 export { ParticipantsPanel } from './participantsPanel.js';
+export { DebugPanel } from './debugPanel.js';

@@ -7,7 +7,10 @@
 import { AudioCapture, VADProcessor } from './audio/index.js';
 
 // UI components
-import { SpeakerVisualizer, ParticipantsPanel } from './ui/index.js';
+import { SpeakerVisualizer, ParticipantsPanel, DebugPanel } from './ui/index.js';
+
+// Debug logging
+import { DebugLogger } from './utils/debugLogger.js';
 
 // Core inference
 import { ConversationInference } from './core/inference/index.js';
@@ -64,6 +67,8 @@ export class App {
     this.speakerVisualizer = null;
     this.conversationInference = new ConversationInference();
     this.participantsPanel = null;
+    this.debugLogger = new DebugLogger();
+    this.debugPanel = null;
     this.progressItems = new Map();
     this.panelStates = this.loadPanelStates();
 
@@ -178,6 +183,11 @@ export class App {
 
     // Initialize visualization
     this.initVisualization();
+
+    // Initialize debug logging
+    await this.debugLogger.init();
+    this.debugPanel = new DebugPanel({ logger: this.debugLogger });
+    this.debugPanel.init();
 
     // Populate microphone dropdown
     this.populateMicrophoneList();
@@ -413,6 +423,10 @@ export class App {
         this.loadingMessage.textContent = message;
         this.loadingMessage.className = 'status-error';
         break;
+
+      case 'debug-log':
+        this.debugLogger.log(event.data.logType, event.data.data);
+        break;
     }
   }
 
@@ -612,6 +626,9 @@ export class App {
     this.lastDebugTiming = null;
     this.lastPhraseDebug = null;
 
+    // Start debug logging session
+    await this.debugLogger.startSession();
+
     // Reset UI
     this.updateChunkQueueViz();
     this.resetPhraseStats();
@@ -678,6 +695,9 @@ export class App {
       await this.vadProcessor.destroy();
       this.vadProcessor = null;
     }
+
+    // End debug logging session
+    await this.debugLogger.endSession();
 
     this.isRecording = false;
     this.recordBtn.textContent = 'Start Recording';
@@ -857,6 +877,16 @@ export class App {
    * Handle audio chunk from capture
    */
   handleAudioChunk(chunk) {
+    // Log VAD chunk emission
+    this.debugLogger.logVadChunk({
+      chunkIndex: chunk.index,
+      duration: chunk.audio.length / 16000, // Assuming 16kHz sample rate
+      wasForced: chunk.wasForced || false,
+      overlapDuration: chunk.overlapDuration || 0,
+      rawDuration: chunk.rawDuration,
+      isFinal: chunk.isFinal,
+    });
+
     // Queue the chunk for processing
     this.chunkQueue.push(chunk);
 
@@ -993,6 +1023,17 @@ export class App {
       }
     }
 
+    // Log overlap merge decision
+    this.debugLogger.logOverlapMerge({
+      chunkIndex,
+      hadPreviousChunk: !!this.lastChunkResult,
+      overlapDuration: overlapDuration || 0,
+      mergeMethod: mergeInfo?.method || 'none',
+      mergeConfidence: mergeInfo?.confidence,
+      wordsDropped: mergeInfo?.mergeIndex || 0,
+      matchedWords: mergeInfo?.matchedWords,
+    });
+
     // Render raw chunk data for debugging (with merge info)
     if (rawAsr) {
       this.renderRawChunk(chunkIndex, rawAsr, overlapDuration, mergeInfo);
@@ -1050,6 +1091,23 @@ export class App {
 
         this.renderSegments(mergedSegments);
         this.transcriptMerger.segments.push(...mergedSegments);
+
+        // Log segment creation with clustering info
+        this.debugLogger.logSegmentCreation({
+          chunkIndex,
+          segmentCount: mergedSegments.length,
+          segments: mergedSegments.map(s => ({
+            text: s.text?.substring(0, 100),
+            speaker: s.speakerLabel,
+            startTime: s.startTime,
+            endTime: s.endTime,
+            duration: s.endTime - s.startTime,
+            isEnvironmental: s.isEnvironmental,
+            clusteringReason: s.debug?.clustering?.reason,
+            similarity: s.debug?.clustering?.similarity,
+            margin: s.debug?.clustering?.margin,
+          })),
+        });
 
         // Update participants panel
         this.updateParticipantsPanel();
