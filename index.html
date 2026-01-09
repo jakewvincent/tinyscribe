@@ -13,14 +13,22 @@
       <div class="topbar-left">
         <h1>Transcription Studio</h1>
       </div>
-      <div class="topbar-center">
+      <div class="topbar-center" x-data="recordingControls()" x-cloak>
         <div class="button-group">
-          <button id="record-btn" class="btn" disabled>Start Recording</button>
-          <button id="upload-btn" class="btn secondary" disabled>Upload Audio</button>
+          <button id="record-btn" class="btn"
+                  :class="{ 'recording': isRecording }"
+                  :disabled="!modelLoaded"
+                  @click="toggleRecording()"
+                  x-text="isRecording ? 'Stop Recording' : 'Start Recording'">Start Recording</button>
+          <button id="upload-btn" class="btn secondary"
+                  :disabled="!modelLoaded || isRecording"
+                  @click="uploadAudio()">Upload Audio</button>
           <input type="file" id="upload-file-input" accept="audio/*" class="hidden">
-          <button id="clear-btn" class="btn secondary" disabled>Clear</button>
+          <button id="clear-btn" class="btn secondary"
+                  :disabled="!modelLoaded"
+                  @click="clearTranscript()">Clear</button>
         </div>
-        <div id="audio-visualizer"></div>
+        <div id="audio-visualizer" :class="{ 'active': isRecording }"></div>
         <div id="recording-status"></div>
       </div>
       <div class="topbar-right">
@@ -80,50 +88,50 @@
       <!-- Debug Sidebar (right) -->
       <aside id="sidebar">
         <!-- Active Participants Panel -->
-        <div class="sidebar-panel" id="panel-participants" data-default-expanded="true">
-          <div class="panel-header" data-panel="participants">
-            <span class="panel-chevron">&#9662;</span>
+        <div class="sidebar-panel" id="panel-participants" x-data="panel('participants', true)" x-cloak>
+          <div class="panel-header" @click="toggle()">
+            <span class="panel-chevron" x-text="expanded ? '&#9662;' : '&#9656;'"></span>
             <h3>Active Participants</h3>
           </div>
-          <div class="panel-content">
+          <div class="panel-content" :class="{ 'collapsed': !expanded }">
             <div id="participants-list"></div>
             <div id="participants-status" class="participants-status">Waiting for audio...</div>
           </div>
         </div>
 
         <!-- Phrase Stats Panel -->
-        <div class="sidebar-panel" id="panel-phrase-stats" data-default-expanded="true">
-          <div class="panel-header" data-panel="phrase-stats">
-            <span class="panel-chevron">&#9662;</span>
+        <div class="sidebar-panel" id="panel-phrase-stats" x-data="panel('phrase-stats', true)" x-cloak>
+          <div class="panel-header" @click="toggle()">
+            <span class="panel-chevron" x-text="expanded ? '&#9662;' : '&#9656;'"></span>
             <h3>Last Phrase</h3>
           </div>
-          <div class="panel-content">
-            <div id="phrase-stats">
-              <div class="phrase-text-preview" id="phrase-preview">No phrases yet</div>
-              <div class="phrase-details" id="phrase-details">
+          <div class="panel-content" :class="{ 'collapsed': !expanded }">
+            <div id="phrase-stats" x-data="phraseStats()">
+              <div class="phrase-text-preview" x-text="phrasePreview">No phrases yet</div>
+              <div class="phrase-details">
                 <div class="detail-row">
                   <span class="detail-label">Speaker:</span>
-                  <span class="detail-value" id="phrase-speaker">-</span>
+                  <span class="detail-value" x-text="phrase.speaker">-</span>
                 </div>
                 <div class="detail-row indent">
                   <span class="detail-label">Similarity:</span>
-                  <span class="detail-value" id="phrase-similarity">-</span>
+                  <span class="detail-value" x-text="phrase.similarity">-</span>
                 </div>
                 <div class="detail-row indent">
                   <span class="detail-label">Runner-up:</span>
-                  <span class="detail-value" id="phrase-runner-up">-</span>
+                  <span class="detail-value" x-text="phrase.runnerUp">-</span>
                 </div>
                 <div class="detail-row indent">
                   <span class="detail-label">Margin:</span>
-                  <span class="detail-value" id="phrase-margin">-</span>
+                  <span class="detail-value" :class="marginClass" x-text="phrase.margin">-</span>
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">Duration:</span>
-                  <span class="detail-value" id="phrase-duration">-</span>
+                  <span class="detail-value" x-text="phrase.duration">-</span>
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">Type:</span>
-                  <span class="detail-value" id="phrase-type">-</span>
+                  <span class="detail-value" x-text="phrase.type">-</span>
                 </div>
               </div>
             </div>
@@ -131,12 +139,12 @@
         </div>
 
         <!-- Speaker Enrollment Panel -->
-        <section id="enrollment-section" class="sidebar-panel" data-default-expanded="true">
-          <div class="panel-header" data-panel="enrollment">
-            <span class="panel-chevron">&#9662;</span>
+        <section id="enrollment-section" class="sidebar-panel" x-data="panel('enrollment', true)" x-cloak>
+          <div class="panel-header" @click="toggle()">
+            <span class="panel-chevron" x-text="expanded ? '&#9662;' : '&#9656;'"></span>
             <h3>Speaker Enrollment <span class="optional-badge">Optional</span></h3>
           </div>
-          <div class="panel-content">
+          <div class="panel-content" :class="{ 'collapsed': !expanded }">
             <!-- Intro state (before enrollment starts) -->
             <div id="enrollment-intro">
               <p>Record your voice to help identify you in conversations.</p>
@@ -193,12 +201,12 @@
         </section>
 
         <!-- Model Status Panel -->
-        <div class="sidebar-panel" id="panel-model-status" data-default-expanded="false">
-          <div class="panel-header" data-panel="model-status">
-            <span class="panel-chevron">&#9656;</span>
+        <div class="sidebar-panel" id="panel-model-status" x-data="panel('model-status', false)" x-cloak>
+          <div class="panel-header" @click="toggle()">
+            <span class="panel-chevron" x-text="expanded ? '&#9662;' : '&#9656;'"></span>
             <h3>Model Status</h3>
           </div>
-          <div class="panel-content collapsed" id="model-status">
+          <div class="panel-content" :class="{ 'collapsed': !expanded }" id="model-status">
             <div id="loading-message">Models will auto-load...</div>
             <button id="load-models-btn" class="btn primary small hidden">Reload Models</button>
             <div id="progress-container"></div>
@@ -207,12 +215,12 @@
         </div>
 
         <!-- Debug Logging Panel -->
-        <div class="sidebar-panel" id="panel-debug" data-default-expanded="false">
-          <div class="panel-header" data-panel="debug">
-            <span class="panel-chevron">&#9656;</span>
+        <div class="sidebar-panel" id="panel-debug" x-data="panel('debug', false)" x-cloak>
+          <div class="panel-header" @click="toggle()">
+            <span class="panel-chevron" x-text="expanded ? '&#9662;' : '&#9656;'"></span>
             <h3>Debug Logging</h3>
           </div>
-          <div class="panel-content collapsed">
+          <div class="panel-content" :class="{ 'collapsed': !expanded }">
             <div class="debug-toggles">
               <label class="toggle-row">
                 <input type="checkbox" id="debug-enabled">
@@ -234,41 +242,39 @@
     </main>
 
     <!-- Status Bar -->
-    <footer id="status-bar">
+    <footer id="status-bar" x-data="statusBar()" x-cloak>
       <div class="status-indicator">
-        <span class="status-dot" id="status-dot"></span>
-        <span id="status-text">Ready</span>
+        <span class="status-dot" :class="status"></span>
+        <span x-text="statusText">Ready</span>
       </div>
       <div class="status-metrics">
         <div class="metric">
           <span class="metric-label">ASR:</span>
-          <span class="metric-value" id="metric-asr">-</span>
+          <span class="metric-value" x-text="metrics.asr">-</span>
         </div>
         <div class="metric">
           <span class="metric-label">Embed:</span>
-          <span class="metric-value" id="metric-embed">-</span>
+          <span class="metric-value" x-text="metrics.embed">-</span>
         </div>
         <div class="metric">
           <span class="metric-label">Total:</span>
-          <span class="metric-value" id="metric-total">-</span>
+          <span class="metric-value" x-text="metrics.total">-</span>
         </div>
       </div>
       <div class="status-chunks">
         <div class="chunk-slots">
-          <div class="chunk-slot" data-slot="0"></div>
-          <div class="chunk-slot" data-slot="1"></div>
-          <div class="chunk-slot" data-slot="2"></div>
-          <div class="chunk-slot" data-slot="3"></div>
-          <div class="chunk-slot" data-slot="4"></div>
+          <template x-for="(active, index) in chunkSlots" :key="index">
+            <div class="chunk-slot" :class="{ 'processing': index === 0 && active, 'queued': index > 0 && active }"></div>
+          </template>
         </div>
-        <span class="chunk-status" id="chunk-processing">Idle</span>
+        <span class="chunk-status" x-text="chunkStatus">Idle</span>
       </div>
       <div class="status-buffer">
         <span class="metric-label">Buffer:</span>
         <div class="buffer-bar">
-          <div class="buffer-fill" id="buffer-fill"></div>
+          <div class="buffer-fill" :style="`width: ${bufferPercent}%`"></div>
         </div>
-        <span class="metric-value" id="buffer-percent">0%</span>
+        <span class="metric-value" x-text="`${bufferPercent}%`">0%</span>
       </div>
     </footer>
 
@@ -330,6 +336,12 @@
       </div>
     </div>
   </div>
+
+  <!-- Alpine.js components (must load before Alpine) -->
+  <script src="/src/alpine/components.js"></script>
+  <!-- Alpine.js with persist plugin for panel state persistence -->
+  <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/persist@3/dist/cdn.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
 
   <script type="module" src="/src/main.js"></script>
 </body>

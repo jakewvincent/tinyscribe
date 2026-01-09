@@ -36,6 +36,11 @@ body {
   height: 100vh;
 }
 
+/* Alpine.js cloak - prevents flash of unstyled content */
+[x-cloak] {
+  display: none !important;
+}
+
 /* ==================== TOPBAR ==================== */
 #topbar {
   display: flex;

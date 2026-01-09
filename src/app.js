@@ -73,7 +73,6 @@ export class App {
     this.debugLogger = new DebugLogger();
     this.debugPanel = null;
     this.progressItems = new Map();
-    this.panelStates = this.loadPanelStates();
 
     // DOM elements - Main controls
     this.loadModelsBtn = document.getElementById('load-models-btn');
@@ -132,27 +131,7 @@ export class App {
     this.modalUploadBtn = document.getElementById('modal-upload-btn');
     this.modalFileInput = document.getElementById('modal-file-input');
 
-    // DOM elements - Status bar
-    this.statusDot = document.getElementById('status-dot');
-    this.statusText = document.getElementById('status-text');
-    this.metricAsr = document.getElementById('metric-asr');
-    this.metricEmbed = document.getElementById('metric-embed');
-    this.metricTotal = document.getElementById('metric-total');
-    this.bufferFill = document.getElementById('buffer-fill');
-    this.bufferPercent = document.getElementById('buffer-percent');
-
-    // DOM elements - Chunk queue (in status bar)
-    this.chunkProcessing = document.getElementById('chunk-processing');
-    this.chunkSlots = document.querySelectorAll('.status-chunks .chunk-slot');
-
-    // DOM elements - Phrase stats
-    this.phrasePreview = document.getElementById('phrase-preview');
-    this.phraseSpeaker = document.getElementById('phrase-speaker');
-    this.phraseSimilarity = document.getElementById('phrase-similarity');
-    this.phraseRunnerUp = document.getElementById('phrase-runner-up');
-    this.phraseMargin = document.getElementById('phrase-margin');
-    this.phraseDuration = document.getElementById('phrase-duration');
-    this.phraseType = document.getElementById('phrase-type');
+    // Status bar and phrase stats are managed by Alpine - we dispatch events to update them
 
     this.init();
   }
@@ -171,9 +150,6 @@ export class App {
 
     // Setup UI event listeners
     this.setupEventListeners();
-
-    // Setup panel collapse functionality
-    this.setupPanelCollapse();
 
     // Check for WebGPU support
     await this.detectWebGPU();
@@ -240,57 +216,6 @@ export class App {
   }
 
   /**
-   * Load panel collapse states from storage
-   */
-  loadPanelStates() {
-    return PreferencesStore.getPanelStates();
-  }
-
-  /**
-   * Save panel collapse states to storage
-   */
-  savePanelStates() {
-    PreferencesStore.setPanelStates(this.panelStates);
-  }
-
-  /**
-   * Setup collapsible panel functionality
-   */
-  setupPanelCollapse() {
-    const panelHeaders = document.querySelectorAll('.panel-header');
-
-    panelHeaders.forEach((header) => {
-      const panelId = header.dataset.panel;
-      const panel = header.closest('.sidebar-panel');
-      const content = panel.querySelector('.panel-content');
-      const chevron = header.querySelector('.panel-chevron');
-
-      if (!content || !panelId) return;
-
-      // Get initial state from storage or default
-      const defaultExpanded = panel.dataset.defaultExpanded === 'true';
-      const isExpanded = this.panelStates[panelId] ?? defaultExpanded;
-
-      // Apply initial state
-      if (!isExpanded) {
-        content.classList.add('collapsed');
-        chevron.innerHTML = '&#9656;'; // Right-pointing triangle
-      } else {
-        content.classList.remove('collapsed');
-        chevron.innerHTML = '&#9662;'; // Down-pointing triangle
-      }
-
-      // Add click handler
-      header.addEventListener('click', () => {
-        const nowExpanded = content.classList.toggle('collapsed');
-        chevron.innerHTML = nowExpanded ? '&#9656;' : '&#9662;';
-        this.panelStates[panelId] = !nowExpanded;
-        this.savePanelStates();
-      });
-    });
-  }
-
-  /**
    * Detect WebGPU availability
    */
   async detectWebGPU() {
@@ -314,12 +239,12 @@ export class App {
    * Setup UI event listeners
    */
   setupEventListeners() {
-    // Main controls
-    this.loadModelsBtn.addEventListener('click', () => this.loadModels());
-    this.recordBtn.addEventListener('click', () => this.toggleRecording());
-    this.clearBtn.addEventListener('click', () => this.clearTranscript());
-    this.uploadBtn.addEventListener('click', () => this.uploadFileInput.click());
+    // Main controls - Alpine dispatches events, we listen here
+    window.addEventListener('toggle-recording', () => this.toggleRecording());
+    window.addEventListener('clear-transcript', () => this.clearTranscript());
+    window.addEventListener('upload-audio', () => this.uploadFileInput.click());
     this.uploadFileInput.addEventListener('change', (e) => this.handleFileUpload(e));
+    this.loadModelsBtn.addEventListener('click', () => this.loadModels());
     this.copyBtn.addEventListener('click', () => this.copyTranscript());
     this.exportTranscriptBtn.addEventListener('click', () => this.exportTranscript());
     this.exportRawBtn.addEventListener('click', () => this.exportRawChunks());
@@ -435,9 +360,9 @@ export class App {
       this.isModelLoaded = true;
       this.loadModelsBtn.textContent = 'Models Loaded';
       this.loadModelsBtn.disabled = true;
-      this.recordBtn.disabled = false;
-      this.uploadBtn.disabled = false;
-      this.clearBtn.disabled = false;
+
+      // Notify Alpine components that model is loaded
+      window.dispatchEvent(new CustomEvent('model-loaded'));
 
       // Enable enrollment buttons
       if (this.enrollNameInput.value.trim()) {
@@ -453,55 +378,21 @@ export class App {
       // Update status bar
       this.updateStatusBar('ready');
 
-      // Auto-collapse model status panel
-      this.collapsePanel('model-status');
+      // Auto-collapse model status panel (via Alpine event)
+      window.dispatchEvent(
+        new CustomEvent('panel-collapse', { detail: { panel: 'model-status' } })
+      );
     } else if (status === 'loading') {
       this.updateStatusBar('loading');
-      // Expand model status panel during load
-      this.expandPanel('model-status');
+      // Expand model status panel during load (via Alpine event)
+      window.dispatchEvent(
+        new CustomEvent('panel-expand', { detail: { panel: 'model-status' } })
+      );
     } else if (status === 'error') {
       this.loadModelsBtn.textContent = 'Retry Loading';
       this.loadModelsBtn.disabled = false;
       this.loadModelsBtn.classList.remove('hidden');
       this.updateStatusBar('ready');
-    }
-  }
-
-  /**
-   * Collapse a specific panel
-   */
-  collapsePanel(panelId) {
-    const header = document.querySelector(`[data-panel="${panelId}"]`);
-    if (!header) return;
-
-    const panel = header.closest('.sidebar-panel');
-    const content = panel?.querySelector('.panel-content');
-    const chevron = header.querySelector('.panel-chevron');
-
-    if (content && !content.classList.contains('collapsed')) {
-      content.classList.add('collapsed');
-      chevron.innerHTML = '&#9656;';
-      this.panelStates[panelId] = false;
-      this.savePanelStates();
-    }
-  }
-
-  /**
-   * Expand a specific panel
-   */
-  expandPanel(panelId) {
-    const header = document.querySelector(`[data-panel="${panelId}"]`);
-    if (!header) return;
-
-    const panel = header.closest('.sidebar-panel');
-    const content = panel?.querySelector('.panel-content');
-    const chevron = header.querySelector('.panel-chevron');
-
-    if (content && content.classList.contains('collapsed')) {
-      content.classList.remove('collapsed');
-      chevron.innerHTML = '&#9662;';
-      this.panelStates[panelId] = true;
-      this.savePanelStates();
     }
   }
 
@@ -653,11 +544,13 @@ export class App {
     try {
       await this.vadProcessor.start();
       this.isRecording = true;
-      this.recordBtn.textContent = 'Stop Recording';
-      this.recordBtn.classList.add('recording');
       this.recordingStatus.textContent = 'Listening for speech...';
-      this.audioVisualizer.classList.add('active');
       this.updateStatusBar('recording');
+
+      // Notify Alpine of recording state change
+      window.dispatchEvent(
+        new CustomEvent('recording-state', { detail: { recording: true } })
+      );
     } catch (error) {
       this.recordingStatus.textContent =
         'Failed to access microphone. Please check permissions and try again.';
@@ -694,9 +587,11 @@ export class App {
     await this.debugLogger.endSession();
 
     this.isRecording = false;
-    this.recordBtn.textContent = 'Start Recording';
-    this.recordBtn.classList.remove('recording');
-    this.audioVisualizer.classList.remove('active');
+
+    // Notify Alpine of recording state change
+    window.dispatchEvent(
+      new CustomEvent('recording-state', { detail: { recording: false } })
+    );
 
     if (this.pendingChunks.size > 0 || this.chunkQueue.length > 0) {
       this.recordingStatus.textContent = `Processing ${this.pendingChunks.size + this.chunkQueue.length} remaining chunk(s)...`;
@@ -1297,202 +1192,146 @@ export class App {
       #3b82f6 ${normalizedLevel * 100}%,
       #e2e8f0 ${normalizedLevel * 100}%)`;
 
-    // Update buffer bar in status bar
+    // Update buffer bar in status bar (via Alpine event)
     this.bufferFillPercent = Math.round(normalizedLevel * 100);
-    if (this.bufferFill) {
-      this.bufferFill.style.width = `${this.bufferFillPercent}%`;
-    }
-    if (this.bufferPercent) {
-      this.bufferPercent.textContent = `${this.bufferFillPercent}%`;
-    }
+    window.dispatchEvent(
+      new CustomEvent('buffer-update', { detail: { percent: this.bufferFillPercent } })
+    );
   }
 
   /**
-   * Update status bar state
+   * Update status bar state (via Alpine event)
    */
   updateStatusBar(state) {
-    if (!this.statusDot || !this.statusText) return;
+    const statusTexts = {
+      ready: 'Ready',
+      recording: 'Recording',
+      processing: 'Processing',
+      loading: 'Loading models...',
+    };
 
-    // Remove all state classes
-    this.statusDot.classList.remove('ready', 'recording', 'processing', 'loading');
-
-    switch (state) {
-      case 'ready':
-        this.statusDot.classList.add('ready');
-        this.statusText.textContent = 'Ready';
-        break;
-      case 'recording':
-        this.statusDot.classList.add('recording');
-        this.statusText.textContent = 'Recording';
-        break;
-      case 'processing':
-        this.statusDot.classList.add('processing');
-        this.statusText.textContent = 'Processing';
-        break;
-      case 'loading':
-        this.statusDot.classList.add('loading');
-        this.statusText.textContent = 'Loading models...';
-        break;
-    }
+    window.dispatchEvent(
+      new CustomEvent('status-update', {
+        detail: { status: state, text: statusTexts[state] || 'Ready' },
+      })
+    );
   }
 
   /**
-   * Update status bar metrics with timing data
+   * Update status bar metrics with timing data (via Alpine event)
    */
   updateStatusBarMetrics(debug, totalTime) {
-    if (this.metricAsr) {
-      this.metricAsr.textContent = `${debug.asrTime}ms`;
-    }
-    if (this.metricEmbed) {
-      // Combine feature extraction and embedding time
-      const embedTime = debug.featureTime + (debug.embeddingTime || 0);
-      this.metricEmbed.textContent = `${embedTime}ms`;
-    }
-    if (this.metricTotal) {
-      this.metricTotal.textContent = `${Math.round(totalTime)}ms`;
-    }
+    const embedTime = debug.featureTime + (debug.embeddingTime || 0);
+    window.dispatchEvent(
+      new CustomEvent('metrics-update', {
+        detail: {
+          asr: `${debug.asrTime}ms`,
+          embed: `${embedTime}ms`,
+          total: `${Math.round(totalTime)}ms`,
+        },
+      })
+    );
   }
 
   /**
-   * Update chunk queue visualization in status bar
+   * Update chunk queue visualization in status bar (via Alpine event)
    * Shows current processing activity with compact display
    */
   updateChunkQueueViz() {
-    if (!this.chunkSlots || !this.chunkProcessing) return;
-
     const pendingCount = this.pendingChunks.size;
     const queuedCount = this.chunkQueue.length;
     const isActive = this.isRecording || this.isProcessingChunk || pendingCount > 0 || queuedCount > 0;
 
-    // Update processing text (compact for status bar)
+    // Determine status text
+    let chunkStatus;
     if (this.isProcessingChunk) {
-      this.chunkProcessing.textContent = `#${this.completedChunks + 1} processing`;
+      chunkStatus = `#${this.completedChunks + 1} processing`;
     } else if (pendingCount > 0 || queuedCount > 0) {
-      this.chunkProcessing.textContent = `${queuedCount} queued`;
+      chunkStatus = `${queuedCount} queued`;
     } else if (this.isRecording) {
-      this.chunkProcessing.textContent = 'Listening...';
+      chunkStatus = 'Listening...';
     } else if (this.completedChunks > 0) {
-      this.chunkProcessing.textContent = `${this.completedChunks} done`;
+      chunkStatus = `${this.completedChunks} done`;
     } else {
-      this.chunkProcessing.textContent = 'Idle';
+      chunkStatus = 'Idle';
     }
 
-    // Update slot visuals - show current activity only
-    this.chunkSlots.forEach((slot, i) => {
-      slot.className = 'chunk-slot';
-
-      if (!isActive) {
-        // Idle - all slots empty
-        return;
+    // Build slot states array
+    const slots = [false, false, false, false, false];
+    if (isActive) {
+      if (this.isProcessingChunk) {
+        slots[0] = true;
       }
-
-      // Slot 0: currently processing (if any)
-      // Slots 1-4: queued chunks
-      if (i === 0 && this.isProcessingChunk) {
-        slot.classList.add('processing');
-      } else if (i > 0 && i <= queuedCount) {
-        slot.classList.add('queued');
+      for (let i = 1; i <= Math.min(queuedCount, 4); i++) {
+        slots[i] = true;
       }
-      // else: empty slot
-    });
+    }
+
+    window.dispatchEvent(
+      new CustomEvent('chunk-queue-update', {
+        detail: { status: chunkStatus, slots },
+      })
+    );
   }
 
   /**
-   * Update phrase stats panel
+   * Update phrase stats panel (via Alpine event)
    */
   updatePhraseStats(segment) {
     if (!segment) return;
 
-    // Update phrase preview
-    if (this.phrasePreview) {
-      const text = segment.text || '';
-      this.phrasePreview.textContent = text.length > 80 ? text.substring(0, 80) + '...' : text;
-    }
-
-    // Update speaker
-    if (this.phraseSpeaker) {
-      if (segment.isEnvironmental) {
-        this.phraseSpeaker.textContent = 'Environmental';
-      } else {
-        this.phraseSpeaker.textContent = segment.speakerLabel || '-';
-      }
-    }
-
-    // Update debug info if available
     const debug = segment.debug;
-    if (debug && debug.clustering) {
-      const clustering = debug.clustering;
+    const clustering = debug?.clustering;
 
-      // Similarity
-      if (this.phraseSimilarity) {
-        const sim = clustering.similarity?.toFixed(2) || '-';
-        this.phraseSimilarity.textContent = sim;
-      }
-
-      // Runner-up
-      if (this.phraseRunnerUp) {
-        const secondBest = clustering.secondBestSimilarity?.toFixed(2) || '-';
-        const secondSpeaker = clustering.secondBestSpeaker || '';
-        this.phraseRunnerUp.textContent = secondSpeaker ? `${secondBest} (${secondSpeaker})` : secondBest;
-      }
-
-      // Margin with confidence indicator
-      if (this.phraseMargin) {
-        const margin = clustering.margin?.toFixed(2) || '-';
-        let confidenceClass = '';
-        let indicator = '';
-
-        if (clustering.margin >= 0.15) {
-          confidenceClass = 'confidence-high';
-          indicator = ' ✓';
-        } else if (clustering.margin >= 0.05) {
-          confidenceClass = 'confidence-medium';
-          indicator = ' ~';
-        } else if (clustering.margin > 0) {
-          confidenceClass = 'confidence-low';
-          indicator = ' !';
-        }
-
-        this.phraseMargin.textContent = margin + indicator;
-        this.phraseMargin.className = `detail-value ${confidenceClass}`;
-      }
-    } else {
-      // No clustering data
-      if (this.phraseSimilarity) this.phraseSimilarity.textContent = '-';
-      if (this.phraseRunnerUp) this.phraseRunnerUp.textContent = '-';
-      if (this.phraseMargin) {
-        this.phraseMargin.textContent = '-';
-        this.phraseMargin.className = 'detail-value';
-      }
+    // Build margin display with indicator
+    let margin = '-';
+    let marginValue = null;
+    if (clustering?.margin !== undefined) {
+      marginValue = clustering.margin;
+      let indicator = '';
+      if (marginValue >= 0.15) indicator = ' ✓';
+      else if (marginValue >= 0.05) indicator = ' ~';
+      else if (marginValue > 0) indicator = ' !';
+      margin = marginValue.toFixed(2) + indicator;
     }
 
-    // Duration
-    if (this.phraseDuration && debug) {
-      const duration = debug.duration?.toFixed(1) || '-';
+    // Build runner-up display
+    let runnerUp = '-';
+    if (clustering) {
+      const secondBest = clustering.secondBestSimilarity?.toFixed(2) || '-';
+      const secondSpeaker = clustering.secondBestSpeaker || '';
+      runnerUp = secondSpeaker ? `${secondBest} (${secondSpeaker})` : secondBest;
+    }
+
+    // Build duration display
+    let duration = '-';
+    if (debug) {
+      const dur = debug.duration?.toFixed(1) || '-';
       const frames = debug.frameCount || 0;
-      this.phraseDuration.textContent = `${duration}s (${frames} frames)`;
+      duration = `${dur}s (${frames} frames)`;
     }
 
-    // Type
-    if (this.phraseType && debug) {
-      this.phraseType.textContent = debug.type || 'speech';
-    }
+    window.dispatchEvent(
+      new CustomEvent('phrase-update', {
+        detail: {
+          text: segment.text || '',
+          speaker: segment.isEnvironmental ? 'Environmental' : (segment.speakerLabel || '-'),
+          similarity: clustering?.similarity?.toFixed(2) || '-',
+          runnerUp,
+          margin,
+          marginValue,
+          duration,
+          type: debug?.type || 'speech',
+        },
+      })
+    );
   }
 
   /**
-   * Reset phrase stats panel to initial state
+   * Reset phrase stats panel to initial state (via Alpine event)
    */
   resetPhraseStats() {
-    if (this.phrasePreview) this.phrasePreview.textContent = 'No phrases yet';
-    if (this.phraseSpeaker) this.phraseSpeaker.textContent = '-';
-    if (this.phraseSimilarity) this.phraseSimilarity.textContent = '-';
-    if (this.phraseRunnerUp) this.phraseRunnerUp.textContent = '-';
-    if (this.phraseMargin) {
-      this.phraseMargin.textContent = '-';
-      this.phraseMargin.className = 'detail-value';
-    }
-    if (this.phraseDuration) this.phraseDuration.textContent = '-';
-    if (this.phraseType) this.phraseType.textContent = '-';
+    window.dispatchEvent(new CustomEvent('phrase-reset'));
   }
 
   /**
