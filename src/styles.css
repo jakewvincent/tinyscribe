@@ -462,6 +462,7 @@ body {
   transition: max-height 0.2s ease, padding 0.2s ease, opacity 0.15s ease;
   max-height: 500px;
   opacity: 1;
+  overflow-y: auto;
 }
 
 .panel-content.collapsed {
@@ -1386,6 +1387,141 @@ body {
 .modal-content *:focus {
   outline: 2px solid var(--speaker-0);
   outline-offset: 2px;
+}
+
+/* ==================== PARTICIPANTS PANEL ==================== */
+.participants-empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 1rem 0;
+}
+
+.participant-item {
+  padding: 0.5rem;
+  border-radius: 4px;
+  margin-bottom: 0.5rem;
+  background: #f8fafc;
+  border-left: 3px solid var(--participant-color, var(--text-muted));
+  transition: background-color 0.15s;
+}
+
+.participant-item:last-child {
+  margin-bottom: 0;
+}
+
+.participant-item.participant-new {
+  animation: participant-fade-in 0.3s ease;
+}
+
+@keyframes participant-fade-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.participant-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.participant-color {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.participant-name {
+  font-weight: 500;
+  font-size: 0.9rem;
+  flex-grow: 1;
+}
+
+.participant-confidence {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.participant-bar-container {
+  height: 4px;
+  background: var(--border-color);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 0.25rem;
+}
+
+.participant-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.participant-stats {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.participants-status {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 0.5rem;
+  margin-top: 0.5rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.participants-status.status-building {
+  color: var(--speaker-2);
+}
+
+.participants-status.status-ready {
+  color: var(--speaker-1);
+}
+
+.participants-status.status-idle {
+  color: var(--text-muted);
+}
+
+/* Alternate speaker display in transcript */
+.alternate-speaker {
+  color: var(--text-muted);
+  font-size: 0.85em;
+  font-style: italic;
+}
+
+/* Boost indicator */
+.boost-indicator {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--speaker-2);
+  margin-left: 4px;
+  vertical-align: middle;
+  title: "Boosted by conversation context";
+}
+
+/* Segment re-attribution animation */
+.segment-reattributed {
+  animation: segment-flash 0.5s ease;
+}
+
+@keyframes segment-flash {
+  0%, 100% {
+    background-color: transparent;
+  }
+  50% {
+    background-color: rgba(245, 158, 11, 0.15);
+  }
 }
 
 /* Responsive */

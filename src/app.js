@@ -7,7 +7,10 @@
 import { AudioCapture, VADProcessor } from './audio/index.js';
 
 // UI components
-import { SpeakerVisualizer } from './ui/index.js';
+import { SpeakerVisualizer, ParticipantsPanel } from './ui/index.js';
+
+// Core inference
+import { ConversationInference } from './core/inference/index.js';
 
 // Enrollment manager (still in utils/ for now)
 import { EnrollmentManager } from './utils/enrollmentManager.js';
@@ -59,12 +62,16 @@ export class App {
     this.transcriptMerger = new TranscriptMerger(this.numSpeakers);
     this.enrollmentManager = new EnrollmentManager();
     this.speakerVisualizer = null;
+    this.conversationInference = new ConversationInference();
+    this.participantsPanel = null;
     this.progressItems = new Map();
     this.panelStates = this.loadPanelStates();
 
     // DOM elements - Main controls
     this.loadModelsBtn = document.getElementById('load-models-btn');
     this.recordBtn = document.getElementById('record-btn');
+    this.uploadBtn = document.getElementById('upload-btn');
+    this.uploadFileInput = document.getElementById('upload-file-input');
     this.clearBtn = document.getElementById('clear-btn');
     this.copyBtn = document.getElementById('copy-btn');
     this.exportTranscriptBtn = document.getElementById('export-transcript-btn');
@@ -307,6 +314,8 @@ export class App {
     this.loadModelsBtn.addEventListener('click', () => this.loadModels());
     this.recordBtn.addEventListener('click', () => this.toggleRecording());
     this.clearBtn.addEventListener('click', () => this.clearTranscript());
+    this.uploadBtn.addEventListener('click', () => this.uploadFileInput.click());
+    this.uploadFileInput.addEventListener('change', (e) => this.handleFileUpload(e));
     this.copyBtn.addEventListener('click', () => this.copyTranscript());
     this.exportTranscriptBtn.addEventListener('click', () => this.exportTranscript());
     this.exportRawBtn.addEventListener('click', () => this.exportRawChunks());
@@ -360,6 +369,12 @@ export class App {
   handleNumSpeakersChange(event) {
     this.numSpeakers = parseInt(event.target.value, 10);
     this.transcriptMerger.setNumSpeakers(this.numSpeakers);
+
+    // Update inference layer and recalculate if needed
+    const changedSegments = this.conversationInference.setExpectedSpeakers(this.numSpeakers);
+    if (changedSegments && changedSegments.length > 0) {
+      this.updateParticipantsPanel();
+    }
   }
 
   /**
@@ -413,6 +428,7 @@ export class App {
       this.loadModelsBtn.textContent = 'Models Loaded';
       this.loadModelsBtn.disabled = true;
       this.recordBtn.disabled = false;
+      this.uploadBtn.disabled = false;
       this.clearBtn.disabled = false;
 
       // Enable enrollment buttons
@@ -678,6 +694,166 @@ export class App {
   }
 
   /**
+   * Handle file upload for audio processing
+   */
+  async handleFileUpload(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Reset file input so same file can be selected again
+    event.target.value = '';
+
+    if (!this.isModelLoaded) {
+      this.recordingStatus.textContent = 'Please wait for models to load.';
+      return;
+    }
+
+    if (this.isRecording) {
+      this.recordingStatus.textContent = 'Stop recording before uploading a file.';
+      return;
+    }
+
+    try {
+      this.recordingStatus.textContent = `Loading ${file.name}...`;
+      this.updateStatusBar('processing');
+
+      // Disable buttons during processing
+      this.uploadBtn.disabled = true;
+      this.recordBtn.disabled = true;
+
+      // Reset state for new processing
+      this.transcriptMerger.reset();
+      this.clearTranscriptDisplay();
+      this.clearRawChunksDisplay();
+      this.pendingChunks.clear();
+      this.lastChunkResult = null;
+      this.globalTimeOffset = 0;
+      this.chunkQueue = [];
+      this.isProcessingChunk = false;
+      this.completedChunks = 0;
+      this.rawChunksData = [];
+
+      // Read file as ArrayBuffer
+      const arrayBuffer = await file.arrayBuffer();
+
+      // Decode to AudioBuffer
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+      // Resample to 16kHz mono
+      const audio16k = await this.resampleTo16kMono(audioBuffer);
+
+      this.recordingStatus.textContent = `Processing ${file.name} (${(audio16k.length / 16000).toFixed(1)}s)...`;
+
+      // Process as fixed-time chunks (simpler than VAD for clean uploaded audio)
+      await this.processUploadedAudioAsChunks(audio16k, file.name);
+
+      // Clean up
+      await audioContext.close();
+
+    } catch (error) {
+      console.error('File upload error:', error);
+      this.recordingStatus.textContent = `Error: ${error.message}`;
+      this.updateStatusBar('ready');
+      this.uploadBtn.disabled = false;
+      this.recordBtn.disabled = false;
+    }
+  }
+
+  /**
+   * Resample audio to 16kHz mono
+   */
+  async resampleTo16kMono(audioBuffer) {
+    const targetSampleRate = 16000;
+
+    // Create offline context for resampling
+    const offlineContext = new OfflineAudioContext(
+      1, // mono
+      Math.ceil(audioBuffer.duration * targetSampleRate),
+      targetSampleRate
+    );
+
+    // Create buffer source
+    const source = offlineContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(offlineContext.destination);
+    source.start(0);
+
+    // Render
+    const renderedBuffer = await offlineContext.startRendering();
+    return renderedBuffer.getChannelData(0);
+  }
+
+  /**
+   * Process uploaded audio as fixed-time chunks
+   * Uses 10s chunks with 1.5s overlap - phrase detector handles speech boundaries
+   */
+  async processUploadedAudioAsChunks(audio16k, filename) {
+    const sampleRate = 16000;
+    const chunkDuration = 10; // 10 seconds per chunk
+    const overlapDuration = 1.5; // 1.5s overlap
+    const chunkSamples = chunkDuration * sampleRate;
+    const overlapSamples = overlapDuration * sampleRate;
+
+    const chunks = [];
+
+    // Split audio into chunks
+    let position = 0;
+    while (position < audio16k.length) {
+      const endPosition = Math.min(position + chunkSamples, audio16k.length);
+      const chunkAudio = audio16k.slice(position, endPosition);
+
+      // Calculate overlap from previous chunk
+      let audioWithOverlap = chunkAudio;
+      let actualOverlapDuration = 0;
+
+      if (position > 0 && position >= overlapSamples) {
+        // Prepend overlap from before this chunk's start
+        const overlapStart = position - overlapSamples;
+        const overlap = audio16k.slice(overlapStart, position);
+        audioWithOverlap = new Float32Array(overlap.length + chunkAudio.length);
+        audioWithOverlap.set(overlap);
+        audioWithOverlap.set(chunkAudio, overlap.length);
+        actualOverlapDuration = overlap.length / sampleRate;
+      }
+
+      chunks.push({
+        audio: audioWithOverlap,
+        overlapDuration: actualOverlapDuration,
+      });
+
+      position = endPosition;
+    }
+
+    if (chunks.length === 0) {
+      this.recordingStatus.textContent = 'Audio file is empty.';
+      this.updateStatusBar('ready');
+      this.uploadBtn.disabled = false;
+      this.recordBtn.disabled = false;
+      return;
+    }
+
+    this.recordingStatus.textContent = `Processing ${chunks.length} chunk(s) from ${filename}...`;
+
+    // Queue all chunks for processing
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = {
+        index: i,
+        audio: chunks[i].audio,
+        rawDuration: chunks[i].audio.length / sampleRate,
+        overlapDuration: chunks[i].overlapDuration,
+        isFinal: i === chunks.length - 1,
+      };
+
+      this.handleAudioChunk(chunk);
+    }
+
+    // Re-enable buttons (actual processing happens async via queue)
+    this.uploadBtn.disabled = false;
+    this.recordBtn.disabled = false;
+  }
+
+  /**
    * Handle audio chunk from capture
    */
   handleAudioChunk(chunk) {
@@ -859,8 +1035,24 @@ export class App {
 
       // Render and store segments
       if (mergedSegments.length > 0) {
+        // Process each segment through inference layer
+        const baseIndex = this.transcriptMerger.segments.length;
+        for (let i = 0; i < mergedSegments.length; i++) {
+          const segment = mergedSegments[i];
+          const segmentIndex = baseIndex + i;
+
+          // Process through inference (builds hypothesis, applies boosting)
+          const { attribution } = this.conversationInference.processNewSegment(segment, segmentIndex);
+
+          // Attach inference attribution to segment for rendering
+          segment.inferenceAttribution = attribution;
+        }
+
         this.renderSegments(mergedSegments);
         this.transcriptMerger.segments.push(...mergedSegments);
+
+        // Update participants panel
+        this.updateParticipantsPanel();
 
         // Update phrase stats with last segment
         const lastSegment = mergedSegments[mergedSegments.length - 1];
@@ -920,6 +1112,10 @@ export class App {
       textEl.className = 'segment-text';
       textEl.textContent = segment.text;
 
+      // Get inference display info if available
+      const inference = segment.inferenceAttribution;
+      const displayInfo = inference?.displayInfo;
+
       // Build confidence metrics HTML if available
       let confidenceHtml = '';
       if (segment.debug?.clustering && !segment.isEnvironmental) {
@@ -945,6 +1141,18 @@ export class App {
         `;
       }
 
+      // Build alternate speaker HTML if inference suggests ambiguity
+      let alternateHtml = '';
+      if (displayInfo?.showAlternate && displayInfo?.alternateLabel) {
+        alternateHtml = ` <span class="alternate-speaker">(${displayInfo.alternateLabel}?)</span>`;
+      }
+
+      // Build boost indicator if attribution was influenced
+      let boostHtml = '';
+      if (displayInfo?.wasInfluenced) {
+        boostHtml = '<span class="boost-indicator" title="Boosted by conversation context"></span>';
+      }
+
       if (segment.isEnvironmental || segment.speaker === null) {
         // Environmental sound - gray box, no speaker label
         segmentEl.className = 'transcript-segment environmental';
@@ -956,8 +1164,11 @@ export class App {
         // Unknown speaker - distinct styling to indicate unassignable
         segmentEl.className = 'transcript-segment unknown-speaker';
         labelEl.className = 'speaker-label unknown-speaker';
+
+        // Use inference label if available (might show alternate)
+        const label = displayInfo?.label || segment.speakerLabel || 'Unknown';
         labelEl.innerHTML = `
-          ${segment.speakerLabel || 'Unknown'}
+          ${label}${alternateHtml}${boostHtml}
           <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
           ${confidenceHtml}
         `;
@@ -966,8 +1177,11 @@ export class App {
         const speakerClass = `speaker-${segment.speaker % 6}`;
         segmentEl.className = `transcript-segment ${speakerClass}`;
         labelEl.className = `speaker-label ${speakerClass}`;
+
+        // Use inference label if available
+        const label = displayInfo?.label || segment.speakerLabel;
         labelEl.innerHTML = `
-          ${segment.speakerLabel}
+          ${label}${alternateHtml}${boostHtml}
           <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
           ${confidenceHtml}
         `;
@@ -1375,9 +1589,15 @@ export class App {
    */
   clearTranscript() {
     this.transcriptMerger.reset();
+    this.conversationInference.reset();
     this.clearTranscriptDisplay();
     this.copyBtn.disabled = true;
     this.exportTranscriptBtn.disabled = true;
+
+    // Reset participants panel
+    if (this.participantsPanel) {
+      this.participantsPanel.reset();
+    }
   }
 
   /**
@@ -1508,6 +1728,94 @@ export class App {
     this.stopRecording();
   }
 
+  // ==================== Inference Methods ====================
+
+  /**
+   * Update the participants panel with current hypothesis
+   */
+  updateParticipantsPanel() {
+    if (!this.participantsPanel) return;
+
+    const hypothesis = this.conversationInference.getHypothesis();
+    const enrollments = EnrollmentManager.loadAll();
+    this.participantsPanel.render(hypothesis, enrollments);
+  }
+
+  /**
+   * Handle retroactive attribution changes when hypothesis updates
+   * @param {number[]} changedIndices - Indices of segments that changed
+   */
+  handleAttributionChange(changedIndices) {
+    if (changedIndices.length === 0) return;
+
+    // Update the stored segments with new attributions
+    const segments = this.transcriptMerger.segments;
+    for (const index of changedIndices) {
+      if (index < segments.length) {
+        const segment = segments[index];
+        const attribution = this.conversationInference.getAttribution(index);
+        if (attribution) {
+          segment.inferenceAttribution = attribution;
+        }
+      }
+    }
+
+    // Re-render the changed segments in the DOM
+    const segmentEls = this.transcriptContainer.querySelectorAll('.transcript-segment');
+    for (const index of changedIndices) {
+      if (index < segmentEls.length && index < segments.length) {
+        const segment = segments[index];
+        const segmentEl = segmentEls[index];
+
+        // Get the label element
+        const labelEl = segmentEl.querySelector('.speaker-label');
+        if (!labelEl) continue;
+
+        // Get updated display info
+        const displayInfo = segment.inferenceAttribution?.displayInfo;
+        if (!displayInfo) continue;
+
+        // Rebuild the label content
+        let alternateHtml = '';
+        if (displayInfo.showAlternate && displayInfo.alternateLabel) {
+          alternateHtml = ` <span class="alternate-speaker">(${displayInfo.alternateLabel}?)</span>`;
+        }
+
+        let boostHtml = '';
+        if (displayInfo.wasInfluenced) {
+          boostHtml = '<span class="boost-indicator" title="Boosted by conversation context"></span>';
+        }
+
+        // Get confidence HTML from existing content
+        const confidenceEl = labelEl.querySelector('.segment-confidence');
+        const confidenceHtml = confidenceEl ? confidenceEl.outerHTML : '';
+
+        // Get timestamp from existing content
+        const timestampEl = labelEl.querySelector('.timestamp');
+        const timestampHtml = timestampEl ? timestampEl.outerHTML : '';
+
+        // Update label
+        const label = displayInfo.label || segment.speakerLabel;
+        labelEl.innerHTML = `
+          ${label}${alternateHtml}${boostHtml}
+          ${timestampHtml}
+          ${confidenceHtml}
+        `;
+
+        // Add flash animation to indicate change
+        segmentEl.classList.add('segment-reattributed');
+        setTimeout(() => {
+          segmentEl.classList.remove('segment-reattributed');
+        }, 500);
+      }
+    }
+
+    // Update participants panel
+    this.updateParticipantsPanel();
+
+    console.log(`[Inference] Re-attributed ${changedIndices.length} segment(s) based on updated hypothesis`);
+  }
+
   // ==================== Enrollment Methods ====================
 
   /**
@@ -1516,6 +1824,21 @@ export class App {
   initVisualization() {
     this.speakerVisualizer = new SpeakerVisualizer('speaker-canvas');
     this.updateVisualization();
+
+    // Initialize participants panel
+    this.participantsPanel = new ParticipantsPanel({
+      listId: 'participants-list',
+      statusId: 'participants-status',
+    });
+    this.participantsPanel.renderEmpty();
+
+    // Set up inference callback for re-rendering changed segments
+    this.conversationInference.onAttributionChange = (changedIndices) => {
+      this.handleAttributionChange(changedIndices);
+    };
+
+    // Initialize inference with expected speakers
+    this.conversationInference.setExpectedSpeakers(this.numSpeakers);
   }
 
   /**
@@ -1536,6 +1859,9 @@ export class App {
     if (enrollments.length > 0) {
       // Import all into speaker clusterer
       this.transcriptMerger.speakerClusterer.importEnrolledSpeakers(enrollments);
+
+      // Update inference with enrolled speakers
+      this.conversationInference.setEnrolledSpeakers(enrollments);
 
       // Update UI to show enrolled state
       this.renderEnrolledList(enrollments);
@@ -1805,6 +2131,9 @@ export class App {
     // Check for inter-enrollment similarity warnings
     const similarityWarnings = this.transcriptMerger.speakerClusterer.checkEnrolledSpeakerSimilarities(true);
 
+    // Update inference with new enrollments
+    this.conversationInference.setEnrolledSpeakers(EnrollmentManager.loadAll());
+
     // Update UI
     this.renderEnrolledList(EnrollmentManager.loadAll());
     this.showEnrollmentComplete();
@@ -1880,6 +2209,9 @@ export class App {
     // Remove from speaker clusterer
     this.transcriptMerger.speakerClusterer.removeEnrolledSpeaker(enrollmentId);
 
+    // Update inference with remaining enrollments
+    this.conversationInference.setEnrolledSpeakers(remaining);
+
     // Update UI
     if (remaining.length > 0) {
       this.renderEnrolledList(remaining);
@@ -1900,6 +2232,9 @@ export class App {
     EnrollmentManager.clearAll();
     this.transcriptMerger.speakerClusterer.clearAllEnrollments();
     this.enrollmentManager.reset();
+
+    // Clear inference enrolled speakers
+    this.conversationInference.setEnrolledSpeakers([]);
 
     this.enrollmentComplete.classList.add('hidden');
     this.enrollmentIntro.classList.remove('hidden');

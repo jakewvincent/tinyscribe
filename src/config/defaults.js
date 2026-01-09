@@ -4,15 +4,36 @@
  */
 
 // Speaker clustering configuration
+// Note: WavLM-SV baseline is ~0.62 for different speakers, ~0.96 for same speaker
 export const CLUSTERING_DEFAULTS = {
   // Similarity threshold for confident speaker matching (cosine similarity)
-  similarityThreshold: 0.7,
+  similarityThreshold: 0.75,
   // Below this, assign to Unknown (don't force match)
-  minimumSimilarityThreshold: 0.4,
+  minimumSimilarityThreshold: 0.5,
   // Minimum margin between best and second-best match for confidence
-  confidenceMargin: 0.10,
-  // Threshold for warning about similar enrolled speakers
-  interEnrollmentWarningThreshold: 0.65,
+  confidenceMargin: 0.15,
+  // Threshold for warning about similar enrolled speakers (above WavLM baseline of ~0.62)
+  interEnrollmentWarningThreshold: 0.72,
+};
+
+// Conversation-level speaker inference configuration
+export const CONVERSATION_INFERENCE_DEFAULTS = {
+  // Hypothesis building
+  minSegmentsForHypothesis: 3, // Need 3+ segments before forming hypothesis
+  participantConfidenceThreshold: 0.70, // Min avg similarity to be hypothesized
+  participantMinOccurrences: 2, // Min segments where speaker is competitive
+
+  // Boosting
+  boostFactor: 1.10, // 10% boost for hypothesized participants
+  boostEligibilityRank: 2, // Must be in top N to receive boost
+  minSimilarityAfterBoost: 0.75, // Still need this minimum even with boost
+
+  // Ambiguous display (show "Speaker1 (Speaker2?)" format)
+  ambiguousDisplayThreshold: 0.70, // Both candidates must be above this
+  ambiguousMarginMax: 0.12, // Show alternate if margin below this
+
+  // Unexpected speaker detection
+  unexpectedSpeakerThreshold: 0.70, // Below this for non-participant = unexpected
 };
 
 // VAD (Voice Activity Detection) configuration
@@ -33,7 +54,7 @@ export const VAD_DEFAULTS = {
 // Phrase detection configuration
 export const PHRASE_DEFAULTS = {
   // Gap threshold that triggers phrase boundary (seconds)
-  gapThreshold: 0.300,
+  gapThreshold: 0.200,
   // Minimum phrase duration for reliable embedding (seconds)
   minPhraseDuration: 0.5,
   // WavLM frame rate (frames per second)

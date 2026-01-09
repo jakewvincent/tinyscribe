@@ -16,6 +16,8 @@
       <div class="topbar-center">
         <div class="button-group">
           <button id="record-btn" class="btn" disabled>Start Recording</button>
+          <button id="upload-btn" class="btn secondary" disabled>Upload Audio</button>
+          <input type="file" id="upload-file-input" accept="audio/*" class="hidden">
           <button id="clear-btn" class="btn secondary" disabled>Clear</button>
         </div>
         <div id="audio-visualizer"></div>
@@ -77,6 +79,18 @@
 
       <!-- Debug Sidebar (right) -->
       <aside id="sidebar">
+        <!-- Active Participants Panel -->
+        <div class="sidebar-panel" id="panel-participants" data-default-expanded="true">
+          <div class="panel-header" data-panel="participants">
+            <span class="panel-chevron">&#9662;</span>
+            <h3>Active Participants</h3>
+          </div>
+          <div class="panel-content">
+            <div id="participants-list"></div>
+            <div id="participants-status" class="participants-status">Waiting for audio...</div>
+          </div>
+        </div>
+
         <!-- Phrase Stats Panel -->
         <div class="sidebar-panel" id="panel-phrase-stats" data-default-expanded="true">
           <div class="panel-header" data-panel="phrase-stats">

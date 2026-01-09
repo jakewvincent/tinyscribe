@@ -25,3 +25,6 @@ export { SoundClassifier, SoundType } from './sound/index.js';
 
 // Validation utilities
 export { AudioValidator } from './validation/index.js';
+
+// Conversation-level inference
+export { ConversationInference } from './inference/index.js';

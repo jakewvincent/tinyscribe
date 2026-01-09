@@ -188,10 +188,9 @@ export class SpeakerClusterer {
 
       if (hasMultipleSpeakers && margin < this.confidenceMargin) {
         // Ambiguous match - similarities too close to be confident
-        // Don't update any centroids, just return best match
-        // This prevents voice contamination when uncertain
+        // Return Unknown rather than potentially wrong assignment
         debug.reason = 'ambiguous_match';
-        return makeResult(match.speakerId, debug);
+        return makeResult(UNKNOWN_SPEAKER_ID, debug);
       }
 
       // Confident match - only update centroid for non-enrolled speakers
@@ -423,7 +422,16 @@ export class SpeakerClusterer {
 
     if (shouldLog) {
       console.group('Enrolled Speaker Centroid Similarities');
-      console.log('If these values are high (>0.6), the enrollments may not be distinctive enough.');
+      console.log('WavLM-SV baseline: ~0.62 for different speakers, ~0.96 for same speaker.');
+
+      // Diagnostic: Check centroid norms and dimensions
+      for (const e of enrolled) {
+        let norm = 0;
+        for (let i = 0; i < e.centroid.length; i++) {
+          norm += e.centroid[i] * e.centroid[i];
+        }
+        console.log(`  ${e.name}: dim=${e.centroid.length}, norm=${Math.sqrt(norm).toFixed(6)}`);
+      }
     }
 
     for (let i = 0; i < enrolled.length; i++) {
@@ -440,7 +448,9 @@ export class SpeakerClusterer {
         }
 
         if (shouldLog) {
-          const status = sim > 0.7 ? 'HIGH' : sim > 0.5 ? 'MODERATE' : 'GOOD';
+          // WavLM-base-plus-sv typically shows ~0.62 for different speakers
+          // so thresholds are calibrated accordingly
+          const status = sim > 0.75 ? 'HIGH' : sim > 0.65 ? 'MODERATE' : 'NORMAL';
           console.log(`  ${enrolled[i].name} <-> ${enrolled[j].name}: ${sim.toFixed(3)} ${status}`);
         }
       }

@@ -103,13 +103,39 @@ class ModelManager {
   }
 
   /**
+   * Peak normalize audio to handle gain/distance variation
+   * Scales audio so the peak amplitude is 0.95
+   * @param {Float32Array} samples - Raw audio samples
+   * @returns {Float32Array} Normalized audio samples
+   */
+  static normalizeAudio(samples) {
+    let maxAbs = 0;
+    for (let i = 0; i < samples.length; i++) {
+      const abs = Math.abs(samples[i]);
+      if (abs > maxAbs) maxAbs = abs;
+    }
+    // Avoid amplifying near-silence
+    if (maxAbs > 0.001) {
+      const scale = 0.95 / maxAbs;
+      const normalized = new Float32Array(samples.length);
+      for (let i = 0; i < samples.length; i++) {
+        normalized[i] = samples[i] * scale;
+      }
+      return normalized;
+    }
+    return samples;
+  }
+
+  /**
    * Extract speaker embedding from audio segment using SV model
    * @param {Float32Array} audioSegment - Audio data for one speaker segment
    * @returns {Float32Array} Speaker embedding vector (512-dimensional for SV model)
    */
   static async extractEmbedding(audioSegment) {
     try {
-      const inputs = await this.embeddingProcessor(audioSegment);
+      // Normalize audio to handle gain/distance variation
+      const normalizedAudio = this.normalizeAudio(audioSegment);
+      const inputs = await this.embeddingProcessor(normalizedAudio);
       const output = await this.embeddingModel(inputs);
 
       // SV model outputs embeddings directly with shape [1, embedding_dim]
@@ -118,6 +144,17 @@ class ModelManager {
         console.error('No embeddings in model output. Keys:', Object.keys(output));
         return null;
       }
+
+      // Diagnostic: Log raw embedding stats before any normalization
+      const raw = embeddings.data;
+      let norm = 0, min = Infinity, max = -Infinity, sum = 0;
+      for (let i = 0; i < raw.length; i++) {
+        norm += raw[i] * raw[i];
+        sum += raw[i];
+        if (raw[i] < min) min = raw[i];
+        if (raw[i] > max) max = raw[i];
+      }
+      console.log(`[WavLM Raw] dim=${raw.length}, norm=${Math.sqrt(norm).toFixed(4)}, mean=${(sum/raw.length).toFixed(6)}, range=[${min.toFixed(4)}, ${max.toFixed(4)}]`);
 
       // Return as Float32Array
       return new Float32Array(embeddings.data);

@@ -4,3 +4,4 @@
  */
 
 export { SpeakerVisualizer } from './speakerVisualizer.js';
+export { ParticipantsPanel } from './participantsPanel.js';
