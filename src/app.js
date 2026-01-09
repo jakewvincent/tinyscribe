@@ -93,26 +93,7 @@ export class App {
     this.rawChunksContainer = document.getElementById('raw-chunks-container');
     this.audioVisualizer = document.getElementById('audio-visualizer');
 
-    // DOM elements - Enrollment
-    this.enrollmentIntro = document.getElementById('enrollment-intro');
-    this.enrollmentRecording = document.getElementById('enrollment-recording');
-    this.enrollmentComplete = document.getElementById('enrollment-complete');
-    this.enrollNameInput = document.getElementById('enroll-name');
-    this.enrollStartBtn = document.getElementById('enroll-start-btn');
-    this.enrollSkipBtn = document.getElementById('enroll-skip-btn');
-    this.enrollSentence = document.getElementById('enroll-sentence');
-    this.enrollRecordBtn = document.getElementById('enroll-record-btn');
-    this.enrollProgressText = document.getElementById('enroll-progress-text');
-    this.enrollDots = document.getElementById('enroll-dots');
-    this.enrollFinishBtn = document.getElementById('enroll-finish-btn');
-    this.enrollCancelBtn = document.getElementById('enroll-cancel-btn');
-    this.enrollStatus = document.getElementById('enroll-status');
-
-    // DOM elements - Multi-enrollment list
-    this.enrolledCount = document.getElementById('enrolled-count');
-    this.enrolledItems = document.getElementById('enrolled-items');
-    this.addSpeakerBtn = document.getElementById('add-speaker-btn');
-    this.clearAllEnrollmentsBtn = document.getElementById('clear-all-enrollments-btn');
+    // DOM elements - Enrollment (sidebar UI managed by Alpine, we just need canvas)
     this.speakerCanvas = document.getElementById('speaker-canvas');
 
     // DOM elements - Enrollment Modal
@@ -250,30 +231,15 @@ export class App {
     this.exportRawBtn.addEventListener('click', () => this.exportRawChunks());
     this.numSpeakersSelect.addEventListener('change', (e) => this.handleNumSpeakersChange(e));
 
-    // Enrollment controls
-    this.enrollStartBtn.addEventListener('click', () => this.startEnrollment());
-    this.enrollSkipBtn.addEventListener('click', () => this.skipEnrollment());
-    this.enrollRecordBtn.addEventListener('click', () => this.toggleEnrollmentRecording());
-    this.enrollFinishBtn.addEventListener('click', () => this.finishEnrollment());
-    this.enrollCancelBtn.addEventListener('click', () => this.cancelEnrollment());
-
-    // Multi-enrollment controls
-    this.addSpeakerBtn.addEventListener('click', () => this.addNewSpeaker());
-    this.clearAllEnrollmentsBtn.addEventListener('click', () => this.clearAllEnrollments());
-
-    // Enable start enrollment when name is entered
-    this.enrollNameInput.addEventListener('input', () => {
-      this.enrollStartBtn.disabled = !this.isModelLoaded || !this.enrollNameInput.value.trim();
+    // Enrollment controls - Alpine sidebar dispatches events, we listen here
+    window.addEventListener('enrollment-start', (e) => {
+      this.startEnrollmentWithName(e.detail.name);
     });
-
-    // Delegate click events for remove buttons in enrolled list
-    this.enrolledItems.addEventListener('click', (e) => {
-      if (e.target.classList.contains('remove-enrollment')) {
-        const item = e.target.closest('.enrolled-item');
-        if (item && item.dataset.id) {
-          this.removeEnrollment(item.dataset.id);
-        }
-      }
+    window.addEventListener('enrollment-remove', (e) => {
+      this.removeEnrollment(e.detail.id);
+    });
+    window.addEventListener('enrollment-clear-all', () => {
+      this.clearAllEnrollments();
     });
 
     // Enrollment modal controls
@@ -361,19 +327,8 @@ export class App {
       this.loadModelsBtn.textContent = 'Models Loaded';
       this.loadModelsBtn.disabled = true;
 
-      // Notify Alpine components that model is loaded
+      // Notify Alpine components that model is loaded (enables enrollment buttons)
       window.dispatchEvent(new CustomEvent('model-loaded'));
-
-      // Enable enrollment buttons
-      if (this.enrollNameInput.value.trim()) {
-        this.enrollStartBtn.disabled = false;
-      }
-
-      // Enable add speaker button if there are enrollments and under limit
-      const enrollmentCount = EnrollmentManager.getEnrollmentCount();
-      if (enrollmentCount > 0 && enrollmentCount < 6) {
-        this.addSpeakerBtn.disabled = false;
-      }
 
       // Update status bar
       this.updateStatusBar('ready');
@@ -1754,18 +1709,35 @@ export class App {
       // Update inference with enrolled speakers
       this.conversationInference.setEnrolledSpeakers(enrollments);
 
-      // Update UI to show enrolled state
-      this.renderEnrolledList(enrollments);
-      this.showEnrollmentComplete();
+      // Update Alpine UI with enrolled state
+      this.dispatchEnrollmentsUpdated(enrollments);
     }
   }
 
   /**
-   * Start the enrollment process
+   * Dispatch enrollments list update to Alpine
    */
-  startEnrollment() {
-    const name = this.enrollNameInput.value.trim();
-    if (!name) {
+  dispatchEnrollmentsUpdated(enrollments) {
+    window.dispatchEvent(
+      new CustomEvent('enrollments-updated', {
+        detail: {
+          enrollments: enrollments.map((e, i) => ({
+            id: e.id,
+            name: e.name,
+            colorIndex: i % 6,
+          })),
+        },
+      })
+    );
+    // Update visualization
+    this.updateVisualization();
+  }
+
+  /**
+   * Start the enrollment process (called from Alpine via enrollment-start event)
+   */
+  startEnrollmentWithName(name) {
+    if (!name?.trim()) {
       this.setEnrollStatus('Please enter your name first.', true);
       return;
     }
@@ -1773,141 +1745,8 @@ export class App {
     this.enrollmentManager.reset();
     this.enrollmentManager.setName(name);
 
-    // Open the enrollment modal instead of sidebar UI
+    // Open the enrollment modal
     this.openEnrollmentModal(name);
-  }
-
-  /**
-   * Skip enrollment entirely
-   */
-  skipEnrollment() {
-    this.enrollmentIntro.classList.add('hidden');
-    this.enrollmentRecording.classList.add('hidden');
-    this.enrollmentComplete.classList.add('hidden');
-    this.setEnrollStatus('Enrollment skipped. Using automatic speaker detection.');
-  }
-
-  /**
-   * Toggle enrollment recording (start/stop)
-   */
-  async toggleEnrollmentRecording() {
-    if (this.isEnrolling) {
-      this.stopEnrollmentRecording();
-    } else {
-      await this.startEnrollmentRecording();
-    }
-  }
-
-  /**
-   * Start recording for enrollment sample
-   */
-  async startEnrollmentRecording() {
-    this.enrollmentAudioCapture = new AudioCapture({
-      chunkDuration: 30, // Long duration - we'll stop manually
-      overlapDuration: 0,
-      onChunkReady: (chunk) => this.handleEnrollmentChunk(chunk),
-      onError: (error) => this.handleEnrollmentError(error),
-    });
-
-    const success = await this.enrollmentAudioCapture.start();
-
-    if (success) {
-      this.isEnrolling = true;
-      this.isEnrollmentRecording = true;
-      this.enrollRecordBtn.textContent = 'Stop';
-      this.enrollRecordBtn.classList.add('recording');
-      this.setEnrollStatus('Recording... Read the passage aloud, then click Stop.');
-
-      // Mark current dot as recording
-      this.updateCurrentDot('recording');
-    } else {
-      this.setEnrollStatus('Failed to access microphone.', true);
-    }
-  }
-
-  /**
-   * Stop enrollment recording and process
-   */
-  stopEnrollmentRecording() {
-    if (this.enrollmentAudioCapture) {
-      // Force emit current audio
-      this.enrollmentAudioCapture.stop();
-      this.enrollmentAudioCapture = null;
-    }
-
-    this.isEnrolling = false;
-    this.isEnrollmentRecording = false;
-
-    // Update button text based on current passage recording status
-    const currentIndex = this.enrollmentManager.getCurrentIndex();
-    const hasRecording = this.enrollmentManager.hasRecording(currentIndex);
-    this.enrollRecordBtn.textContent = hasRecording ? 'Re-record' : 'Record';
-    this.enrollRecordBtn.classList.remove('recording');
-
-    // Sync dots to remove recording state
-    this.syncEnrollmentDots();
-  }
-
-  /**
-   * Handle recorded enrollment audio chunk
-   * Validates audio quality and speech content before processing
-   */
-  handleEnrollmentChunk(chunk) {
-    // Check if we have enough audio (at least 1 second)
-    if (chunk.audio.length < 16000) {
-      this.setEnrollStatus('Recording too short. Please try again.', true);
-      this.updateCurrentDot('');
-      return;
-    }
-
-    // Phase 1: Audio quality checks (synchronous, fast)
-    const audioQuality = AudioValidator.validateAudioQuality(chunk.audio);
-
-    if (!audioQuality.passed) {
-      this.setEnrollStatus(audioQuality.errors[0], true);
-      this.updateCurrentDot('');
-      return;
-    }
-
-    // Log warnings but allow to continue
-    if (audioQuality.warnings.length > 0) {
-      console.warn('Audio quality warnings:', audioQuality.warnings);
-    }
-
-    // Phase 2: Speech content analysis (synchronous, fast)
-    const speechAnalysis = AudioValidator.analyzeSpeechContent(chunk.audio);
-    const speechValidation = AudioValidator.validateSpeechContent(speechAnalysis);
-
-    if (!speechValidation.passed) {
-      this.setEnrollStatus(speechValidation.errors[0], true);
-      this.updateCurrentDot('');
-      return;
-    }
-
-    // Phase 3: Send both transcription and embedding requests in parallel
-    this.setEnrollStatus('Processing...');
-    this.pendingEnrollmentSampleId = this.enrollmentManager.getCurrentIndex();
-    this.pendingExpectedSentence = this.enrollmentManager.getCurrentSentence();
-    this.pendingTranscriptionResult = null;
-    this.pendingEmbeddingResult = null;
-
-    // Request transcription for validation
-    this.worker.postMessage({
-      type: 'transcribe-for-validation',
-      data: {
-        audio: chunk.audio,
-        sampleId: this.pendingEnrollmentSampleId,
-      },
-    });
-
-    // Request embedding extraction
-    this.worker.postMessage({
-      type: 'extract-embedding',
-      data: {
-        audio: chunk.audio,
-        sampleId: this.pendingEnrollmentSampleId,
-      },
-    });
   }
 
   /**
@@ -1928,7 +1767,7 @@ export class App {
 
   /**
    * Check if both transcription and embedding results are ready
-   * If so, validate and complete the enrollment sample
+   * Routes to modal handler for enrollment processing
    */
   checkEnrollmentResultsComplete() {
     // Wait for both results
@@ -1943,155 +1782,12 @@ export class App {
     this.pendingTranscriptionResult = null;
     this.pendingEmbeddingResult = null;
 
-    // Check if modal is open - route to modal handler
-    const isModalOpen = !this.enrollmentModal.classList.contains('hidden');
-    if (isModalOpen) {
-      this.handleModalEnrollmentComplete(embedding, transcription);
-      return;
-    }
-
-    // Legacy sidebar flow (kept for backwards compatibility)
-    // Check embedding extraction success
-    if (!embedding.success) {
-      this.setEnrollStatus(`Failed to process: ${embedding.error}`, true);
-      this.updateCurrentDot('');
-      return;
-    }
-
-    // Check transcription validation (warning only, doesn't block)
-    let transcriptionWarning = null;
-    if (transcription.success && this.pendingExpectedSentence) {
-      const validation = AudioValidator.validateTranscription(
-        transcription.text,
-        this.pendingExpectedSentence
-      );
-      if (!validation.passed && validation.warnings.length > 0) {
-        transcriptionWarning = validation.warnings[0];
-        console.warn('Transcription validation:', transcriptionWarning, `(${(validation.matchRatio * 100).toFixed(0)}% match)`);
-      }
-    }
-
-    // Add sample to enrollment manager (auto-advances to next empty slot)
-    this.enrollmentManager.addSample(embedding.embedding);
-
-    // Update UI
-    this.syncEnrollmentDots();
-    this.updateEnrollmentUI();
-
-    // Check if we can finish
-    this.enrollFinishBtn.disabled = !this.enrollmentManager.canComplete();
-
-    // Show status with optional transcription warning
-    const sampleCount = this.enrollmentManager.getSampleCount();
-    const total = this.enrollmentManager.getTotalSentences();
-
-    if (this.enrollmentManager.isComplete()) {
-      this.setEnrollStatus('All passages recorded! Click Finish to complete enrollment.');
-    } else if (transcriptionWarning) {
-      this.setEnrollStatus(`Recorded (${sampleCount}/${total}). Note: ${transcriptionWarning}`);
-    } else {
-      this.setEnrollStatus(`Recorded (${sampleCount}/${total}). ${total - sampleCount} passage${total - sampleCount === 1 ? '' : 's'} remaining.`);
-    }
+    // Route to modal handler (enrollment is done via modal)
+    this.handleModalEnrollmentComplete(embedding, transcription);
   }
 
   /**
-   * Finish enrollment and save
-   */
-  finishEnrollment() {
-    if (!this.enrollmentManager.canComplete()) {
-      this.setEnrollStatus('Need at least 3 samples to complete enrollment.', true);
-      return;
-    }
-
-    // Compute average embedding (includes outlier rejection)
-    const avgEmbedding = this.enrollmentManager.computeAverageEmbedding();
-    const name = this.enrollmentManager.getName();
-    const rejectedCount = this.enrollmentManager.getRejectedCount();
-
-    // Save to storage and get the created enrollment
-    const newEnrollment = EnrollmentManager.addEnrollment(name, avgEmbedding);
-
-    // Import into speaker clusterer
-    this.transcriptMerger.speakerClusterer.enrollSpeaker(
-      name,
-      avgEmbedding,
-      newEnrollment.id,
-      newEnrollment.colorIndex
-    );
-
-    // Check for inter-enrollment similarity warnings
-    const similarityWarnings = this.transcriptMerger.speakerClusterer.checkEnrolledSpeakerSimilarities(true);
-
-    // Update inference with new enrollments
-    this.conversationInference.setEnrolledSpeakers(EnrollmentManager.loadAll());
-
-    // Update UI
-    this.renderEnrolledList(EnrollmentManager.loadAll());
-    this.showEnrollmentComplete();
-    this.updateVisualization();
-
-    // Build status message with any warnings
-    const statusParts = [];
-
-    if (this.enrollmentManager.hadHighOutlierRate()) {
-      statusParts.push(`High outlier rate detected - enrollment quality may be affected`);
-    } else if (rejectedCount > 0) {
-      statusParts.push(`${rejectedCount} sample(s) excluded as outliers`);
-    }
-
-    if (similarityWarnings.length > 0) {
-      const warningMsg = similarityWarnings.map(w =>
-        `"${w.speaker1}" and "${w.speaker2}" sound similar (${(w.similarity * 100).toFixed(0)}%)`
-      ).join('; ');
-      statusParts.push(warningMsg + ' - they may be confused during transcription');
-    }
-
-    if (statusParts.length > 0) {
-      this.setEnrollStatus(`Enrollment complete. Note: ${statusParts.join('. ')}`);
-    } else {
-      this.setEnrollStatus('');
-    }
-  }
-
-  /**
-   * Cancel enrollment in progress
-   */
-  cancelEnrollment() {
-    this.stopEnrollmentRecording();
-    this.enrollmentManager.reset();
-
-    this.enrollmentRecording.classList.add('hidden');
-
-    // Go back to either intro or complete state
-    const enrollments = EnrollmentManager.loadAll();
-    if (enrollments.length > 0) {
-      this.showEnrollmentComplete();
-    } else {
-      this.enrollmentIntro.classList.remove('hidden');
-    }
-    this.setEnrollStatus('Enrollment cancelled.');
-  }
-
-  /**
-   * Add a new speaker (starts enrollment for additional speaker)
-   */
-  addNewSpeaker() {
-    // Check limit
-    if (EnrollmentManager.getEnrollmentCount() >= 6) {
-      this.setEnrollStatus('Maximum of 6 speakers reached.', true);
-      return;
-    }
-
-    // Show intro state for new enrollment
-    this.enrollmentComplete.classList.add('hidden');
-    this.enrollmentIntro.classList.remove('hidden');
-    this.enrollNameInput.value = '';
-    this.enrollStartBtn.disabled = !this.isModelLoaded;
-    this.setEnrollStatus('');
-  }
-
-  /**
-   * Remove a specific enrollment
+   * Remove a specific enrollment (called from Alpine via enrollment-remove event)
    */
   removeEnrollment(enrollmentId) {
     // Remove from storage
@@ -2103,21 +1799,13 @@ export class App {
     // Update inference with remaining enrollments
     this.conversationInference.setEnrolledSpeakers(remaining);
 
-    // Update UI
-    if (remaining.length > 0) {
-      this.renderEnrolledList(remaining);
-      this.updateVisualization();
-    } else {
-      this.enrollmentComplete.classList.add('hidden');
-      this.enrollmentIntro.classList.remove('hidden');
-      this.addSpeakerBtn.disabled = true;
-      this.updateVisualization();
-    }
+    // Update Alpine UI
+    this.dispatchEnrollmentsUpdated(remaining);
     this.setEnrollStatus('Speaker removed.');
   }
 
   /**
-   * Clear all enrollments
+   * Clear all enrollments (called from Alpine via enrollment-clear-all event)
    */
   clearAllEnrollments() {
     EnrollmentManager.clearAll();
@@ -2127,75 +1815,9 @@ export class App {
     // Clear inference enrolled speakers
     this.conversationInference.setEnrolledSpeakers([]);
 
-    this.enrollmentComplete.classList.add('hidden');
-    this.enrollmentIntro.classList.remove('hidden');
-    this.enrollNameInput.value = '';
-    this.enrollStartBtn.disabled = !this.isModelLoaded;
-    this.addSpeakerBtn.disabled = true;
-    this.updateVisualization();
+    // Update Alpine UI (empty list will trigger state change to 'intro')
+    this.dispatchEnrollmentsUpdated([]);
     this.setEnrollStatus('All enrollments cleared.');
-  }
-
-  /**
-   * Handle enrollment recording error
-   */
-  handleEnrollmentError(error) {
-    console.error('Enrollment error:', error);
-    this.setEnrollStatus(`Error: ${error.message}`, true);
-    this.stopEnrollmentRecording();
-  }
-
-  /**
-   * Show enrollment complete state (enrolled speakers list)
-   */
-  showEnrollmentComplete() {
-    this.enrollmentIntro.classList.add('hidden');
-    this.enrollmentRecording.classList.add('hidden');
-    this.enrollmentComplete.classList.remove('hidden');
-
-    // Update add speaker button state
-    const count = EnrollmentManager.getEnrollmentCount();
-    this.addSpeakerBtn.disabled = !this.isModelLoaded || count >= 6;
-  }
-
-  /**
-   * Render the list of enrolled speakers
-   */
-  renderEnrolledList(enrollments) {
-    const speakerColors = [
-      'var(--speaker-0)',
-      'var(--speaker-1)',
-      'var(--speaker-2)',
-      'var(--speaker-3)',
-      'var(--speaker-4)',
-      'var(--speaker-5)',
-    ];
-
-    // Update count
-    const count = enrollments.length;
-    this.enrolledCount.textContent = `${count} speaker${count !== 1 ? 's' : ''} enrolled`;
-
-    // Clear existing items
-    this.enrolledItems.innerHTML = '';
-
-    // Render each enrollment
-    for (const enrollment of enrollments) {
-      const item = document.createElement('div');
-      item.className = 'enrolled-item';
-      item.dataset.id = enrollment.id;
-
-      const colorIndex = enrollment.colorIndex ?? 0;
-      item.innerHTML = `
-        <span class="speaker-dot" style="background: ${speakerColors[colorIndex % 6]}"></span>
-        <span class="enrolled-name">${this.escapeHtml(enrollment.name)}</span>
-        <button class="btn-icon remove-enrollment" title="Remove">&times;</button>
-      `;
-
-      this.enrolledItems.appendChild(item);
-    }
-
-    // Update add speaker button
-    this.addSpeakerBtn.disabled = !this.isModelLoaded || count >= 6;
   }
 
   /**
@@ -2208,111 +1830,14 @@ export class App {
   }
 
   /**
-   * Update enrollment UI for current state
-   */
-  updateEnrollmentUI() {
-    const currentSentence = this.enrollmentManager.getCurrentSentence();
-    const sampleCount = this.enrollmentManager.getSampleCount();
-    const total = this.enrollmentManager.getTotalSentences();
-    const currentIndex = this.enrollmentManager.getCurrentIndex();
-    const hasRecording = this.enrollmentManager.hasRecording(currentIndex);
-
-    if (currentSentence) {
-      this.enrollSentence.textContent = currentSentence;
-      this.enrollRecordBtn.disabled = false;
-      // Update button text based on whether this passage was already recorded
-      this.enrollRecordBtn.textContent = hasRecording ? 'Re-record' : 'Record';
-    } else {
-      this.enrollSentence.textContent = 'All passages completed!';
-      this.enrollRecordBtn.disabled = true;
-    }
-
-    // Show sample count and which passage is selected
-    const passageLabel = hasRecording ? `Passage ${currentIndex + 1} (recorded)` : `Passage ${currentIndex + 1}`;
-    this.enrollProgressText.textContent = `${sampleCount} of ${total} recorded | ${passageLabel}`;
-    this.enrollFinishBtn.disabled = !this.enrollmentManager.canComplete();
-  }
-
-  /**
-   * Initialize progress dots for enrollment with click handlers
-   */
-  initEnrollmentDots() {
-    this.enrollDots.innerHTML = '';
-    const total = this.enrollmentManager.getTotalSentences();
-    for (let i = 0; i < total; i++) {
-      const dot = document.createElement('div');
-      dot.className = 'progress-dot';
-      dot.dataset.index = i;
-      dot.addEventListener('click', () => this.selectEnrollmentPassage(i));
-      this.enrollDots.appendChild(dot);
-    }
-    this.syncEnrollmentDots();
-  }
-
-  /**
-   * Select a specific passage for recording/re-recording
-   */
-  selectEnrollmentPassage(index) {
-    // Don't allow selection while recording
-    if (this.isEnrollmentRecording) return;
-
-    this.enrollmentManager.selectGroup(index);
-    this.syncEnrollmentDots();
-    this.updateEnrollmentUI();
-  }
-
-  /**
-   * Sync all dots with recording statuses from enrollment manager
-   */
-  syncEnrollmentDots() {
-    const statuses = this.enrollmentManager.getRecordingStatuses();
-    const currentIndex = this.enrollmentManager.getCurrentIndex();
-
-    statuses.forEach((status, i) => {
-      const dot = this.enrollDots.querySelector(`[data-index="${i}"]`);
-      if (dot) {
-        // Base class
-        let className = 'progress-dot';
-
-        // Add complete class if recorded
-        if (status === 'recorded') {
-          className += ' complete';
-        }
-
-        // Add selected class for current selection (not during recording)
-        if (i === currentIndex && !this.isEnrollmentRecording) {
-          className += ' selected';
-        }
-
-        dot.className = className;
-      }
-    });
-  }
-
-  /**
-   * Update current dot to show recording state
-   * @param {string} state - 'recording' or '' (empty to reset)
-   */
-  updateCurrentDot(state) {
-    if (state === 'recording') {
-      // Add recording class to current dot
-      const currentIndex = this.enrollmentManager.getCurrentIndex();
-      const dot = this.enrollDots.querySelector(`[data-index="${currentIndex}"]`);
-      if (dot) {
-        dot.classList.add('recording');
-      }
-    } else {
-      // Sync all dots to reset state
-      this.syncEnrollmentDots();
-    }
-  }
-
-  /**
-   * Set enrollment status message
+   * Set enrollment status message (dispatches to Alpine)
    */
   setEnrollStatus(message, isError = false) {
-    this.enrollStatus.textContent = message;
-    this.enrollStatus.className = isError ? 'error' : '';
+    window.dispatchEvent(
+      new CustomEvent('enrollment-status', {
+        detail: { message, isError },
+      })
+    );
   }
 
   // ==================== Enrollment Modal Methods ====================
@@ -2789,10 +2314,8 @@ export class App {
     // Close modal
     this.closeEnrollmentModal();
 
-    // Update sidebar UI
-    this.renderEnrolledList(EnrollmentManager.loadAll());
-    this.showEnrollmentComplete();
-    this.updateVisualization();
+    // Update Alpine sidebar UI
+    this.dispatchEnrollmentsUpdated(EnrollmentManager.loadAll());
 
     // Build status message
     const statusParts = [];
@@ -2824,14 +2347,8 @@ export class App {
     this.closeEnrollmentModal();
     this.enrollmentManager.reset();
 
-    // Return to appropriate sidebar state
-    const enrollments = EnrollmentManager.loadAll();
-    if (enrollments.length > 0) {
-      this.showEnrollmentComplete();
-    } else {
-      this.enrollmentIntro.classList.remove('hidden');
-    }
-
+    // Update Alpine sidebar UI (state determined by whether enrollments exist)
+    this.dispatchEnrollmentsUpdated(EnrollmentManager.loadAll());
     this.setEnrollStatus('Enrollment cancelled.');
   }
 

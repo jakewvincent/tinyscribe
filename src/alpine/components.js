@@ -153,46 +153,48 @@ document.addEventListener('alpine:init', () => {
   }));
 
   /**
-   * Enrollment section component
-   * Manages enrollment state machine: intro -> recording -> complete
+   * Enrollment content component
+   * Manages enrollment sidebar UI: intro -> complete states
+   * (Modal handled separately in app.js)
    */
-  Alpine.data('enrollmentSection', () => ({
-    state: 'intro', // 'intro' | 'recording' | 'complete'
+  Alpine.data('enrollmentContent', () => ({
+    state: 'intro', // 'intro' | 'complete'
     speakerName: '',
     enrollments: [],
     modelLoaded: false,
     statusMessage: '',
     statusError: false,
-    recordedCount: 0,
-    totalSentences: 6,
 
-    get canStartEnrollment() {
-      return this.modelLoaded && this.speakerName.trim().length > 0;
-    },
-
-    get canAddSpeaker() {
-      return this.modelLoaded && this.enrollments.length < 6;
+    get enrolledCountText() {
+      const count = this.enrollments.length;
+      return `${count} speaker${count !== 1 ? 's' : ''} enrolled`;
     },
 
     init() {
+      // Listen for model loaded
       window.addEventListener('model-loaded', () => {
         this.modelLoaded = true;
       });
 
+      // Listen for enrollment list updates from app.js
       window.addEventListener('enrollments-updated', (e) => {
         this.enrollments = e.detail.enrollments;
         if (this.enrollments.length > 0 && this.state === 'intro') {
           this.state = 'complete';
+        } else if (this.enrollments.length === 0) {
+          this.state = 'intro';
         }
       });
 
-      window.addEventListener('enrollment-state', (e) => {
+      // Listen for state changes from app.js (e.g., after modal closes)
+      window.addEventListener('enrollment-state-change', (e) => {
         this.state = e.detail.state;
-        if (e.detail.recordedCount !== undefined) {
-          this.recordedCount = e.detail.recordedCount;
+        if (e.detail.speakerName !== undefined) {
+          this.speakerName = e.detail.speakerName;
         }
       });
 
+      // Listen for status updates
       window.addEventListener('enrollment-status', (e) => {
         this.statusMessage = e.detail.message;
         this.statusError = e.detail.isError || false;
@@ -200,6 +202,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     startEnrollment() {
+      // Dispatch to app.js which opens the modal
       window.dispatchEvent(
         new CustomEvent('enrollment-start', {
           detail: { name: this.speakerName },
@@ -207,7 +210,7 @@ document.addEventListener('alpine:init', () => {
       );
     },
 
-    skipEnrollment() {
+    skip() {
       this.state = 'complete';
     },
 
@@ -224,7 +227,7 @@ document.addEventListener('alpine:init', () => {
       );
     },
 
-    clearAllEnrollments() {
+    clearAll() {
       window.dispatchEvent(new CustomEvent('enrollment-clear-all'));
     },
   }));

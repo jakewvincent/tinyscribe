@@ -144,51 +144,45 @@
             <span class="panel-chevron" x-text="expanded ? '&#9662;' : '&#9656;'"></span>
             <h3>Speaker Enrollment <span class="optional-badge">Optional</span></h3>
           </div>
-          <div class="panel-content" :class="{ 'collapsed': !expanded }">
+          <div class="panel-content" :class="{ 'collapsed': !expanded }" x-data="enrollmentContent()">
             <!-- Intro state (before enrollment starts) -->
-            <div id="enrollment-intro">
+            <div x-show="state === 'intro'">
               <p>Record your voice to help identify you in conversations.</p>
               <div class="enroll-name-row">
                 <label for="enroll-name">Name:</label>
-                <input type="text" id="enroll-name" placeholder="e.g., Jake" maxlength="20">
+                <input type="text" id="enroll-name" x-model="speakerName"
+                       placeholder="e.g., Jake" maxlength="20">
               </div>
               <div class="enroll-actions">
-                <button id="enroll-start-btn" class="btn primary small" disabled>Start Enrollment</button>
-                <button id="enroll-skip-btn" class="btn secondary small">Skip</button>
-              </div>
-            </div>
-
-            <!-- Recording state (during enrollment) -->
-            <div id="enrollment-recording" class="hidden">
-              <p class="enroll-instruction">Read aloud (click dots to select or re-record):</p>
-              <blockquote id="enroll-sentence"></blockquote>
-
-              <div class="enroll-controls">
-                <button id="enroll-record-btn" class="btn primary small">Record</button>
-              </div>
-
-              <div id="enroll-progress">
-                <span id="enroll-progress-text">0 of 3 recorded</span>
-                <div class="progress-dots" id="enroll-dots"></div>
-              </div>
-
-              <div class="enroll-actions">
-                <button id="enroll-finish-btn" class="btn primary small" disabled>Finish</button>
-                <button id="enroll-cancel-btn" class="btn secondary small">Cancel</button>
+                <button id="enroll-start-btn" class="btn primary small"
+                        :disabled="!modelLoaded || !speakerName.trim()"
+                        @click="startEnrollment()">Start Enrollment</button>
+                <button class="btn secondary small" @click="skip()">Skip</button>
               </div>
             </div>
 
             <!-- Complete state (after enrollment) -->
-            <div id="enrollment-complete" class="hidden">
+            <div x-show="state === 'complete'">
               <div class="enrolled-header">
-                <span id="enrolled-count" class="enrolled-count">0 speakers enrolled</span>
-                <button id="add-speaker-btn" class="btn secondary small" disabled>+ Add</button>
+                <span class="enrolled-count" x-text="enrolledCountText">0 speakers enrolled</span>
+                <button id="add-speaker-btn" class="btn secondary small"
+                        :disabled="!modelLoaded || enrollments.length >= 6"
+                        @click="addNewSpeaker()">+ Add</button>
               </div>
-              <div id="enrolled-items"></div>
-              <button id="clear-all-enrollments-btn" class="btn secondary small">Clear All</button>
+              <div id="enrolled-items">
+                <template x-for="enrollment in enrollments" :key="enrollment.id">
+                  <div class="enrolled-item" :data-id="enrollment.id">
+                    <span class="speaker-dot" :style="`background: var(--speaker-${enrollment.colorIndex})`"></span>
+                    <span class="enrolled-name" x-text="enrollment.name"></span>
+                    <button class="btn-icon remove-enrollment"
+                            @click="removeEnrollment(enrollment.id)" title="Remove">&times;</button>
+                  </div>
+                </template>
+              </div>
+              <button class="btn secondary small" @click="clearAll()">Clear All</button>
             </div>
 
-            <div id="enroll-status"></div>
+            <div id="enroll-status" :class="{ 'error': statusError }" x-text="statusMessage"></div>
 
             <!-- Speaker Embedding Visualization -->
             <div class="enrollment-viz-section">
