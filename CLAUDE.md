@@ -195,9 +195,110 @@ All configurable constants are centralized in `src/config/defaults.js`:
 - Short phrases (<0.5s) may not get reliable embeddings
 - Phrase boundaries depend on Whisper word timing accuracy
 
-## Development Preferences
+## Development Guidelines
 
-- **Commits**:
-  - Use conventional commit format (e.g., `feat:`, `fix:`, `refactor:`, `docs:`)
-  - Add detailed description in the commit body (lines below the subject)
-  - Do not include Co-Authored-By or similar AI attribution lines
+### Modularity Principles
+
+The codebase is organized into layers with strict dependency rules. This enables easy extraction and reuse of components in other projects.
+
+**Dependency hierarchy** (each layer may only import from layers to its right):
+```
+alpine/ → app.js → ui/ → audio/ → worker/ → core/ → config/
+```
+
+**Layer responsibilities:**
+
+| Layer | Browser APIs? | Purpose | Examples |
+|-------|---------------|---------|----------|
+| `config/` | No | Constants, thresholds, defaults | Speaker colors, VAD thresholds |
+| `core/` | No | Pure algorithms, business logic | Clustering, phrase detection, embedding math |
+| `worker/` | No* | Worker communication abstraction | WorkerClient promise-based API |
+| `audio/` | Yes | Audio capture, VAD processing | AudioCapture, VADProcessor |
+| `ui/` | Yes | Reusable UI components | SpeakerVisualizer, DebugPanel |
+| `app.js` | Yes | Application orchestration | Modal dialogs, worker setup, audio routing |
+| `alpine/` | Yes | Declarative UI state | Panel collapse, status bar, controls |
+
+*WorkerClient uses `Worker` API but is designed for extraction with the worker it communicates with.
+
+### Where to Put New Code
+
+**Decision tree for new features:**
+
+1. **Is it pure logic with no browser dependencies?** → `core/`
+   - Can you run it in Node.js without polyfills? If yes, it belongs in `core/`
+   - Examples: similarity calculations, text processing, clustering algorithms
+
+2. **Does it capture or process audio?** → `audio/`
+   - Wraps Web Audio API, MediaRecorder, etc.
+   - Should accept callbacks/options, not import app-specific code
+
+3. **Is it a reusable UI component?** → `ui/components/`
+   - Accepts a DOM element or canvas, doesn't query the DOM itself
+   - Example: `SpeakerVisualizer` accepts a canvas element
+
+4. **Is it reactive UI state?** → `alpine/components.js`
+   - Panel expand/collapse, button enabled/disabled, status display
+   - Communicates with app.js via CustomEvents, not direct imports
+
+5. **Does it orchestrate multiple systems?** → `app.js`
+   - Modal dialogs with complex audio/VAD integration
+   - Coordinates between Alpine, workers, and audio capture
+
+### Alpine.js vs app.js
+
+**Use Alpine for:**
+- UI state that maps directly to DOM (show/hide, enabled/disabled, text content)
+- Reactive bindings (`x-show`, `x-model`, `:disabled`, `x-for`)
+- State that benefits from persistence (`Alpine.$persist`)
+- Components that communicate via events, not shared state
+
+**Keep in app.js:**
+- Audio capture and VAD processing
+- Modal dialogs with focus traps and complex interactions
+- Worker communication and result handling
+- Anything requiring async/await flows or complex state machines
+
+**Communication pattern:**
+```javascript
+// Alpine → app.js: dispatch event with detail
+window.dispatchEvent(new CustomEvent('enrollment-start', { detail: { name } }));
+
+// app.js → Alpine: dispatch event for state update
+window.dispatchEvent(new CustomEvent('enrollments-updated', { detail: { enrollments } }));
+```
+
+### Code Style
+
+- **Configuration injection**: Modules accept config objects, don't import globals
+  ```javascript
+  // Good: accepts config
+  constructor(options = {}) {
+    this.threshold = options.threshold ?? DEFAULTS.threshold;
+  }
+
+  // Avoid: hardcoded values scattered in code
+  if (similarity > 0.7) { ... }
+  ```
+
+- **Dependency injection**: Accept collaborators, don't instantiate internally
+  ```javascript
+  // Good: accepts dependencies
+  constructor({ clusterer, classifier } = {}) {
+    this.clusterer = clusterer ?? new SpeakerClusterer();
+  }
+  ```
+
+- **Barrel exports**: Each directory has an `index.js` for clean imports
+  ```javascript
+  // Good
+  import { SpeakerClusterer, cosineSimilarity } from './core/embedding';
+
+  // Avoid
+  import { SpeakerClusterer } from './core/embedding/speakerClusterer.js';
+  ```
+
+### Commits
+
+- Use conventional commit format (`feat:`, `fix:`, `refactor:`, `docs:`)
+- Add detailed description in the commit body
+- Do not include Co-Authored-By or similar AI attribution lines
