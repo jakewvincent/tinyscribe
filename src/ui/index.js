@@ -4,4 +4,4 @@
  */
 
 // Components
-export { SpeakerVisualizer, ParticipantsPanel, DebugPanel } from './components/index.js';
+export { SpeakerVisualizer, ParticipantsPanel, DebugPanel, ResizeDividers } from './components/index.js';

@@ -7,7 +7,7 @@
 import { AudioCapture, VADProcessor } from './audio/index.js';
 
 // UI components
-import { SpeakerVisualizer, ParticipantsPanel, DebugPanel } from './ui/index.js';
+import { SpeakerVisualizer, ParticipantsPanel, DebugPanel, ResizeDividers } from './ui/index.js';
 
 // Debug logging
 import { DebugLogger } from './utils/debugLogger.js';
@@ -114,6 +114,9 @@ export class App {
 
     // Status bar and phrase stats are managed by Alpine - we dispatch events to update them
 
+    // Resize dividers for workspace and sidebar
+    this.resizeDividers = null;
+
     this.init();
   }
 
@@ -143,6 +146,9 @@ export class App {
 
     // Initialize visualization
     this.initVisualization();
+
+    // Initialize resizable dividers
+    this.initResizeDividers();
 
     // Initialize debug logging
     await this.debugLogger.init();
@@ -1685,6 +1691,49 @@ export class App {
 
     // Initialize inference with expected speakers
     this.conversationInference.setExpectedSpeakers(this.numSpeakers);
+  }
+
+  /**
+   * Initialize resizable dividers for workspace and sidebar
+   */
+  initResizeDividers() {
+    const workspaceDivider = document.querySelector('.workspace-divider');
+    const sidebarDivider = document.getElementById('sidebar-divider');
+    const rawChunksPanel = document.getElementById('raw-chunks-panel');
+    const processedPanel = document.getElementById('processed-panel');
+    const workspace = document.getElementById('transcript-section');
+    const sidebar = document.getElementById('sidebar');
+
+    this.resizeDividers = new ResizeDividers({
+      horizontal: {
+        dividerEl: workspaceDivider,
+        topPanel: rawChunksPanel,
+        bottomPanel: processedPanel,
+        container: workspace,
+      },
+      vertical: {
+        dividerEl: sidebarDivider,
+        sidebar: sidebar,
+      },
+    });
+
+    this.resizeDividers.init();
+
+    // Restore saved sizes
+    const savedSizes = {
+      workspaceTopPercent: PreferencesStore.getWorkspaceTopPercent(),
+      sidebarWidth: PreferencesStore.getSidebarWidth(),
+    };
+    this.resizeDividers.restore(savedSizes);
+
+    // Listen for resize complete events to persist
+    window.addEventListener('workspace-resize-complete', (e) => {
+      PreferencesStore.setWorkspaceTopPercent(e.detail.topPercent);
+    });
+
+    window.addEventListener('sidebar-resize-complete', (e) => {
+      PreferencesStore.setSidebarWidth(e.detail.width);
+    });
   }
 
   /**

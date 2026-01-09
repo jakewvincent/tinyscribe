@@ -67,6 +67,45 @@ export const PreferencesStore = {
     states[panelId] = expanded;
     return this.setPanelStates(states);
   },
+
+  /**
+   * Get workspace top panel percentage (0-100)
+   * @returns {number} Percentage, default 50
+   */
+  getWorkspaceTopPercent() {
+    const val = LocalStorageAdapter.getString(LOCAL_STORAGE_KEYS.WORKSPACE_TOP_PERCENT);
+    return val ? parseFloat(val) : 50;
+  },
+
+  /**
+   * Set workspace top panel percentage
+   * @param {number} percent
+   * @returns {boolean} Success
+   */
+  setWorkspaceTopPercent(percent) {
+    return LocalStorageAdapter.setString(
+      LOCAL_STORAGE_KEYS.WORKSPACE_TOP_PERCENT,
+      String(percent)
+    );
+  },
+
+  /**
+   * Get sidebar width in pixels
+   * @returns {number} Width, default 320
+   */
+  getSidebarWidth() {
+    const val = LocalStorageAdapter.getString(LOCAL_STORAGE_KEYS.SIDEBAR_WIDTH);
+    return val ? parseInt(val, 10) : 320;
+  },
+
+  /**
+   * Set sidebar width
+   * @param {number} width
+   * @returns {boolean} Success
+   */
+  setSidebarWidth(width) {
+    return LocalStorageAdapter.setString(LOCAL_STORAGE_KEYS.SIDEBAR_WIDTH, String(width));
+  },
 };
 
 export default PreferencesStore;

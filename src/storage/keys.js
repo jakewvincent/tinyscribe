@@ -9,6 +9,8 @@ export const LOCAL_STORAGE_KEYS = {
   // UI Preferences
   SELECTED_MIC_DEVICE: 'selected-mic-device',
   PANEL_STATES: 'panel-states',
+  WORKSPACE_TOP_PERCENT: 'workspace-top-percent',
+  SIDEBAR_WIDTH: 'sidebar-width',
 
   // Speaker Enrollment
   SPEAKER_ENROLLMENTS: 'speaker-enrollments',
