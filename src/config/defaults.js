@@ -75,10 +75,6 @@ export const ENROLLMENT_DEFAULTS = {
   minSamplesRequired: 3,
   // Similarity threshold for outlier detection during centroid computation
   outlierThreshold: 0.7,
-  // localStorage key for saving enrollments
-  storageKey: 'speaker-enrollments',
-  // Legacy storage key (for migration)
-  legacyStorageKey: 'speaker-enrollment',
   // Maximum number of enrolled speakers
   maxEnrolledSpeakers: 6,
 };
@@ -139,21 +135,8 @@ export const SOUND_CLASSIFICATION = {
 
 // Debug logging configuration
 export const DEBUG_DEFAULTS = {
-  // Master toggle (default off)
-  enabled: false,
-
-  // Verbosity: 'normal' captures key decision points
-  //            'verbose' adds raw data (embeddings, full word lists)
-  verbose: false,
-
-  // IndexedDB storage settings
-  dbName: 'transcription-debug',
-  storageVersion: 1,
-  maxSessions: 5, // Keep last 5 sessions, auto-cleanup older
-
-  // localStorage keys for UI state persistence
-  enabledKey: 'debug-logging-enabled',
-  verboseKey: 'debug-logging-verbose',
+  // Maximum sessions to keep (auto-cleanup older)
+  maxSessions: 5,
 };
 
 // Speaker colors for UI display

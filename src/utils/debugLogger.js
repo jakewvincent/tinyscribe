@@ -13,6 +13,7 @@
  */
 
 import { DEBUG_DEFAULTS } from '../config/defaults.js';
+import { DebugSettingsStore, DebugLogStore } from '../storage/index.js';
 
 /**
  * @typedef {Object} LogEntry
@@ -36,7 +37,7 @@ export class DebugLogger {
   constructor(config = {}) {
     this.config = { ...DEBUG_DEFAULTS, ...config };
 
-    this.db = null;
+    this.logStore = new DebugLogStore();
     this.sessionId = null;
     this.enabled = false;
     this.verbose = false;
@@ -50,14 +51,14 @@ export class DebugLogger {
    * Initialize the logger - opens IndexedDB and loads settings
    */
   async init() {
-    // Load settings from localStorage
-    this.enabled = localStorage.getItem(this.config.enabledKey) === 'true';
-    this.verbose = localStorage.getItem(this.config.verboseKey) === 'true';
+    // Load settings from DebugSettingsStore
+    this.enabled = DebugSettingsStore.isEnabled();
+    this.verbose = DebugSettingsStore.isVerbose();
 
-    // Open IndexedDB
+    // Initialize IndexedDB via DebugLogStore
     try {
-      this.db = await this.openDatabase();
-      await this.cleanupOldSessions();
+      await this.logStore.init();
+      await this.logStore.cleanupOldSessions(this.config.maxSessions);
     } catch (err) {
       console.warn('DebugLogger: Failed to open IndexedDB', err);
       // Continue without persistence - logs will be lost on reload
@@ -67,41 +68,11 @@ export class DebugLogger {
   }
 
   /**
-   * Open or create the IndexedDB database
-   */
-  openDatabase() {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.config.dbName, this.config.storageVersion);
-
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result);
-
-      request.onupgradeneeded = (event) => {
-        const db = event.target.result;
-
-        // Sessions store
-        if (!db.objectStoreNames.contains('sessions')) {
-          const sessionsStore = db.createObjectStore('sessions', { keyPath: 'sessionId' });
-          sessionsStore.createIndex('startedAt', 'startedAt');
-        }
-
-        // Logs store
-        if (!db.objectStoreNames.contains('logs')) {
-          const logsStore = db.createObjectStore('logs', { keyPath: 'id', autoIncrement: true });
-          logsStore.createIndex('sessionId', 'sessionId');
-          logsStore.createIndex('type', 'type');
-          logsStore.createIndex('sessionType', ['sessionId', 'type']);
-        }
-      };
-    });
-  }
-
-  /**
    * Enable or disable logging
    */
   setEnabled(enabled) {
     this.enabled = enabled;
-    localStorage.setItem(this.config.enabledKey, enabled ? 'true' : 'false');
+    DebugSettingsStore.setEnabled(enabled);
     this.notifyStatusChange();
   }
 
@@ -110,7 +81,7 @@ export class DebugLogger {
    */
   setVerbose(verbose) {
     this.verbose = verbose;
-    localStorage.setItem(this.config.verboseKey, verbose ? 'true' : 'false');
+    DebugSettingsStore.setVerbose(verbose);
     this.notifyStatusChange();
   }
 
@@ -130,21 +101,13 @@ export class DebugLogger {
    * Start a new logging session (called when recording starts)
    */
   async startSession() {
-    if (!this.db) return null;
+    if (!this.logStore.isReady()) return null;
 
     this.sessionId = new Date().toISOString();
     this.chunkIndex = 0;
 
-    const session = {
-      sessionId: this.sessionId,
-      startedAt: Date.now(),
-      endedAt: null,
-      logCount: 0,
-    };
-
     try {
-      const tx = this.db.transaction('sessions', 'readwrite');
-      await tx.objectStore('sessions').add(session);
+      await this.logStore.createSession(this.sessionId);
       this.notifyStatusChange();
     } catch (err) {
       console.warn('DebugLogger: Failed to create session', err);
@@ -157,17 +120,10 @@ export class DebugLogger {
    * End the current session (called when recording stops)
    */
   async endSession() {
-    if (!this.db || !this.sessionId) return;
+    if (!this.logStore.isReady() || !this.sessionId) return;
 
     try {
-      const tx = this.db.transaction('sessions', 'readwrite');
-      const store = tx.objectStore('sessions');
-      const session = await this.promisifyRequest(store.get(this.sessionId));
-
-      if (session) {
-        session.endedAt = Date.now();
-        await this.promisifyRequest(store.put(session));
-      }
+      await this.logStore.endSession(this.sessionId);
     } catch (err) {
       console.warn('DebugLogger: Failed to end session', err);
     }
@@ -333,7 +289,7 @@ export class DebugLogger {
    * Write a log entry to IndexedDB
    */
   async writeLog(type, chunkIndex, data) {
-    if (!this.db || !this.sessionId) return;
+    if (!this.logStore.isReady() || !this.sessionId) return;
 
     const entry = {
       sessionId: this.sessionId,
@@ -344,18 +300,7 @@ export class DebugLogger {
     };
 
     try {
-      const tx = this.db.transaction(['logs', 'sessions'], 'readwrite');
-
-      // Add log entry
-      await this.promisifyRequest(tx.objectStore('logs').add(entry));
-
-      // Update session log count
-      const sessionsStore = tx.objectStore('sessions');
-      const session = await this.promisifyRequest(sessionsStore.get(this.sessionId));
-      if (session) {
-        session.logCount = (session.logCount || 0) + 1;
-        await this.promisifyRequest(sessionsStore.put(session));
-      }
+      await this.logStore.addLog(entry);
     } catch (err) {
       console.warn('DebugLogger: Failed to write log', err);
     }
@@ -367,30 +312,25 @@ export class DebugLogger {
    * Export a session's logs as JSON
    */
   async exportSession(sessionId) {
-    if (!this.db) return null;
+    if (!this.logStore.isReady()) return null;
 
     try {
-      const tx = this.db.transaction(['sessions', 'logs'], 'readonly');
-
       // Get session metadata
-      const session = await this.promisifyRequest(
-        tx.objectStore('sessions').get(sessionId)
-      );
+      const session = await this.logStore.getSession(sessionId);
 
       if (!session) {
         console.warn('DebugLogger: Session not found', sessionId);
         return null;
       }
 
-      // Get all logs for this session
-      const logsIndex = tx.objectStore('logs').index('sessionId');
-      const logs = await this.promisifyRequest(logsIndex.getAll(sessionId));
+      // Get all logs for this session (already sorted by timestamp)
+      const logs = await this.logStore.getLogsBySession(sessionId);
 
       const exportData = {
         exportedAt: new Date().toISOString(),
         session,
         logCount: logs.length,
-        logs: logs.sort((a, b) => a.timestamp - b.timestamp),
+        logs,
       };
 
       // Trigger download
@@ -418,12 +358,10 @@ export class DebugLogger {
    * Get list of all sessions
    */
   async getSessions() {
-    if (!this.db) return [];
+    if (!this.logStore.isReady()) return [];
 
     try {
-      const tx = this.db.transaction('sessions', 'readonly');
-      const sessions = await this.promisifyRequest(tx.objectStore('sessions').getAll());
-      return sessions.sort((a, b) => b.startedAt - a.startedAt);
+      return await this.logStore.getAllSessions();
     } catch (err) {
       console.warn('DebugLogger: Failed to get sessions', err);
       return [];
@@ -433,49 +371,13 @@ export class DebugLogger {
   // ==================== Cleanup Methods ====================
 
   /**
-   * Keep only the most recent N sessions
-   */
-  async cleanupOldSessions() {
-    if (!this.db) return;
-
-    try {
-      const sessions = await this.getSessions();
-
-      if (sessions.length <= this.config.maxSessions) return;
-
-      // Sessions to delete (oldest ones beyond maxSessions)
-      const toDelete = sessions.slice(this.config.maxSessions);
-
-      for (const session of toDelete) {
-        await this.deleteSession(session.sessionId);
-      }
-
-      console.log(`DebugLogger: Cleaned up ${toDelete.length} old sessions`);
-    } catch (err) {
-      console.warn('DebugLogger: Failed to cleanup sessions', err);
-    }
-  }
-
-  /**
    * Delete a specific session and its logs
    */
   async deleteSession(sessionId) {
-    if (!this.db) return;
+    if (!this.logStore.isReady()) return;
 
     try {
-      const tx = this.db.transaction(['sessions', 'logs'], 'readwrite');
-
-      // Delete session
-      await this.promisifyRequest(tx.objectStore('sessions').delete(sessionId));
-
-      // Delete all logs for this session
-      const logsStore = tx.objectStore('logs');
-      const logsIndex = logsStore.index('sessionId');
-      const logs = await this.promisifyRequest(logsIndex.getAllKeys(sessionId));
-
-      for (const key of logs) {
-        await this.promisifyRequest(logsStore.delete(key));
-      }
+      await this.logStore.deleteSession(sessionId);
     } catch (err) {
       console.warn('DebugLogger: Failed to delete session', err);
     }
@@ -485,28 +387,14 @@ export class DebugLogger {
    * Clear all logs and sessions
    */
   async clearAllLogs() {
-    if (!this.db) return;
+    if (!this.logStore.isReady()) return;
 
     try {
-      const tx = this.db.transaction(['sessions', 'logs'], 'readwrite');
-      await this.promisifyRequest(tx.objectStore('sessions').clear());
-      await this.promisifyRequest(tx.objectStore('logs').clear());
+      await this.logStore.clearAll();
       this.notifyStatusChange();
     } catch (err) {
       console.warn('DebugLogger: Failed to clear logs', err);
     }
-  }
-
-  // ==================== Utility Methods ====================
-
-  /**
-   * Convert IDBRequest to Promise
-   */
-  promisifyRequest(request) {
-    return new Promise((resolve, reject) => {
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
   }
 
   /**

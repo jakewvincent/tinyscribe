@@ -18,6 +18,9 @@ import { ConversationInference } from './core/inference/index.js';
 // Enrollment manager (still in utils/ for now)
 import { EnrollmentManager } from './utils/enrollmentManager.js';
 
+// Storage layer
+import { PreferencesStore } from './storage/index.js';
+
 // Core modules (pure logic, no browser dependencies)
 import { OverlapMerger, TranscriptMerger } from './core/transcription/index.js';
 import { AudioValidator } from './core/validation/index.js';
@@ -222,14 +225,14 @@ export class App {
       }
 
       // Restore saved selection if any
-      const savedDeviceId = localStorage.getItem('selected-mic-device');
+      const savedDeviceId = PreferencesStore.getSelectedMicDevice();
       if (savedDeviceId) {
         this.micSelect.value = savedDeviceId;
       }
 
       // Save selection on change
       this.micSelect.addEventListener('change', () => {
-        localStorage.setItem('selected-mic-device', this.micSelect.value);
+        PreferencesStore.setSelectedMicDevice(this.micSelect.value);
       });
     } catch (error) {
       console.error('Failed to populate microphone list:', error);
@@ -237,26 +240,17 @@ export class App {
   }
 
   /**
-   * Load panel collapse states from localStorage
+   * Load panel collapse states from storage
    */
   loadPanelStates() {
-    try {
-      const saved = localStorage.getItem('panel-states');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
+    return PreferencesStore.getPanelStates();
   }
 
   /**
-   * Save panel collapse states to localStorage
+   * Save panel collapse states to storage
    */
   savePanelStates() {
-    try {
-      localStorage.setItem('panel-states', JSON.stringify(this.panelStates));
-    } catch {
-      // Ignore storage errors
-    }
+    PreferencesStore.setPanelStates(this.panelStates);
   }
 
   /**
@@ -273,7 +267,7 @@ export class App {
 
       if (!content || !panelId) return;
 
-      // Get initial state from localStorage or default
+      // Get initial state from storage or default
       const defaultExpanded = panel.dataset.defaultExpanded === 'true';
       const isExpanded = this.panelStates[panelId] ?? defaultExpanded;
 
@@ -1910,7 +1904,7 @@ export class App {
   }
 
   /**
-   * Load saved enrollments from localStorage
+   * Load saved enrollments from storage
    */
   loadSavedEnrollments() {
     const enrollments = EnrollmentManager.loadAll();
@@ -2175,7 +2169,7 @@ export class App {
     const name = this.enrollmentManager.getName();
     const rejectedCount = this.enrollmentManager.getRejectedCount();
 
-    // Save to localStorage and get the created enrollment
+    // Save to storage and get the created enrollment
     const newEnrollment = EnrollmentManager.addEnrollment(name, avgEmbedding);
 
     // Import into speaker clusterer
@@ -2261,7 +2255,7 @@ export class App {
    * Remove a specific enrollment
    */
   removeEnrollment(enrollmentId) {
-    // Remove from localStorage
+    // Remove from storage
     const remaining = EnrollmentManager.removeEnrollment(enrollmentId);
 
     // Remove from speaker clusterer
@@ -2939,7 +2933,7 @@ export class App {
     const name = this.enrollmentManager.getName();
     const rejectedCount = this.enrollmentManager.getRejectedCount();
 
-    // Save to localStorage
+    // Save to storage
     const newEnrollment = EnrollmentManager.addEnrollment(name, avgEmbedding);
 
     // Import into speaker clusterer

@@ -6,6 +6,7 @@
 
 import { l2Normalize, l2NormalizeCopy, cosineSimilarity } from '../core/embedding/embeddingUtils.js';
 import { ENROLLMENT_DEFAULTS, RAINBOW_PASSAGES } from '../config/index.js';
+import { EnrollmentStore } from '../storage/index.js';
 
 export class EnrollmentManager {
   /**
@@ -13,8 +14,6 @@ export class EnrollmentManager {
    * @param {string[]} [options.passages] - Custom passages for enrollment
    * @param {number} [options.minSamplesRequired] - Minimum samples to complete
    * @param {number} [options.outlierThreshold] - Similarity threshold for outlier detection
-   * @param {string} [options.storageKey] - localStorage key for saving
-   * @param {string} [options.legacyStorageKey] - Old key for migration
    */
   constructor(options = {}) {
     // Apply defaults from config
@@ -24,8 +23,6 @@ export class EnrollmentManager {
     this.passages = options.passages || RAINBOW_PASSAGES;
     this.minSamplesRequired = config.minSamplesRequired;
     this.outlierThreshold = config.outlierThreshold;
-    this.storageKey = config.storageKey;
-    this.legacyStorageKey = config.legacyStorageKey;
 
     // Samples indexed by passage group (allows re-recording)
     // null = not recorded, Float32Array = recorded
@@ -286,65 +283,30 @@ export class EnrollmentManager {
     this.usedFallback = false;
   }
 
-  // ==================== Static localStorage methods (multi-enrollment) ====================
-
-  /**
-   * Get the storage key (uses default from config)
-   */
-  static get STORAGE_KEY() {
-    return ENROLLMENT_DEFAULTS.storageKey;
-  }
-
-  /**
-   * Get the legacy storage key (uses default from config)
-   */
-  static get LEGACY_STORAGE_KEY() {
-    return ENROLLMENT_DEFAULTS.legacyStorageKey;
-  }
+  // ==================== Static storage methods (delegates to EnrollmentStore) ====================
 
   /**
    * Migrate old single enrollment to new multi-enrollment format
    * Call this once on app startup
    */
   static migrateFromSingle() {
-    const oldData = localStorage.getItem(this.LEGACY_STORAGE_KEY);
-    if (oldData && !localStorage.getItem(this.STORAGE_KEY)) {
-      try {
-        const parsed = JSON.parse(oldData);
-        const migrated = [{
-          ...parsed,
-          id: Date.now().toString(),
-          colorIndex: 0,
-        }];
-        this.saveAll(migrated);
-        localStorage.removeItem(this.LEGACY_STORAGE_KEY);
-        console.log('Migrated single enrollment to multi-enrollment format');
-      } catch (e) {
-        console.error('Failed to migrate enrollment:', e);
-      }
-    }
+    return EnrollmentStore.migrateFromLegacy();
   }
 
   /**
-   * Save all enrollments to localStorage
+   * Save all enrollments
    * @param {Array} enrollments - Array of {id, name, centroid, timestamp, colorIndex}
    */
   static saveAll(enrollments) {
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(enrollments));
+    EnrollmentStore.saveAll(enrollments);
   }
 
   /**
-   * Load all enrollments from localStorage
+   * Load all enrollments
    * @returns {Array} Array of enrollments or empty array
    */
   static loadAll() {
-    try {
-      const data = localStorage.getItem(this.STORAGE_KEY);
-      return data ? JSON.parse(data) : [];
-    } catch (e) {
-      console.error('Failed to load enrollments:', e);
-      return [];
-    }
+    return EnrollmentStore.getAll();
   }
 
   /**
@@ -354,17 +316,7 @@ export class EnrollmentManager {
    * @returns {Object} The created enrollment
    */
   static addEnrollment(name, embedding) {
-    const enrollments = this.loadAll();
-    const newEnrollment = {
-      id: Date.now().toString(),
-      name,
-      centroid: Array.from(embedding),
-      timestamp: Date.now(),
-      colorIndex: enrollments.length % 6, // Cycle through 6 speaker colors
-    };
-    enrollments.push(newEnrollment);
-    this.saveAll(enrollments);
-    return newEnrollment;
+    return EnrollmentStore.add(name, embedding);
   }
 
   /**
@@ -373,13 +325,7 @@ export class EnrollmentManager {
    * @returns {Array} Updated enrollments array
    */
   static removeEnrollment(id) {
-    const enrollments = this.loadAll().filter((e) => e.id !== id);
-    // Reassign color indices to keep them sequential
-    enrollments.forEach((e, i) => {
-      e.colorIndex = i % 6;
-    });
-    this.saveAll(enrollments);
-    return enrollments;
+    return EnrollmentStore.remove(id);
   }
 
   /**
@@ -387,14 +333,14 @@ export class EnrollmentManager {
    * @returns {number}
    */
   static getEnrollmentCount() {
-    return this.loadAll().length;
+    return EnrollmentStore.count();
   }
 
   /**
-   * Clear all enrollments from localStorage
+   * Clear all enrollments
    */
   static clearAll() {
-    localStorage.removeItem(this.STORAGE_KEY);
+    EnrollmentStore.clear();
   }
 
   /**
@@ -402,7 +348,7 @@ export class EnrollmentManager {
    * @returns {boolean}
    */
   static hasEnrollments() {
-    return this.loadAll().length > 0;
+    return EnrollmentStore.hasEnrollments();
   }
 
   // Legacy methods for backward compatibility
