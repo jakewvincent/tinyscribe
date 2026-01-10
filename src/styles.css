@@ -71,6 +71,18 @@ body {
   display: none !important;
 }
 
+/* Tabler Icons - global alignment fix
+ * Icon fonts often have glyphs that aren't centered in their em square.
+ * Making the icon element a flex container centers the glyph properly.
+ * See: https://github.com/tabler/tabler-icons/issues/57
+ */
+.ti {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
 /* ==================== TOPBAR ==================== */
 #topbar {
   display: flex;
@@ -1642,6 +1654,9 @@ details[open] .expand-icon {
 }
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
   padding: 0.5rem 1rem;
   border: none;
   border-radius: var(--radius-md);
@@ -1691,21 +1706,18 @@ details[open] .expand-icon {
 }
 
 .btn.small {
+  gap: 0.25em;
   padding: 0.3rem 0.6rem;
   font-size: 0.75rem;
 }
 
 /* Tabler icon alignment in buttons */
 .btn i.ti {
-  vertical-align: middle;
-  margin-right: 0.3em;
   font-size: 1.1em;
-  line-height: 1;
 }
 
 .btn.small i.ti {
   font-size: 1em;
-  margin-right: 0.25em;
 }
 
 .btn:not(.primary):not(.secondary) {
