@@ -419,16 +419,18 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
-    // Toggle playback (future)
+    // Toggle playback
     togglePlay() {
-      // Will dispatch play/pause events when audioPlayback is implemented
-      this.isPlaying = !this.isPlaying;
+      window.dispatchEvent(new CustomEvent('playback-toggle'));
     },
 
-    // Toggle enrollment source (future)
-    toggleEnrollmentSource() {
-      this.enrollmentSource = this.enrollmentSource === 'snapshot' ? 'current' : 'snapshot';
-      // Will dispatch event to re-cluster with new enrollments
+    // Set enrollment source and trigger re-clustering
+    setEnrollmentSource(source) {
+      if (source === this.enrollmentSource) return;
+      this.enrollmentSource = source;
+      window.dispatchEvent(new CustomEvent('enrollment-source-change', {
+        detail: { source },
+      }));
     },
   }));
 });

@@ -282,6 +282,19 @@
                 </div>
                 <span class="playback-time" x-text="formatDuration(playbackTime) + ' / ' + formatDuration(playbackDuration)"></span>
               </div>
+
+              <!-- Enrollment source toggle -->
+              <div class="enrollment-toggle">
+                <span class="toggle-label">Enrollments:</span>
+                <button class="toggle-btn"
+                        :class="{ 'active': enrollmentSource === 'snapshot' }"
+                        @click="setEnrollmentSource('snapshot')"
+                        title="Use enrollments from when recording was made">Snapshot</button>
+                <button class="toggle-btn"
+                        :class="{ 'active': enrollmentSource === 'current' }"
+                        @click="setEnrollmentSource('current')"
+                        title="Re-identify speakers with current enrollments">Current</button>
+              </div>
             </div>
           </div>
         </div>

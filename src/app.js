@@ -4,7 +4,7 @@
  */
 
 // Audio layer (browser audio APIs)
-import { AudioCapture, VADProcessor } from './audio/index.js';
+import { AudioCapture, VADProcessor, AudioPlayback } from './audio/index.js';
 
 // UI components
 import { SpeakerVisualizer, ParticipantsPanel, DebugPanel, ResizeDividers } from './ui/index.js';
@@ -297,6 +297,13 @@ export class App {
     window.addEventListener('recording-delete', (e) => this.deleteRecording(e.detail.id));
     window.addEventListener('recording-rename', (e) => this.renameRecording(e.detail.id, e.detail.name));
     window.addEventListener('recording-return-to-live', () => this.returnToLive());
+
+    // Playback control events
+    window.addEventListener('playback-toggle', () => this.togglePlayback());
+    window.addEventListener('playback-seek', (e) => this.seekPlayback(e.detail.time));
+
+    // Enrollment source toggle
+    window.addEventListener('enrollment-source-change', (e) => this.handleEnrollmentSourceChange(e.detail.source));
   }
 
   /**
@@ -2103,7 +2110,24 @@ export class App {
 
       // Initialize audio playback with deserialized chunks
       const audioChunks = deserializeChunks(chunks);
-      // Note: audioPlayback will be implemented separately
+
+      // Clean up previous playback if any
+      if (this.audioPlayback) {
+        this.audioPlayback.destroy();
+      }
+
+      // Create new playback instance
+      this.audioPlayback = new AudioPlayback({
+        onProgress: (progress) => {
+          window.dispatchEvent(new CustomEvent('playback-progress', { detail: progress }));
+        },
+        onEnded: () => {
+          console.log('[Recording] Playback ended');
+        },
+      });
+
+      // Load audio chunks
+      await this.audioPlayback.load(audioChunks);
 
       // Notify Alpine
       window.dispatchEvent(new CustomEvent('recording-loaded', {
@@ -2135,7 +2159,12 @@ export class App {
 
     this.isViewingRecording = false;
     this.viewedRecordingId = null;
-    this.audioPlayback = null;
+
+    // Clean up audio playback
+    if (this.audioPlayback) {
+      this.audioPlayback.destroy();
+      this.audioPlayback = null;
+    }
 
     // Clear display
     this.clearTranscriptDisplay();
@@ -2145,6 +2174,79 @@ export class App {
 
     this.recordingStatus.textContent = 'Ready';
     this.updateStatusBar('ready');
+  }
+
+  /**
+   * Toggle playback (play/pause)
+   */
+  togglePlayback() {
+    if (!this.audioPlayback || !this.isViewingRecording) return;
+    this.audioPlayback.toggle();
+  }
+
+  /**
+   * Seek playback to a specific time
+   * @param {number} time - Time in seconds
+   */
+  seekPlayback(time) {
+    if (!this.audioPlayback || !this.isViewingRecording) return;
+    this.audioPlayback.seek(time);
+  }
+
+  /**
+   * Handle enrollment source change (snapshot vs current)
+   * Re-clusters segments with the selected enrollment set
+   * @param {string} source - 'snapshot' or 'current'
+   */
+  async handleEnrollmentSourceChange(source) {
+    if (!this.isViewingRecording || !this.viewedRecordingId) return;
+
+    try {
+      // Get the recording data
+      const data = await this.recordingStore.getWithChunks(this.viewedRecordingId);
+      if (!data) return;
+
+      const { recording } = data;
+
+      // Get the appropriate enrollments
+      const enrollments = source === 'snapshot'
+        ? recording.enrollmentsSnapshot
+        : EnrollmentManager.loadAll();
+
+      // Re-cluster segments with embeddings
+      const clusterer = this.transcriptMerger.speakerClusterer;
+
+      // Reset clusterer and seed with selected enrollments
+      clusterer.reset();
+      if (enrollments && enrollments.length > 0) {
+        clusterer.seedFromEnrollments(enrollments);
+      }
+
+      // Re-assign speakers to segments with embeddings
+      for (const segment of recording.segments) {
+        if (segment.embedding && !segment.isEnvironmental) {
+          const embedding = new Float32Array(segment.embedding);
+          const result = clusterer.assignSpeaker(embedding);
+
+          segment.speaker = result.speakerId;
+          segment.speakerLabel = result.speakerLabel;
+          segment.isEnrolledSpeaker = result.isEnrolled;
+          segment.speakerName = result.enrolledName || null;
+        }
+      }
+
+      // Clear and re-render transcript
+      this.clearTranscriptDisplay();
+      for (const segment of recording.segments) {
+        this.renderSegment(segment);
+      }
+
+      const sourceLabel = source === 'snapshot' ? 'snapshot' : 'current';
+      console.log(`[Recording] Re-clustered with ${sourceLabel} enrollments`);
+      this.recordingStatus.textContent = `Viewing: ${recording.name} (${sourceLabel} enrollments)`;
+    } catch (error) {
+      console.error('[Recording] Failed to re-cluster:', error);
+    }
   }
 
   /**
