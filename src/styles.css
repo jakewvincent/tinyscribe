@@ -410,6 +410,7 @@ body.resizing * {
 }
 
 .transcript-segment {
+  position: relative;
   margin-bottom: 0.75rem;
   padding: 0.75rem;
   border-radius: var(--radius-md);
@@ -579,59 +580,107 @@ body.resizing * {
   color: #ca8a04;
 }
 
-/* Feature 1: Similarity Breakdown Bar */
-.similarity-breakdown {
-  margin-top: 0.35rem;
-  font-size: 0.7rem;
-}
-
-.similarity-bar {
+/* Feature 1: Two-Column Segment Layout */
+.segment-content-wrapper {
   display: flex;
-  height: 6px;
-  background: var(--border-color);
-  border-radius: 3px;
-  overflow: hidden;
-  gap: 2px;
+  gap: 1rem;
+  align-items: flex-start;
 }
 
-.bar-segment {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.3s ease;
-  min-width: 4px;
+.segment-main {
+  flex: 1;
+  min-width: 200px;
 }
 
-.bar-segment.enrolled {
-  background: var(--speaker-0);
-}
-
-.bar-segment.enrolled:nth-child(2) {
-  background: var(--speaker-1);
-}
-
-.bar-segment.enrolled:nth-child(3) {
-  background: var(--speaker-2);
-}
-
-.bar-segment.enrolled:nth-child(4) {
-  background: var(--speaker-3);
-}
-
-.bar-segment.discovered {
-  background: #9ca3af;
-}
-
-.similarity-labels {
+/* Candidates Panel - Right Column */
+.candidates-panel {
   display: flex;
-  gap: 0.75rem;
-  margin-top: 0.2rem;
-  flex-wrap: wrap;
-}
-
-.similarity-label {
-  color: var(--text-muted);
-  font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
   font-size: 0.65rem;
+  width: 220px;
+  flex-shrink: 0;
+}
+
+/* Each candidate row */
+.candidate-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+}
+
+.candidate-bar-row.hidden-candidate {
+  display: none;
+}
+
+.candidates-panel.expanded .candidate-bar-row.hidden-candidate {
+  display: flex;
+}
+
+/* Container that makes bar grow from right */
+.candidate-bar-container {
+  width: 90px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* The actual bar with pct inside */
+.candidate-bar {
+  height: 16px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+}
+
+/* Speaker colors via data attribute */
+.candidate-bar-row[data-speaker-idx="0"] .candidate-bar { background: var(--speaker-0); }
+.candidate-bar-row[data-speaker-idx="1"] .candidate-bar { background: var(--speaker-1); }
+.candidate-bar-row[data-speaker-idx="2"] .candidate-bar { background: var(--speaker-2); }
+.candidate-bar-row[data-speaker-idx="3"] .candidate-bar { background: var(--speaker-3); }
+.candidate-bar-row[data-speaker-idx="4"] .candidate-bar { background: var(--speaker-4); }
+.candidate-bar-row[data-speaker-idx="5"] .candidate-bar { background: var(--speaker-5); }
+.candidate-bar-row.discovered .candidate-bar { background: #9ca3af; }
+
+/* Percentage text inside bar */
+.candidate-pct {
+  color: white;
+  font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+  font-size: 0.55rem;
+  font-weight: 600;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+}
+
+/* Speaker name - no truncation */
+.candidate-bar-row .candidate-name {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Fixed-width area for boost tag alignment (left of bar) */
+.candidate-boost-area {
+  width: 50px;
+  text-align: right;
+}
+
+.candidates-toggle {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.6rem;
+  cursor: pointer;
+  padding: 0.25rem 0.4rem;
+  border-radius: 3px;
+  margin-top: 0.2rem;
+  width: 100%;
+  text-align: right;
+}
+
+.candidates-toggle:hover {
+  background: rgba(0, 0, 0, 0.04);
 }
 
 /* Feature 2: Enhanced Boost Indicator */
@@ -661,87 +710,6 @@ body.resizing * {
 .boost-original {
   color: var(--text-muted);
   font-family: 'SF Mono', Monaco, 'Consolas', monospace;
-}
-
-/* Feature 4: Expandable Candidates List */
-.candidates-expand {
-  margin-top: 0.5rem;
-}
-
-.candidates-summary {
-  cursor: pointer;
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.15rem 0.3rem;
-  border-radius: 3px;
-  transition: background 0.15s;
-}
-
-.candidates-summary:hover {
-  background: rgba(0, 0, 0, 0.04);
-}
-
-.candidates-summary::-webkit-details-marker {
-  display: none;
-}
-
-.expand-icon {
-  font-weight: bold;
-  font-size: 0.75rem;
-  transition: transform 0.2s;
-  color: var(--text-muted);
-}
-
-details[open] .expand-icon {
-  transform: rotate(45deg);
-}
-
-.candidates-list {
-  margin-top: 0.4rem;
-  padding: 0.5rem;
-  background: rgba(0, 0, 0, 0.02);
-  border-radius: 4px;
-  font-size: 0.7rem;
-  border: 1px solid var(--border-color);
-}
-
-.candidate-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.3rem 0.25rem;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.candidate-row:last-child {
-  border-bottom: none;
-}
-
-.candidate-row.best-match {
-  font-weight: 600;
-  background: rgba(16, 185, 129, 0.06);
-  margin: -0.3rem -0.25rem 0.3rem -0.25rem;
-  padding: 0.3rem 0.25rem;
-  border-radius: 3px;
-  border-bottom: none;
-}
-
-.candidate-rank {
-  color: var(--text-muted);
-  min-width: 20px;
-  font-family: 'SF Mono', Monaco, 'Consolas', monospace;
-}
-
-.candidate-name {
-  flex-grow: 1;
-}
-
-.candidate-sim {
-  font-family: 'SF Mono', Monaco, 'Consolas', monospace;
-  color: var(--text-muted);
 }
 
 .enrolled-tag,

@@ -1114,7 +1114,6 @@ export class App {
 
       // Build attribution debug elements (only for non-environmental speech)
       let reasonBadgeHtml = '';
-      let similarityBarHtml = '';
       let boostHtml = '';
       let candidatesHtml = '';
 
@@ -1126,62 +1125,52 @@ export class App {
           reasonBadgeHtml = `<span class="reason-badge ${badge.cssClass}" title="${reason.replace(/_/g, ' ')}">${badge.label}</span>`;
         }
 
-        // Feature 1: Similarity breakdown bar
+        // Feature 1: Similarity breakdown - vertical right-aligned bars
         const allSimilarities = clustering.allSimilarities;
         if (allSimilarities && allSimilarities.length > 0) {
           const sorted = [...allSimilarities].sort((a, b) => b.similarity - a.similarity);
-          const topCandidates = sorted.slice(0, ATTRIBUTION_UI_DEFAULTS.maxCandidatesToShow);
+          const boostedMatches = inference?.boostedAttribution?.debug?.allMatches || [];
+          const visibleCount = 3; // Show top 3 by default
+          const hasMore = sorted.length > visibleCount;
 
-          // Build bar segments
-          const barSegments = topCandidates.map((c, i) => {
-            const widthPct = (c.similarity * 100).toFixed(0);
+          // Build candidate bar rows
+          const buildCandidateRow = (c, i, isVisible) => {
+            const pct = (c.similarity * 100).toFixed(0);
+            // Use actual speaker index if available, fall back to position for old recordings
+            const colorIdx = c.speakerIdx ?? i;
             const enrolledClass = c.enrolled ? 'enrolled' : 'discovered';
-            const speakerIdx = i % 6;
-            return `<div class="bar-segment ${enrolledClass}" style="width: ${widthPct}%; --speaker-idx: ${speakerIdx}" title="${c.speaker}: ${(c.similarity * 100).toFixed(1)}%"></div>`;
-          }).join('');
+            const boostedInfo = boostedMatches.find(m => m.speakerName === c.speaker);
+            const boostTag = boostedInfo?.wasBoosted ? '<span class="boost-tag">+BOOST</span>' : '';
+            const visibilityClass = isVisible ? '' : 'hidden-candidate';
 
-          // Build labels
-          const labels = topCandidates.slice(0, 3).map(c => {
-            const name = c.speaker.length > 10 ? c.speaker.substring(0, 10) + '...' : c.speaker;
-            return `<span class="similarity-label">${name}: ${(c.similarity * 100).toFixed(0)}%</span>`;
-          }).join('');
+            return `
+              <div class="candidate-bar-row ${enrolledClass} ${visibilityClass}" data-speaker-idx="${colorIdx % 6}">
+                <span class="candidate-boost-area">${boostTag}</span>
+                <div class="candidate-bar-container">
+                  <span class="candidate-bar" style="width: ${pct}%">
+                    <span class="candidate-pct">${pct}%</span>
+                  </span>
+                </div>
+                <span class="candidate-name">${c.speaker}</span>
+              </div>
+            `;
+          };
 
-          similarityBarHtml = `
-            <div class="similarity-breakdown">
-              <div class="similarity-bar">${barSegments}</div>
-              <div class="similarity-labels">${labels}</div>
+          const candidateRows = sorted.map((c, i) => buildCandidateRow(c, i, i < visibleCount)).join('');
+
+          // Build toggle button if there are more candidates
+          const toggleHtml = hasMore ? `
+            <button class="candidates-toggle" onclick="this.closest('.candidates-panel').classList.toggle('expanded'); this.textContent = this.closest('.candidates-panel').classList.contains('expanded') ? 'Show less' : 'See all ${sorted.length}'">
+              See all ${sorted.length}
+            </button>
+          ` : '';
+
+          candidatesHtml = `
+            <div class="candidates-panel">
+              ${candidateRows}
+              ${toggleHtml}
             </div>
           `;
-
-          // Feature 4: Expandable candidates list
-          if (sorted.length > 1) {
-            const boostedMatches = inference?.boostedAttribution?.debug?.allMatches || [];
-            const candidateRows = sorted.map((c, i) => {
-              const boostedInfo = boostedMatches.find(m => m.speakerName === c.speaker);
-              const wasBoosted = boostedInfo?.wasBoosted;
-              const enrolledTag = c.enrolled ? '<span class="enrolled-tag">enrolled</span>' : '';
-              const boostTag = wasBoosted ? '<span class="boost-tag">+boost</span>' : '';
-              const bestClass = i === 0 ? 'best-match' : '';
-              return `
-                <div class="candidate-row ${bestClass}">
-                  <span class="candidate-rank">#${i + 1}</span>
-                  <span class="candidate-name">${c.speaker}</span>
-                  ${enrolledTag}
-                  <span class="candidate-sim">${(c.similarity * 100).toFixed(1)}%</span>
-                  ${boostTag}
-                </div>
-              `;
-            }).join('');
-
-            candidatesHtml = `
-              <details class="candidates-expand">
-                <summary class="candidates-summary">
-                  <span class="expand-icon">+</span> ${sorted.length} candidates
-                </summary>
-                <div class="candidates-list">${candidateRows}</div>
-              </details>
-            `;
-          }
         }
 
         // Feature 2: Enhanced boost indicator with delta
@@ -1239,8 +1228,6 @@ export class App {
             <span class="speaker-name">${label}</span>${alternateHtml}${reasonBadgeHtml}${boostHtml}
             <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
           </div>
-          ${similarityBarHtml}
-          ${candidatesHtml}
         `;
       } else {
         // Regular speaker segment
@@ -1255,13 +1242,24 @@ export class App {
             <span class="speaker-name">${label}</span>${alternateHtml}${reasonBadgeHtml}${boostHtml}
             <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
           </div>
-          ${similarityBarHtml}
-          ${candidatesHtml}
         `;
       }
 
-      segmentEl.appendChild(labelEl);
-      segmentEl.appendChild(textEl);
+      // Build two-column layout: main content (left) + candidates panel (right)
+      const mainDiv = document.createElement('div');
+      mainDiv.className = 'segment-main';
+      mainDiv.appendChild(labelEl);
+      mainDiv.appendChild(textEl);
+
+      if (candidatesHtml) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'segment-content-wrapper';
+        wrapper.appendChild(mainDiv);
+        wrapper.insertAdjacentHTML('beforeend', candidatesHtml);
+        segmentEl.appendChild(wrapper);
+      } else {
+        segmentEl.appendChild(mainDiv);
+      }
 
       // Feature 7: Add click handler for comparison mode
       segmentEl.addEventListener('click', () => {

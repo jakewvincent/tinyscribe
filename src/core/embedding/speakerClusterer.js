@@ -146,6 +146,7 @@ export class SpeakerClusterer {
     // Build debug info with ALL speaker similarities
     const allSimilarities = this.speakers.map((s, i) => ({
       speaker: s.name || `Speaker ${i + 1}`,
+      speakerIdx: i,
       similarity: cosineSimilarity(embedding, s.centroid),
       enrolled: s.enrolled || false,
     }));
