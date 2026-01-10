@@ -37,7 +37,7 @@ document.addEventListener('alpine:init', () => {
    * Extends panel with model loading state tracking
    */
   Alpine.data('modelStatusPanel', () => ({
-    expanded: Alpine.$persist(false).as('panel-model-status'),
+    expanded: false, // Always start collapsed (no persistence)
     status: 'idle', // 'idle' | 'loading' | 'ready' | 'error'
 
     toggle() {
