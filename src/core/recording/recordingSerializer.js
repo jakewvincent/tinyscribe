@@ -52,12 +52,54 @@ export function deserializeChunks(chunks) {
 }
 
 /**
+ * Serialize transcription data for storage
+ * Contains raw Whisper output per chunk (words, timestamps, merge info, debug timing)
+ * @param {Object[]} transcriptionData - Array of per-chunk transcription data
+ * @returns {Object[]} Serialized transcription data (currently passthrough, future-proofs for type changes)
+ */
+export function serializeTranscriptionData(transcriptionData) {
+  if (!transcriptionData || transcriptionData.length === 0) {
+    return [];
+  }
+  return transcriptionData.map((chunk) => ({
+    chunkIndex: chunk.chunkIndex,
+    rawAsr: chunk.rawAsr,
+    overlapDuration: chunk.overlapDuration,
+    mergeInfo: chunk.mergeInfo,
+    debug: chunk.debug,
+    globalStartTime: chunk.globalStartTime,
+    timestamp: chunk.timestamp,
+  }));
+}
+
+/**
+ * Deserialize transcription data from storage
+ * @param {Object[]} transcriptionData - Array of serialized transcription data
+ * @returns {Object[]} Deserialized transcription data
+ */
+export function deserializeTranscriptionData(transcriptionData) {
+  if (!transcriptionData || transcriptionData.length === 0) {
+    return [];
+  }
+  return transcriptionData.map((chunk) => ({
+    chunkIndex: chunk.chunkIndex,
+    rawAsr: chunk.rawAsr,
+    overlapDuration: chunk.overlapDuration,
+    mergeInfo: chunk.mergeInfo,
+    debug: chunk.debug,
+    globalStartTime: chunk.globalStartTime,
+    timestamp: chunk.timestamp,
+  }));
+}
+
+/**
  * Calculate approximate storage size for a recording
  * @param {Object[]} segments - Transcript segments
  * @param {Object[]} chunks - Audio chunks (with Float32Array or Array audio)
+ * @param {Object[]} [transcriptionData] - Optional transcription data per chunk
  * @returns {number} Approximate size in bytes
  */
-export function calculateStorageSize(segments, chunks) {
+export function calculateStorageSize(segments, chunks, transcriptionData) {
   // Estimate segments size (JSON overhead)
   const segmentsJson = JSON.stringify(segments);
   const segmentsSize = new Blob([segmentsJson]).size;
@@ -68,8 +110,15 @@ export function calculateStorageSize(segments, chunks) {
     return total + audioLength * 4;
   }, 0);
 
+  // Transcription data size (JSON)
+  let transcriptionSize = 0;
+  if (transcriptionData && transcriptionData.length > 0) {
+    const transcriptionJson = JSON.stringify(transcriptionData);
+    transcriptionSize = new Blob([transcriptionJson]).size;
+  }
+
   // Add ~20% overhead for IndexedDB storage
-  return Math.round((segmentsSize + audioSize) * 1.2);
+  return Math.round((segmentsSize + audioSize + transcriptionSize) * 1.2);
 }
 
 /**

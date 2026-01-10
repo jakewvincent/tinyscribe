@@ -8,6 +8,8 @@ export {
   deserializeAudio,
   serializeChunks,
   deserializeChunks,
+  serializeTranscriptionData,
+  deserializeTranscriptionData,
   calculateStorageSize,
   generateRecordingName,
   generateRecordingId,

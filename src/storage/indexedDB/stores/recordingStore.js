@@ -26,6 +26,7 @@ const config = INDEXED_DB_CONFIG.RECORDINGS;
  * @typedef {Object} RecordingChunks
  * @property {string} recordingId - Foreign key to recording
  * @property {Object[]} chunks - Array of audio chunks with serialized audio
+ * @property {Object[]} [transcriptionData] - Per-chunk raw Whisper output (words, merge info, debug)
  */
 
 export class RecordingStore {
@@ -69,19 +70,21 @@ export class RecordingStore {
   // ==================== Recording Methods ====================
 
   /**
-   * Save a recording with its audio chunks
+   * Save a recording with its audio chunks and transcription data
    * @param {RecordingMetadata} recording - Recording metadata
    * @param {Object[]} chunks - Audio chunks (with serialized audio arrays)
+   * @param {Object[]} [transcriptionData] - Per-chunk raw Whisper output
    * @returns {Promise<string>} The recording ID
    */
-  async save(recording, chunks) {
+  async save(recording, chunks, transcriptionData = []) {
     // Save metadata
     await this.adapter.put(config.stores.RECORDINGS, recording);
 
-    // Save chunks separately
+    // Save chunks and transcription data separately
     await this.adapter.put(config.stores.CHUNKS, {
       recordingId: recording.id,
       chunks: chunks,
+      transcriptionData: transcriptionData,
     });
 
     return recording.id;
@@ -97,9 +100,9 @@ export class RecordingStore {
   }
 
   /**
-   * Get recording with audio chunks
+   * Get recording with audio chunks and transcription data
    * @param {string} id
-   * @returns {Promise<{recording: RecordingMetadata, chunks: Object[]}|undefined>}
+   * @returns {Promise<{recording: RecordingMetadata, chunks: Object[], transcriptionData: Object[]}|undefined>}
    */
   async getWithChunks(id) {
     const recording = await this.adapter.get(config.stores.RECORDINGS, id);
@@ -109,6 +112,7 @@ export class RecordingStore {
     return {
       recording,
       chunks: chunksData?.chunks || [],
+      transcriptionData: chunksData?.transcriptionData || [],
     };
   }
 

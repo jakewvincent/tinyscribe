@@ -28,6 +28,7 @@ import { cosineSimilarity } from './core/embedding/embeddingUtils.js';
 import {
   serializeChunks,
   deserializeChunks,
+  serializeTranscriptionData,
   calculateStorageSize,
   generateRecordingName,
   generateRecordingId,
@@ -85,6 +86,7 @@ export class App {
     // Recording management
     this.recordingStore = null; // RecordingStore instance (initialized in init)
     this.sessionAudioChunks = []; // Cloned audio chunks for saving
+    this.sessionTranscriptionData = []; // Raw Whisper output per chunk for saving
     this.isViewingRecording = false; // True when viewing a saved recording
     this.viewedRecordingId = null; // ID of currently viewed recording
     this.audioPlayback = null; // AudioPlayback instance for replay
@@ -546,6 +548,7 @@ export class App {
     this.lastDebugTiming = null;
     this.lastPhraseDebug = null;
     this.sessionAudioChunks = []; // Reset audio chunks for new recording
+    this.sessionTranscriptionData = []; // Reset transcription data for new recording
 
     // Start debug logging session
     await this.debugLogger.startSession();
@@ -677,6 +680,7 @@ export class App {
       this.isProcessingChunk = false;
       this.completedChunks = 0;
       this.rawChunksData = [];
+      this.sessionTranscriptionData = [];
 
       // Read file as ArrayBuffer
       const arrayBuffer = await file.arrayBuffer();
@@ -978,6 +982,19 @@ export class App {
     // Render raw chunk data for debugging (with merge info)
     if (rawAsr) {
       this.renderRawChunk(chunkIndex, rawAsr, overlapDuration, mergeInfo);
+    }
+
+    // Store transcription data for saving with recording
+    if (rawAsr && this.isRecording && !this.isViewingRecording) {
+      this.sessionTranscriptionData.push({
+        chunkIndex,
+        rawAsr,
+        overlapDuration: overlapDuration || 0,
+        mergeInfo: mergeInfo || null,
+        debug: debug || null,
+        globalStartTime,
+        timestamp: Date.now(),
+      });
     }
 
     // Update global time offset
@@ -2051,11 +2068,12 @@ export class App {
       }
       const participants = Array.from(speakerSet.values());
 
-      // Serialize chunks
+      // Serialize chunks and transcription data
       const serializedChunks = serializeChunks(this.sessionAudioChunks);
+      const serializedTranscriptionData = serializeTranscriptionData(this.sessionTranscriptionData);
 
-      // Calculate storage size
-      const sizeBytes = calculateStorageSize(segments, this.sessionAudioChunks);
+      // Calculate storage size (includes transcription data)
+      const sizeBytes = calculateStorageSize(segments, this.sessionAudioChunks, this.sessionTranscriptionData);
 
       // Create recording object
       const recording = {
@@ -2075,7 +2093,7 @@ export class App {
       };
 
       // Save to IndexedDB
-      await this.recordingStore.save(recording, serializedChunks);
+      await this.recordingStore.save(recording, serializedChunks, serializedTranscriptionData);
 
       // Enforce max recordings limit
       const deleted = await this.recordingStore.enforceMaxRecordings();
@@ -2083,8 +2101,9 @@ export class App {
         console.log(`[Recording] Auto-deleted ${deleted} old recording(s)`);
       }
 
-      // Clear session chunks
+      // Clear session data
       this.sessionAudioChunks = [];
+      this.sessionTranscriptionData = [];
 
       // Update recordings list
       await this.loadRecordingsList();
@@ -2120,7 +2139,7 @@ export class App {
         return;
       }
 
-      const { recording, chunks } = data;
+      const { recording, chunks, transcriptionData } = data;
 
       // Set viewing state
       this.isViewingRecording = true;
@@ -2128,6 +2147,7 @@ export class App {
 
       // Clear current display
       this.clearTranscriptDisplay();
+      this.clearRawChunksDisplay();
 
       // Initialize inference with recording data for accurate participants panel
       this.conversationInference.reset();
@@ -2153,6 +2173,14 @@ export class App {
       // Render saved segments using the same renderer as live recording
       // This ensures colors, similarity bars, reason badges, and boost indicators display correctly
       this.renderSegments(recording.segments)
+
+      // Render raw chunk data if available (for recordings saved with transcription data)
+      // Uses the same renderRawChunk() as live recording for identical display
+      if (transcriptionData && transcriptionData.length > 0) {
+        for (const chunk of transcriptionData) {
+          this.renderRawChunk(chunk.chunkIndex, chunk.rawAsr, chunk.overlapDuration, chunk.mergeInfo);
+        }
+      }
 
       // Update participants panel with recording's inference data
       this.updateParticipantsPanel();
@@ -2217,6 +2245,7 @@ export class App {
 
     // Clear display
     this.clearTranscriptDisplay();
+    this.clearRawChunksDisplay();
 
     // Notify Alpine
     window.dispatchEvent(new CustomEvent('recording-closed'));
