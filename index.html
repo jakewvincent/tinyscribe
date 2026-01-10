@@ -6,6 +6,21 @@
   <title>Live Transcription Studio</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
   <link rel="stylesheet" href="/src/styles.css">
+  <script>
+    // Apply saved layout preferences before render to prevent flash
+    (function() {
+      var sidebarWidth = localStorage.getItem('sidebar-width');
+      if (sidebarWidth) {
+        document.documentElement.style.setProperty('--sidebar-width', sidebarWidth + 'px');
+      }
+      var workspaceTop = localStorage.getItem('workspace-top-percent');
+      if (workspaceTop) {
+        var style = document.createElement('style');
+        style.textContent = '#raw-chunks-panel { flex: 0 0 ' + workspaceTop + '% !important; }';
+        document.head.appendChild(style);
+      }
+    })();
+  </script>
 </head>
 <body>
   <div id="app">
