@@ -162,6 +162,11 @@ export class App {
     // Setup UI event listeners
     this.setupEventListeners();
 
+    // Notify tuning panel of current boosting config
+    window.dispatchEvent(new CustomEvent('boosting-config-loaded', {
+      detail: this.conversationInference.getConfig(),
+    }));
+
     // Check for WebGPU support
     await this.detectWebGPU();
 
@@ -308,6 +313,14 @@ export class App {
 
     // Enrollment source toggle
     window.addEventListener('enrollment-source-change', (e) => this.handleEnrollmentSourceChange(e.detail.source));
+
+    // Boosting tuning events
+    window.addEventListener('boosting-config-update', (e) => {
+      this.conversationInference.updateConfig(e.detail);
+    });
+    window.addEventListener('boosting-config-reset', () => {
+      this.conversationInference.resetConfig();
+    });
   }
 
   /**

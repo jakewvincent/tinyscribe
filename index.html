@@ -373,6 +373,81 @@
             <div id="debug-status" class="debug-status">Logging disabled</div>
           </div>
         </div>
+
+        <!-- Boosting Tuning Panel -->
+        <div class="sidebar-panel" id="panel-boosting-tuning" x-data="boostingTuningPanel" x-cloak>
+          <div class="panel-header" @click="toggle()">
+            <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
+            <h3>Boosting Tuning</h3>
+          </div>
+          <div class="panel-content" :class="{ 'collapsed': !expanded }">
+            <p class="tuning-intro">Adjust parameters to experiment with speaker boosting behavior.</p>
+
+            <div class="tuning-controls">
+              <!-- Boost Factor -->
+              <div class="tuning-row">
+                <label title="Multiplier applied to similarity scores for hypothesized participants">Boost Factor</label>
+                <input type="range" min="1.0" max="1.30" step="0.01"
+                       :value="boostFactor"
+                       @input="updateParam('boostFactor', $event.target.value)">
+                <span class="tuning-value" x-text="formatValue(boostFactor)"></span>
+              </div>
+
+              <!-- Eligibility Rank -->
+              <div class="tuning-row">
+                <label title="Speaker must be in top N matches to receive boost">Eligibility Rank</label>
+                <input type="range" min="1" max="4" step="1"
+                       :value="boostEligibilityRank"
+                       @input="updateParam('boostEligibilityRank', $event.target.value)">
+                <span class="tuning-value" x-text="boostEligibilityRank"></span>
+              </div>
+
+              <div class="tuning-section-header">Ambiguity Gating</div>
+
+              <!-- Ambiguity Margin Threshold -->
+              <div class="tuning-row">
+                <label title="Only boost when margin between top candidates is below this">Max Margin</label>
+                <input type="range" min="0.05" max="0.40" step="0.01"
+                       :value="ambiguityMarginThreshold"
+                       @input="updateParam('ambiguityMarginThreshold', $event.target.value)">
+                <span class="tuning-value" x-text="formatValue(ambiguityMarginThreshold)"></span>
+              </div>
+
+              <!-- Skip Boost If Confident -->
+              <div class="tuning-row">
+                <label title="Skip boosting if best match similarity is above this">Skip if Confident</label>
+                <input type="range" min="0.70" max="0.95" step="0.01"
+                       :value="skipBoostIfConfident"
+                       @input="updateParam('skipBoostIfConfident', $event.target.value)">
+                <span class="tuning-value" x-text="formatValue(skipBoostIfConfident)"></span>
+              </div>
+
+              <!-- Min Similarity For Boosting -->
+              <div class="tuning-row">
+                <label title="Don't boost if best match is below this (garbage match)">Min Similarity</label>
+                <input type="range" min="0.40" max="0.75" step="0.01"
+                       :value="minSimilarityForBoosting"
+                       @input="updateParam('minSimilarityForBoosting', $event.target.value)">
+                <span class="tuning-value" x-text="formatValue(minSimilarityForBoosting)"></span>
+              </div>
+
+              <div class="tuning-section-header">Thresholds</div>
+
+              <!-- Min Similarity After Boost -->
+              <div class="tuning-row">
+                <label title="Even with boost, must meet this threshold for assignment">Min After Boost</label>
+                <input type="range" min="0.60" max="0.85" step="0.01"
+                       :value="minSimilarityAfterBoost"
+                       @input="updateParam('minSimilarityAfterBoost', $event.target.value)">
+                <span class="tuning-value" x-text="formatValue(minSimilarityAfterBoost)"></span>
+              </div>
+            </div>
+
+            <button class="btn secondary small tuning-reset" @click="resetDefaults()">
+              <i class="ti ti-refresh"></i> Reset Defaults
+            </button>
+          </div>
+        </div>
       </aside>
     </main>
 

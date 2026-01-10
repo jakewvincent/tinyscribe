@@ -466,4 +466,77 @@ document.addEventListener('alpine:init', () => {
       }));
     },
   }));
+
+  /**
+   * Boosting Tuning Panel component
+   * Allows live adjustment of boosting parameters for experimentation
+   */
+  Alpine.data('boostingTuningPanel', () => ({
+    expanded: Alpine.$persist(false).as('panel-boosting-tuning'),
+
+    // Tunable parameters (will be populated from defaults)
+    boostFactor: 1.10,
+    boostEligibilityRank: 2,
+    ambiguityMarginThreshold: 0.18,
+    skipBoostIfConfident: 0.82,
+    minSimilarityForBoosting: 0.65,
+    minSimilarityAfterBoost: 0.75,
+
+    // Store defaults for reset
+    defaults: {
+      boostFactor: 1.10,
+      boostEligibilityRank: 2,
+      ambiguityMarginThreshold: 0.18,
+      skipBoostIfConfident: 0.82,
+      minSimilarityForBoosting: 0.65,
+      minSimilarityAfterBoost: 0.75,
+    },
+
+    init() {
+      // Listen for config loaded from app.js
+      window.addEventListener('boosting-config-loaded', (e) => {
+        const config = e.detail;
+        this.boostFactor = config.boostFactor ?? this.defaults.boostFactor;
+        this.boostEligibilityRank = config.boostEligibilityRank ?? this.defaults.boostEligibilityRank;
+        this.ambiguityMarginThreshold = config.ambiguityMarginThreshold ?? this.defaults.ambiguityMarginThreshold;
+        this.skipBoostIfConfident = config.skipBoostIfConfident ?? this.defaults.skipBoostIfConfident;
+        this.minSimilarityForBoosting = config.minSimilarityForBoosting ?? this.defaults.minSimilarityForBoosting;
+        this.minSimilarityAfterBoost = config.minSimilarityAfterBoost ?? this.defaults.minSimilarityAfterBoost;
+
+        // Update defaults from loaded config
+        Object.assign(this.defaults, config);
+      });
+    },
+
+    toggle() {
+      this.expanded = !this.expanded;
+    },
+
+    updateParam(param, value) {
+      // Parse value to appropriate type
+      const numValue = parseFloat(value);
+      if (!isNaN(numValue)) {
+        this[param] = numValue;
+        window.dispatchEvent(new CustomEvent('boosting-config-update', {
+          detail: { [param]: numValue },
+        }));
+      }
+    },
+
+    resetDefaults() {
+      this.boostFactor = this.defaults.boostFactor;
+      this.boostEligibilityRank = this.defaults.boostEligibilityRank;
+      this.ambiguityMarginThreshold = this.defaults.ambiguityMarginThreshold;
+      this.skipBoostIfConfident = this.defaults.skipBoostIfConfident;
+      this.minSimilarityForBoosting = this.defaults.minSimilarityForBoosting;
+      this.minSimilarityAfterBoost = this.defaults.minSimilarityAfterBoost;
+
+      window.dispatchEvent(new CustomEvent('boosting-config-reset'));
+    },
+
+    // Format value for display
+    formatValue(value, decimals = 2) {
+      return typeof value === 'number' ? value.toFixed(decimals) : value;
+    },
+  }));
 });

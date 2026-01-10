@@ -297,19 +297,97 @@ export class ConversationInference {
 
   /**
    * Apply boosting to an attribution based on current hypothesis
+   *
+   * Boosting is now gated and selective:
+   * 1. Ambiguity gating: Only boost when the decision is genuinely uncertain
+   * 2. Contender-only: Only boost speakers who could benefit from the boost
    */
   applyBoosting(originalAttribution) {
     const debug = originalAttribution.debug;
     if (!debug || !debug.allMatches || debug.allMatches.length === 0) {
-      return { ...originalAttribution, wasInfluenced: false };
+      return { ...originalAttribution, wasInfluenced: false, boostSkipped: true, skipReason: 'no_matches' };
     }
 
-    const { boostFactor, boostEligibilityRank, minSimilarityAfterBoost } = this.config;
+    const {
+      boostFactor,
+      boostEligibilityRank,
+      minSimilarityAfterBoost,
+      ambiguityMarginThreshold,
+      skipBoostIfConfident,
+      minSimilarityForBoosting,
+    } = this.config;
 
     // Get participant names for quick lookup
     const participantNames = new Set(this.hypothesis.participants.map(p => p.speakerName));
 
-    // Apply boost to eligible matches
+    // Calculate original margin and best similarity for gating decision
+    const originalBest = debug.allMatches[0];
+    const originalSecond = debug.allMatches[1];
+    const originalMargin = originalSecond
+      ? originalBest.similarity - originalSecond.similarity
+      : 1.0;
+    const bestSimilarity = originalBest.similarity;
+
+    // === AMBIGUITY GATING ===
+    // Skip boosting when it won't help or isn't appropriate
+    let skipReason = null;
+
+    if (bestSimilarity >= skipBoostIfConfident) {
+      skipReason = 'already_confident';
+    } else if (originalMargin >= ambiguityMarginThreshold) {
+      skipReason = 'clear_winner';
+    } else if (bestSimilarity < minSimilarityForBoosting) {
+      skipReason = 'low_similarity';
+    } else if (participantNames.size === 0) {
+      skipReason = 'no_hypothesis';
+    }
+
+    if (skipReason) {
+      // Return original attribution unchanged, but with debug info about why we skipped
+      return {
+        ...originalAttribution,
+        wasInfluenced: false,
+        boostSkipped: true,
+        skipReason,
+        debug: {
+          ...debug,
+          boostApplied: false,
+          boostSkipReason: skipReason,
+          hypothesisVersion: this.hypothesis.version,
+        },
+      };
+    }
+
+    // === CONTENDER-ONLY BOOSTING ===
+    // Only boost a participant if they're NOT already winning, or if top 2 are both participants
+    const bestIsParticipant = participantNames.has(originalBest.speakerName);
+    const secondIsParticipant = originalSecond && participantNames.has(originalSecond.speakerName);
+
+    // Determine who should receive boost:
+    // - If best is NOT a participant but second IS → boost second (contender)
+    // - If both are participants → boost both (competitive participants)
+    // - If best IS a participant and second is NOT → no boost needed (already winning)
+    // - If neither is a participant → no boost (no participants in top 2)
+    const shouldBoostBest = bestIsParticipant && secondIsParticipant;
+    const shouldBoostSecond = !bestIsParticipant && secondIsParticipant;
+
+    if (!shouldBoostBest && !shouldBoostSecond) {
+      // No meaningful boost scenario
+      return {
+        ...originalAttribution,
+        wasInfluenced: false,
+        boostSkipped: true,
+        skipReason: bestIsParticipant ? 'participant_already_winning' : 'no_participant_contender',
+        debug: {
+          ...debug,
+          boostApplied: false,
+          boostSkipReason: bestIsParticipant ? 'participant_already_winning' : 'no_participant_contender',
+          hypothesisVersion: this.hypothesis.version,
+        },
+      };
+    }
+
+    // Apply boost selectively
     const boostedMatches = debug.allMatches.map((match, idx) => {
       const isParticipant = participantNames.has(match.speakerName);
       const isEligible = idx < boostEligibilityRank;
@@ -317,9 +395,16 @@ export class ConversationInference {
       let boostedSimilarity = match.similarity;
       let wasBoosted = false;
 
+      // Only boost if eligible AND in a boost scenario
       if (isParticipant && isEligible) {
-        boostedSimilarity = Math.min(1.0, match.similarity * boostFactor);
-        wasBoosted = true;
+        // Boost if: both top 2 are participants, OR this is the contender (second place participant)
+        const isContender = idx === 1 && shouldBoostSecond;
+        const isBothParticipants = shouldBoostBest;
+
+        if (isContender || isBothParticipants) {
+          boostedSimilarity = Math.min(1.0, match.similarity * boostFactor);
+          wasBoosted = true;
+        }
       }
 
       return {
@@ -337,7 +422,6 @@ export class ConversationInference {
     const second = boostedMatches[1];
 
     // Determine if boosting changed the outcome
-    const originalBest = debug.allMatches[0];
     const wasInfluenced = best.speakerName !== originalBest.speakerName;
 
     // Calculate new margin
@@ -363,11 +447,13 @@ export class ConversationInference {
       originalSimilarity: best.originalSimilarity,
       margin,
       wasInfluenced,
+      boostSkipped: false,
       reason,
       debug: {
         ...debug,
         allMatches: boostedMatches,
         boostApplied: true,
+        boostScenario: shouldBoostSecond ? 'contender_boosted' : 'both_participants_boosted',
         hypothesisVersion: this.hypothesis.version,
       },
     };
@@ -528,6 +614,29 @@ export class ConversationInference {
     this.segmentAttributions = [];
     this.speakerStats.clear();
     this.hypothesisHistory = [];
+  }
+
+  /**
+   * Update config parameters at runtime (for tuning panel)
+   * @param {Object} updates - Key-value pairs of config parameters to update
+   */
+  updateConfig(updates) {
+    Object.assign(this.config, updates);
+  }
+
+  /**
+   * Reset config to defaults
+   */
+  resetConfig() {
+    this.config = { ...CONVERSATION_INFERENCE_DEFAULTS };
+  }
+
+  /**
+   * Get current config for UI display
+   * @returns {Object} Current config values
+   */
+  getConfig() {
+    return { ...this.config };
   }
 
   /**

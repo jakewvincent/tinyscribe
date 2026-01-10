@@ -2651,6 +2651,105 @@ body.resizing * {
   color: var(--text-muted);
 }
 
+/* ==================== BOOSTING TUNING PANEL ==================== */
+
+.tuning-intro {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+  line-height: 1.4;
+}
+
+.tuning-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.tuning-section-header {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 0.5rem;
+  margin-bottom: 0.25rem;
+  padding-top: 0.375rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.tuning-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tuning-row label {
+  flex: 0 0 90px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  cursor: help;
+}
+
+.tuning-row input[type="range"] {
+  flex: 1;
+  height: 18px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.tuning-row input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  background: #e2e8f0;
+  border-radius: 2px;
+}
+
+.tuning-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: #3b82f6;
+  border-radius: 50%;
+  cursor: pointer;
+  margin-top: -4px;
+  transition: transform 0.1s;
+}
+
+.tuning-row input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.tuning-row input[type="range"]::-moz-range-track {
+  height: 4px;
+  background: #e2e8f0;
+  border-radius: 2px;
+}
+
+.tuning-row input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: #3b82f6;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+.tuning-value {
+  flex: 0 0 32px;
+  text-align: right;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 0.75rem;
+  color: var(--text-color);
+}
+
+.tuning-reset {
+  margin-top: 0.5rem;
+  width: 100%;
+}
+
 /* ==================== PARTICIPANTS PANEL ==================== */
 .participants-empty {
   font-size: 0.85rem;

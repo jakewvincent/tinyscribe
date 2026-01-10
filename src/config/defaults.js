@@ -28,6 +28,11 @@ export const CONVERSATION_INFERENCE_DEFAULTS = {
   boostEligibilityRank: 2, // Must be in top N to receive boost
   minSimilarityAfterBoost: 0.75, // Still need this minimum even with boost
 
+  // Ambiguity gating - only boost when decision is uncertain
+  ambiguityMarginThreshold: 0.18, // Only boost when margin below this
+  skipBoostIfConfident: 0.82, // Don't boost if best match already confident
+  minSimilarityForBoosting: 0.65, // Don't boost garbage matches
+
   // Ambiguous display (show "Speaker1 (Speaker2?)" format)
   ambiguousDisplayThreshold: 0.70, // Both candidates must be above this
   ambiguousMarginMax: 0.12, // Show alternate if margin below this
