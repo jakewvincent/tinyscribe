@@ -168,14 +168,14 @@ export class App {
     // Migrate old single enrollment format if needed
     EnrollmentManager.migrateFromSingle();
 
+    // Initialize resizable dividers first (restores saved sidebar width)
+    this.initResizeDividers();
+
     // Load saved enrollments
     this.loadSavedEnrollments();
 
-    // Initialize visualization
+    // Initialize visualization (canvas will be sized correctly now)
     this.initVisualization();
-
-    // Initialize resizable dividers
-    this.initResizeDividers();
 
     // Initialize debug logging
     await this.debugLogger.init();
