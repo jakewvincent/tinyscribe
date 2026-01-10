@@ -2108,6 +2108,37 @@ export class App {
         this.renderSegment(segment);
       }
 
+      // Initialize inference with recording data for accurate participants panel
+      this.conversationInference.reset();
+      const enrollments = recording.enrollmentsSnapshot || [];
+      this.conversationInference.setEnrolledSpeakers(enrollments);
+      this.conversationInference.setExpectedSpeakers(this.numSpeakers);
+
+      // Process each segment through inference to build hypothesis
+      for (let i = 0; i < recording.segments.length; i++) {
+        const segment = recording.segments[i];
+        // Only process segments that have attribution data with similarity info
+        if (segment.attribution?.allSimilarities) {
+          // Build segment structure expected by processNewSegment
+          const segmentForInference = {
+            speaker: segment.speaker,
+            speakerLabel: segment.speakerLabel,
+            debug: {
+              clustering: {
+                allSimilarities: segment.attribution.allSimilarities,
+                similarity: segment.attribution.similarity,
+                margin: segment.attribution.margin,
+                reason: segment.attribution.reason,
+              },
+            },
+          };
+          this.conversationInference.processNewSegment(segmentForInference, i);
+        }
+      }
+
+      // Update participants panel with recording's inference data
+      this.updateParticipantsPanel();
+
       // Initialize audio playback with deserialized chunks
       const audioChunks = deserializeChunks(chunks);
 
@@ -2240,6 +2271,34 @@ export class App {
       for (const segment of recording.segments) {
         this.renderSegment(segment);
       }
+
+      // Refresh inference with new enrollments
+      this.conversationInference.reset();
+      this.conversationInference.setEnrolledSpeakers(enrollments || []);
+      this.conversationInference.setExpectedSpeakers(this.numSpeakers);
+
+      // Process segments through inference (using original attribution data)
+      for (let i = 0; i < recording.segments.length; i++) {
+        const segment = recording.segments[i];
+        if (segment.attribution?.allSimilarities) {
+          const segmentForInference = {
+            speaker: segment.speaker,
+            speakerLabel: segment.speakerLabel,
+            debug: {
+              clustering: {
+                allSimilarities: segment.attribution.allSimilarities,
+                similarity: segment.attribution.similarity,
+                margin: segment.attribution.margin,
+                reason: segment.attribution.reason,
+              },
+            },
+          };
+          this.conversationInference.processNewSegment(segmentForInference, i);
+        }
+      }
+
+      // Update participants panel
+      this.updateParticipantsPanel();
 
       const sourceLabel = source === 'snapshot' ? 'snapshot' : 'current';
       console.log(`[Recording] Re-clustered with ${sourceLabel} enrollments`);

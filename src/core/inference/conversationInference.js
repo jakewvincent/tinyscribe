@@ -238,9 +238,8 @@ export class ConversationInference {
 
     // speakerStats is keyed by speakerName
     for (const [speakerName, stats] of this.speakerStats) {
-      // Only consider enrolled speakers for hypothesis
-      const isEnrolled = this.enrolledSpeakers.some(s => s.name === speakerName);
-      if (!isEnrolled) continue;
+      // Include all speakers who meet the quality thresholds
+      // No filtering by enrollment status - all speakers treated equally
 
       // Calculate average similarity when competitive
       const avgSimilarity = stats.similarities.length > 0
