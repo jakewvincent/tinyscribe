@@ -1614,6 +1614,7 @@ export class App {
     this.transcriptMerger.reset();
     this.conversationInference.reset();
     this.clearTranscriptDisplay();
+    this.clearRawChunksDisplay();
     this.copyBtn.disabled = true;
     this.exportTranscriptBtn.disabled = true;
 
