@@ -316,12 +316,14 @@ export class App {
     // Enrollment source toggle
     window.addEventListener('enrollment-source-change', (e) => this.handleEnrollmentSourceChange(e.detail.source));
 
-    // Boosting tuning events
+    // Boosting tuning events - update config and re-process segments
     window.addEventListener('boosting-config-update', (e) => {
       this.conversationInference.updateConfig(e.detail);
+      this.reprocessBoostingForCurrentSegments();
     });
     window.addEventListener('boosting-config-reset', () => {
       this.conversationInference.resetConfig();
+      this.reprocessBoostingForCurrentSegments();
     });
   }
 
@@ -2145,6 +2147,10 @@ export class App {
       this.isViewingRecording = true;
       this.viewedRecordingId = recordingId;
 
+      // Store references for re-processing (e.g., when boosting config changes)
+      this._currentViewedSegments = recording.segments;
+      this._currentViewedEnrollments = recording.enrollmentsSnapshot || [];
+
       // Clear current display
       this.clearTranscriptDisplay();
       this.clearRawChunksDisplay();
@@ -2236,6 +2242,8 @@ export class App {
 
     this.isViewingRecording = false;
     this.viewedRecordingId = null;
+    this._currentViewedSegments = null;
+    this._currentViewedEnrollments = null;
 
     // Clean up audio playback
     if (this.audioPlayback) {
@@ -2272,6 +2280,55 @@ export class App {
   }
 
   /**
+   * Re-process all current segments through inference with updated boosting config
+   * Works for both live recordings (after stopping) and saved recordings being viewed
+   */
+  reprocessBoostingForCurrentSegments() {
+    // Get segments from either viewed recording or live session
+    let segments;
+    if (this.isViewingRecording && this.viewedRecordingId) {
+      // For viewed recordings, we need to get segments from the DOM-rendered state
+      // They were already loaded and modified in memory during loadRecording
+      segments = this._currentViewedSegments;
+    } else {
+      // For live session, get from transcript merger
+      segments = this.transcriptMerger.getTranscript();
+    }
+
+    if (!segments || segments.length === 0) {
+      return;
+    }
+
+    // Get current enrollments for inference context
+    const enrollments = this.isViewingRecording
+      ? (this._currentViewedEnrollments || [])
+      : EnrollmentManager.loadAll();
+
+    // Reset inference and re-process all segments with new config
+    this.conversationInference.reset();
+    this.conversationInference.setEnrolledSpeakers(enrollments);
+    this.conversationInference.setExpectedSpeakers(this.numSpeakers);
+
+    // Re-process each segment through inference (keeps same clustering, new boosting)
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      if (segment.debug?.clustering?.allSimilarities) {
+        const { attribution } = this.conversationInference.processNewSegment(segment, i);
+        segment.inferenceAttribution = attribution;
+      }
+    }
+
+    // Re-render transcript with new attributions
+    this.clearTranscriptDisplay();
+    this.renderSegments(segments);
+
+    // Update participants panel
+    this.updateParticipantsPanel();
+
+    console.log(`[Boosting] Re-processed ${segments.length} segments with updated config`);
+  }
+
+  /**
    * Handle enrollment source change (snapshot vs current)
    * Re-clusters segments with the selected enrollment set
    * @param {string} source - 'snapshot' or 'current'
@@ -2290,6 +2347,9 @@ export class App {
       const enrollments = source === 'snapshot'
         ? recording.enrollmentsSnapshot
         : EnrollmentManager.loadAll();
+
+      // Update stored enrollments for boosting re-processing
+      this._currentViewedEnrollments = enrollments || [];
 
       // Re-cluster segments with embeddings
       const clusterer = this.transcriptMerger.speakerClusterer;
