@@ -33,6 +33,9 @@ import {
   generateRecordingId,
   formatDuration,
   formatFileSize,
+  encodeWav,
+  combineChunks,
+  downloadBlob,
 } from './core/recording/index.js';
 
 // Configuration
@@ -297,6 +300,7 @@ export class App {
     window.addEventListener('recording-delete', (e) => this.deleteRecording(e.detail.id));
     window.addEventListener('recording-rename', (e) => this.renameRecording(e.detail.id, e.detail.name));
     window.addEventListener('recording-return-to-live', () => this.returnToLive());
+    window.addEventListener('recording-download', (e) => this.downloadRecordingAsWav(e.detail.id));
 
     // Playback control events
     window.addEventListener('playback-toggle', () => this.togglePlayback());
@@ -2350,6 +2354,47 @@ export class App {
       console.log(`[Recording] Renamed to "${newName.trim()}"`);
     } catch (error) {
       console.error('[Recording] Failed to rename:', error);
+    }
+  }
+
+  /**
+   * Download a recording as a WAV file
+   * @param {string} recordingId
+   */
+  async downloadRecordingAsWav(recordingId) {
+    try {
+      this.recordingStatus.textContent = 'Preparing download...';
+
+      // Get recording with audio chunks
+      const data = await this.recordingStore.getWithChunks(recordingId);
+      if (!data) {
+        this.recordingStatus.textContent = 'Recording not found';
+        return;
+      }
+
+      const { recording, chunks } = data;
+
+      // Deserialize chunks to Float32Arrays
+      const audioChunks = deserializeChunks(chunks);
+
+      // Combine all chunks into a single Float32Array
+      const combinedAudio = combineChunks(audioChunks);
+
+      // Encode as WAV (16 kHz sample rate)
+      const wavBlob = encodeWav(combinedAudio, 16000);
+
+      // Generate filename from recording name
+      const safeName = recording.name.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'recording';
+      const filename = `${safeName}.wav`;
+
+      // Trigger download
+      downloadBlob(wavBlob, filename);
+
+      this.recordingStatus.textContent = `Downloaded: ${filename}`;
+      console.log(`[Recording] Downloaded "${filename}" (${formatFileSize(wavBlob.size)})`);
+    } catch (error) {
+      console.error('[Recording] Failed to download:', error);
+      this.recordingStatus.textContent = 'Failed to download recording';
     }
   }
 

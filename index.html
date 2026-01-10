@@ -281,6 +281,9 @@
                   </div>
                 </div>
                 <span class="playback-time" x-text="formatDuration(playbackTime) + ' / ' + formatDuration(playbackDuration)"></span>
+                <button class="btn-icon download-btn" @click="downloadRecording()" title="Download as WAV">
+                  &#x2913;
+                </button>
               </div>
 
               <!-- Enrollment source toggle -->

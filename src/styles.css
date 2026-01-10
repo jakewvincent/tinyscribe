@@ -1286,6 +1286,16 @@ details[open] .expand-icon {
   justify-content: center;
 }
 
+.download-btn {
+  font-size: 1.1rem;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 0.25rem;
+}
+
 .playback-progress {
   flex: 1;
 }

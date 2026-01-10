@@ -424,6 +424,14 @@ document.addEventListener('alpine:init', () => {
       window.dispatchEvent(new CustomEvent('playback-toggle'));
     },
 
+    // Download the current recording as WAV
+    downloadRecording() {
+      if (!this.selectedId) return;
+      window.dispatchEvent(new CustomEvent('recording-download', {
+        detail: { id: this.selectedId },
+      }));
+    },
+
     // Set enrollment source and trigger re-clustering
     setEnrollmentSource(source) {
       if (source === this.enrollmentSource) return;

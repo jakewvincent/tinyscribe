@@ -14,3 +14,9 @@ export {
   formatDuration,
   formatFileSize,
 } from './recordingSerializer.js';
+
+export {
+  encodeWav,
+  combineChunks,
+  downloadBlob,
+} from './wavEncoder.js';
