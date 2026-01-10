@@ -204,6 +204,88 @@
           </div>
         </section>
 
+        <!-- Recordings Panel -->
+        <div class="sidebar-panel" id="panel-recordings" x-data="recordingsPanel" x-cloak>
+          <div class="panel-header" @click="toggle()">
+            <span class="panel-chevron" x-text="expanded ? '&#9662;' : '&#9656;'"></span>
+            <h3>Recordings <span x-show="recordings.length > 0" class="recording-count" x-text="'(' + recordings.length + ')'"></span></h3>
+          </div>
+          <div class="panel-content" :class="{ 'collapsed': !expanded }">
+            <!-- Current session indicator -->
+            <div class="recording-session-indicator" :class="{ 'viewing': isViewingRecording }">
+              <template x-if="!isViewingRecording">
+                <span class="session-live">Live Session</span>
+              </template>
+              <template x-if="isViewingRecording">
+                <div class="session-viewing">
+                  <span class="viewing-label">Viewing:</span>
+                  <span class="viewing-name" x-text="viewedRecording?.name"></span>
+                  <button class="btn-icon return-btn" @click="returnToLive()" title="Return to live">&#x21A9;</button>
+                </div>
+              </template>
+            </div>
+
+            <!-- Recordings list -->
+            <div class="recordings-list" x-show="recordings.length > 0">
+              <template x-for="recording in recordings" :key="recording.id">
+                <div class="recording-item"
+                     :class="{ 'selected': selectedId === recording.id }"
+                     @click="loadRecording(recording.id)">
+                  <!-- Name (editable) -->
+                  <div class="recording-name-row">
+                    <template x-if="isRenaming !== recording.id">
+                      <span class="recording-name" x-text="recording.name"></span>
+                    </template>
+                    <template x-if="isRenaming === recording.id">
+                      <input type="text"
+                             class="rename-input"
+                             x-model="renameValue"
+                             @click.stop
+                             @keydown.enter="confirmRename()"
+                             @keydown.escape="cancelRename()"
+                             @blur="confirmRename()">
+                    </template>
+                    <div class="recording-actions" @click.stop>
+                      <button class="btn-icon" @click="startRename(recording.id, recording.name)" title="Rename">&#x270E;</button>
+                      <button class="btn-icon delete" @click="deleteRecording(recording.id)" title="Delete">&times;</button>
+                    </div>
+                  </div>
+                  <!-- Metadata -->
+                  <div class="recording-meta">
+                    <span class="meta-item" x-text="formatDuration(recording.duration)"></span>
+                    <span class="meta-sep">|</span>
+                    <span class="meta-item" x-text="recording.speakerCount + ' speaker' + (recording.speakerCount !== 1 ? 's' : '')"></span>
+                    <span class="meta-sep">|</span>
+                    <span class="meta-item" x-text="formatSize(recording.sizeBytes)"></span>
+                  </div>
+                  <div class="recording-date" x-text="formatDate(recording.createdAt)"></div>
+                </div>
+              </template>
+            </div>
+
+            <!-- Empty state -->
+            <div class="recordings-empty" x-show="recordings.length === 0">
+              <p>No saved recordings yet.</p>
+              <p class="hint">Recordings are saved automatically when you stop recording.</p>
+            </div>
+
+            <!-- Playback controls (when viewing) -->
+            <div class="playback-controls" x-show="isViewingRecording" x-cloak>
+              <div class="playback-row">
+                <button class="btn-icon play-btn" @click="togglePlay()">
+                  <span x-text="isPlaying ? '&#x23F8;' : '&#x25B6;'"></span>
+                </button>
+                <div class="playback-progress">
+                  <div class="progress-bar">
+                    <div class="progress-fill" :style="'width: ' + (playbackDuration > 0 ? (playbackTime / playbackDuration * 100) : 0) + '%'"></div>
+                  </div>
+                </div>
+                <span class="playback-time" x-text="formatDuration(playbackTime) + ' / ' + formatDuration(playbackDuration)"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Model Status Panel -->
         <div class="sidebar-panel" id="panel-model-status" x-data="panel('model-status', false)" x-cloak>
           <div class="panel-header" @click="toggle()">

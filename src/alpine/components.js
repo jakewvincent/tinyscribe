@@ -294,4 +294,141 @@ document.addEventListener('alpine:init', () => {
       return 'verdict-mismatch';
     },
   }));
+
+  /**
+   * Recordings Panel component
+   * Manages list of saved recordings, playback controls, and viewing state
+   */
+  Alpine.data('recordingsPanel', () => ({
+    expanded: Alpine.$persist(true).as('panel-recordings'),
+    recordings: [],
+    selectedId: null,
+    isViewingRecording: false,
+    viewedRecording: null,
+    isPlaying: false,
+    playbackTime: 0,
+    playbackDuration: 0,
+    enrollmentSource: 'snapshot', // 'snapshot' or 'current'
+    isRenaming: null, // ID of recording being renamed
+    renameValue: '',
+
+    init() {
+      // Listen for recordings list updates
+      window.addEventListener('recordings-updated', (e) => {
+        this.recordings = e.detail.recordings;
+      });
+
+      // Listen for recording loaded
+      window.addEventListener('recording-loaded', (e) => {
+        this.isViewingRecording = true;
+        this.viewedRecording = e.detail;
+        this.selectedId = e.detail.id;
+        this.playbackDuration = e.detail.duration;
+        this.playbackTime = 0;
+        this.isPlaying = false;
+      });
+
+      // Listen for recording closed
+      window.addEventListener('recording-closed', () => {
+        this.isViewingRecording = false;
+        this.viewedRecording = null;
+        this.selectedId = null;
+        this.isPlaying = false;
+        this.playbackTime = 0;
+      });
+
+      // Listen for playback progress (future)
+      window.addEventListener('playback-progress', (e) => {
+        this.playbackTime = e.detail.time;
+        this.isPlaying = e.detail.playing;
+      });
+    },
+
+    toggle() {
+      this.expanded = !this.expanded;
+    },
+
+    // Format duration for display
+    formatDuration(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    },
+
+    // Format file size for display
+    formatSize(bytes) {
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    },
+
+    // Format date for display
+    formatDate(timestamp) {
+      return new Date(timestamp).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    },
+
+    // Load a recording
+    loadRecording(id) {
+      window.dispatchEvent(new CustomEvent('recording-load', { detail: { id } }));
+    },
+
+    // Return to live mode
+    returnToLive() {
+      window.dispatchEvent(new CustomEvent('recording-return-to-live'));
+    },
+
+    // Start renaming a recording
+    startRename(id, currentName) {
+      this.isRenaming = id;
+      this.renameValue = currentName;
+      // Focus input after Alpine updates DOM
+      this.$nextTick(() => {
+        const input = document.querySelector('.rename-input');
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      });
+    },
+
+    // Confirm rename
+    confirmRename() {
+      if (this.isRenaming && this.renameValue.trim()) {
+        window.dispatchEvent(new CustomEvent('recording-rename', {
+          detail: { id: this.isRenaming, name: this.renameValue.trim() },
+        }));
+      }
+      this.isRenaming = null;
+      this.renameValue = '';
+    },
+
+    // Cancel rename
+    cancelRename() {
+      this.isRenaming = null;
+      this.renameValue = '';
+    },
+
+    // Delete a recording
+    deleteRecording(id) {
+      if (confirm('Delete this recording? This cannot be undone.')) {
+        window.dispatchEvent(new CustomEvent('recording-delete', { detail: { id } }));
+      }
+    },
+
+    // Toggle playback (future)
+    togglePlay() {
+      // Will dispatch play/pause events when audioPlayback is implemented
+      this.isPlaying = !this.isPlaying;
+    },
+
+    // Toggle enrollment source (future)
+    toggleEnrollmentSource() {
+      this.enrollmentSource = this.enrollmentSource === 'snapshot' ? 'current' : 'snapshot';
+      // Will dispatch event to re-cluster with new enrollments
+    },
+  }));
 });

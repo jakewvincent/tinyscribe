@@ -31,10 +31,20 @@ export const INDEXED_DB_CONFIG = {
       LOGS: 'logs',
     },
   },
+  RECORDINGS: {
+    name: 'transcription-recordings',
+    version: 1,
+    stores: {
+      RECORDINGS: 'recordings',
+      CHUNKS: 'recording-chunks',
+    },
+  },
 };
 
 // Freeze to prevent accidental modification
 Object.freeze(LOCAL_STORAGE_KEYS);
 Object.freeze(INDEXED_DB_CONFIG.DEBUG_LOGS.stores);
 Object.freeze(INDEXED_DB_CONFIG.DEBUG_LOGS);
+Object.freeze(INDEXED_DB_CONFIG.RECORDINGS.stores);
+Object.freeze(INDEXED_DB_CONFIG.RECORDINGS);
 Object.freeze(INDEXED_DB_CONFIG);

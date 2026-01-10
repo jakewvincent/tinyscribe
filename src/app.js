@@ -19,12 +19,21 @@ import { ConversationInference } from './core/inference/index.js';
 import { EnrollmentManager } from './utils/enrollmentManager.js';
 
 // Storage layer
-import { PreferencesStore } from './storage/index.js';
+import { PreferencesStore, RecordingStore } from './storage/index.js';
 
 // Core modules (pure logic, no browser dependencies)
 import { OverlapMerger, TranscriptMerger } from './core/transcription/index.js';
 import { AudioValidator } from './core/validation/index.js';
 import { cosineSimilarity } from './core/embedding/embeddingUtils.js';
+import {
+  serializeChunks,
+  deserializeChunks,
+  calculateStorageSize,
+  generateRecordingName,
+  generateRecordingId,
+  formatDuration,
+  formatFileSize,
+} from './core/recording/index.js';
 
 // Configuration
 import { REASON_BADGES, ATTRIBUTION_UI_DEFAULTS } from './config/defaults.js';
@@ -69,6 +78,13 @@ export class App {
     // Feature 7: Segment comparison mode
     this.comparisonMode = false;
     this.selectedSegments = []; // Indices of selected segments for comparison
+
+    // Recording management
+    this.recordingStore = null; // RecordingStore instance (initialized in init)
+    this.sessionAudioChunks = []; // Cloned audio chunks for saving
+    this.isViewingRecording = false; // True when viewing a saved recording
+    this.viewedRecordingId = null; // ID of currently viewed recording
+    this.audioPlayback = null; // AudioPlayback instance for replay
 
     // Components
     this.worker = null;
@@ -162,6 +178,11 @@ export class App {
     await this.debugLogger.init();
     this.debugPanel = new DebugPanel({ logger: this.debugLogger });
     this.debugPanel.init();
+
+    // Initialize recording store
+    this.recordingStore = new RecordingStore();
+    await this.recordingStore.init();
+    await this.loadRecordingsList();
 
     // Populate microphone dropdown
     this.populateMicrophoneList();
@@ -270,6 +291,12 @@ export class App {
         this.closeEnrollmentModal();
       }
     });
+
+    // Recording management events
+    window.addEventListener('recording-load', (e) => this.loadRecording(e.detail.id));
+    window.addEventListener('recording-delete', (e) => this.deleteRecording(e.detail.id));
+    window.addEventListener('recording-rename', (e) => this.renameRecording(e.detail.id, e.detail.name));
+    window.addEventListener('recording-return-to-live', () => this.returnToLive());
   }
 
   /**
@@ -467,6 +494,11 @@ export class App {
    * Start recording
    */
   async startRecording() {
+    // If viewing a saved recording, return to live mode first
+    if (this.isViewingRecording) {
+      this.returnToLive();
+    }
+
     // Reset for new session
     this.transcriptMerger.reset();
     this.clearTranscriptDisplay();
@@ -479,6 +511,7 @@ export class App {
     this.completedChunks = 0;
     this.lastDebugTiming = null;
     this.lastPhraseDebug = null;
+    this.sessionAudioChunks = []; // Reset audio chunks for new recording
 
     // Start debug logging session
     await this.debugLogger.startSession();
@@ -745,6 +778,17 @@ export class App {
       isFinal: chunk.isFinal,
     });
 
+    // Clone audio for session recording (before queuing)
+    if (this.isRecording && !this.isViewingRecording) {
+      this.sessionAudioChunks.push({
+        index: chunk.index,
+        audio: new Float32Array(chunk.audio), // Clone the audio
+        duration: chunk.audio.length / 16000,
+        overlapDuration: chunk.overlapDuration || 0,
+        isFinal: chunk.isFinal || false,
+      });
+    }
+
     // Queue the chunk for processing
     this.chunkQueue.push(chunk);
 
@@ -853,6 +897,11 @@ export class App {
     // Hide processing indicator if no more pending and queue is empty
     if (this.pendingChunks.size === 0 && this.chunkQueue.length === 0) {
       this.hideProcessingIndicator();
+
+      // Auto-save recording when all chunks are processed and recording has stopped
+      if (!this.isRecording && this.sessionAudioChunks.length > 0 && !this.isViewingRecording) {
+        this.saveCurrentSession();
+      }
     }
 
     // Overlap-based merging: compare with previous chunk's words
@@ -1901,6 +1950,283 @@ export class App {
    */
   hideComparisonResult() {
     window.dispatchEvent(new CustomEvent('comparison-result', { detail: null }));
+  }
+
+  // ==================== Recording Management Methods ====================
+
+  /**
+   * Load the list of saved recordings and notify Alpine
+   */
+  async loadRecordingsList() {
+    try {
+      const recordings = await this.recordingStore.getAll();
+      window.dispatchEvent(new CustomEvent('recordings-updated', {
+        detail: { recordings: recordings.map(r => ({
+          id: r.id,
+          name: r.name,
+          createdAt: r.createdAt,
+          duration: r.duration,
+          segmentCount: r.metadata?.segmentCount || 0,
+          speakerCount: r.participants?.length || 0,
+          sizeBytes: r.metadata?.sizeBytes || 0,
+        }))},
+      }));
+    } catch (error) {
+      console.error('Failed to load recordings list:', error);
+    }
+  }
+
+  /**
+   * Save the current recording session
+   */
+  async saveCurrentSession() {
+    if (this.sessionAudioChunks.length === 0) {
+      console.log('[Recording] No audio chunks to save');
+      return;
+    }
+
+    const segments = this.transcriptMerger.getTranscript();
+    if (segments.length === 0) {
+      console.log('[Recording] No segments to save');
+      this.sessionAudioChunks = []; // Clear chunks even if no segments
+      return;
+    }
+
+    try {
+      // Calculate duration from segments
+      const lastSegment = segments[segments.length - 1];
+      const duration = lastSegment.endTime || 0;
+
+      // Get current enrollments snapshot
+      const enrollmentsSnapshot = EnrollmentManager.loadAll();
+
+      // Extract participants from segments
+      const speakerSet = new Map();
+      for (const seg of segments) {
+        if (seg.speaker != null && !seg.isEnvironmental) {
+          if (!speakerSet.has(seg.speaker)) {
+            speakerSet.set(seg.speaker, {
+              speakerId: seg.speaker,
+              label: seg.speakerLabel,
+              name: seg.speakerName || null,
+              segmentCount: 0,
+              isEnrolled: seg.isEnrolledSpeaker || false,
+            });
+          }
+          speakerSet.get(seg.speaker).segmentCount++;
+        }
+      }
+      const participants = Array.from(speakerSet.values());
+
+      // Serialize chunks
+      const serializedChunks = serializeChunks(this.sessionAudioChunks);
+
+      // Calculate storage size
+      const sizeBytes = calculateStorageSize(segments, this.sessionAudioChunks);
+
+      // Create recording object
+      const recording = {
+        id: generateRecordingId(),
+        name: generateRecordingName(),
+        createdAt: Date.now(),
+        duration,
+        segments,
+        participants,
+        enrollmentsSnapshot,
+        numSpeakersConfig: this.numSpeakers,
+        metadata: {
+          chunkCount: this.sessionAudioChunks.length,
+          segmentCount: segments.length,
+          sizeBytes,
+        },
+      };
+
+      // Save to IndexedDB
+      await this.recordingStore.save(recording, serializedChunks);
+
+      // Enforce max recordings limit
+      const deleted = await this.recordingStore.enforceMaxRecordings();
+      if (deleted > 0) {
+        console.log(`[Recording] Auto-deleted ${deleted} old recording(s)`);
+      }
+
+      // Clear session chunks
+      this.sessionAudioChunks = [];
+
+      // Update recordings list
+      await this.loadRecordingsList();
+
+      console.log(`[Recording] Saved "${recording.name}" (${formatDuration(duration)}, ${formatFileSize(sizeBytes)})`);
+
+      // Update status
+      this.recordingStatus.textContent = `Recording saved: ${recording.name}`;
+    } catch (error) {
+      console.error('[Recording] Failed to save:', error);
+      this.recordingStatus.textContent = 'Failed to save recording';
+    }
+  }
+
+  /**
+   * Load and display a saved recording
+   * @param {string} recordingId
+   */
+  async loadRecording(recordingId) {
+    if (this.isRecording) {
+      this.recordingStatus.textContent = 'Stop recording before loading a saved recording';
+      return;
+    }
+
+    try {
+      this.recordingStatus.textContent = 'Loading recording...';
+      this.updateStatusBar('processing');
+
+      const data = await this.recordingStore.getWithChunks(recordingId);
+      if (!data) {
+        this.recordingStatus.textContent = 'Recording not found';
+        this.updateStatusBar('ready');
+        return;
+      }
+
+      const { recording, chunks } = data;
+
+      // Set viewing state
+      this.isViewingRecording = true;
+      this.viewedRecordingId = recordingId;
+
+      // Clear current display
+      this.clearTranscriptDisplay();
+
+      // Render saved segments
+      for (const segment of recording.segments) {
+        this.renderSegment(segment);
+      }
+
+      // Initialize audio playback with deserialized chunks
+      const audioChunks = deserializeChunks(chunks);
+      // Note: audioPlayback will be implemented separately
+
+      // Notify Alpine
+      window.dispatchEvent(new CustomEvent('recording-loaded', {
+        detail: {
+          id: recording.id,
+          name: recording.name,
+          duration: recording.duration,
+          enrollmentsSnapshot: recording.enrollmentsSnapshot,
+          participants: recording.participants,
+        },
+      }));
+
+      this.recordingStatus.textContent = `Viewing: ${recording.name}`;
+      this.updateStatusBar('ready');
+
+      console.log(`[Recording] Loaded "${recording.name}"`);
+    } catch (error) {
+      console.error('[Recording] Failed to load:', error);
+      this.recordingStatus.textContent = 'Failed to load recording';
+      this.updateStatusBar('ready');
+    }
+  }
+
+  /**
+   * Return to live recording mode (exit viewing mode)
+   */
+  returnToLive() {
+    if (!this.isViewingRecording) return;
+
+    this.isViewingRecording = false;
+    this.viewedRecordingId = null;
+    this.audioPlayback = null;
+
+    // Clear display
+    this.clearTranscriptDisplay();
+
+    // Notify Alpine
+    window.dispatchEvent(new CustomEvent('recording-closed'));
+
+    this.recordingStatus.textContent = 'Ready';
+    this.updateStatusBar('ready');
+  }
+
+  /**
+   * Delete a saved recording
+   * @param {string} recordingId
+   */
+  async deleteRecording(recordingId) {
+    try {
+      await this.recordingStore.delete(recordingId);
+
+      // If we were viewing this recording, return to live
+      if (this.viewedRecordingId === recordingId) {
+        this.returnToLive();
+      }
+
+      // Update recordings list
+      await this.loadRecordingsList();
+
+      console.log(`[Recording] Deleted recording ${recordingId}`);
+    } catch (error) {
+      console.error('[Recording] Failed to delete:', error);
+    }
+  }
+
+  /**
+   * Rename a saved recording
+   * @param {string} recordingId
+   * @param {string} newName
+   */
+  async renameRecording(recordingId, newName) {
+    if (!newName || !newName.trim()) return;
+
+    try {
+      await this.recordingStore.update(recordingId, { name: newName.trim() });
+      await this.loadRecordingsList();
+
+      // Update status if we're viewing this recording
+      if (this.viewedRecordingId === recordingId) {
+        this.recordingStatus.textContent = `Viewing: ${newName.trim()}`;
+      }
+
+      console.log(`[Recording] Renamed to "${newName.trim()}"`);
+    } catch (error) {
+      console.error('[Recording] Failed to rename:', error);
+    }
+  }
+
+  /**
+   * Render a single segment to the transcript container
+   * (Extracted for use when loading saved recordings)
+   * @param {Object} segment
+   */
+  renderSegment(segment) {
+    const segmentEl = document.createElement('div');
+    segmentEl.className = 'transcript-segment';
+
+    if (segment.isEnvironmental) {
+      segmentEl.classList.add('environmental');
+    } else if (segment.speaker != null) {
+      segmentEl.style.setProperty('--speaker-color', `var(--speaker-${(segment.speaker % 6) + 1})`);
+    }
+
+    // Create label
+    const labelEl = document.createElement('div');
+    labelEl.className = 'segment-label';
+
+    const label = segment.speakerLabel || `Speaker ${segment.speaker + 1}`;
+    const timeStr = formatDuration(segment.startTime || 0);
+
+    labelEl.innerHTML = `
+      ${label}
+      <span class="timestamp">${timeStr}</span>
+    `;
+
+    // Create text
+    const textEl = document.createElement('div');
+    textEl.className = 'segment-text';
+    textEl.textContent = segment.text;
+
+    segmentEl.appendChild(labelEl);
+    segmentEl.appendChild(textEl);
+    this.transcriptContainer.appendChild(segmentEl);
   }
 
   // ==================== Enrollment Methods ====================

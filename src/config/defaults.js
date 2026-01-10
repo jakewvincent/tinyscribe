@@ -139,6 +139,16 @@ export const DEBUG_DEFAULTS = {
   maxSessions: 5,
 };
 
+// Recording management configuration
+export const RECORDING_DEFAULTS = {
+  // Maximum recordings to keep (auto-delete oldest when exceeded)
+  maxRecordings: 20,
+  // Default name format ({date} replaced with YYYY-MM-DD HH:MM)
+  defaultNameFormat: 'Recording {date}',
+  // Auto-save when recording stops
+  autoSaveEnabled: true,
+};
+
 // Attribution UI configuration (for hypothesis visibility features)
 export const ATTRIBUTION_UI_DEFAULTS = {
   // Similarity breakdown bar
@@ -186,6 +196,7 @@ export const DEFAULTS = {
   speakerColors: SPEAKER_COLORS,
   rainbowPassages: RAINBOW_PASSAGES,
   debug: DEBUG_DEFAULTS,
+  recording: RECORDING_DEFAULTS,
   attributionUI: ATTRIBUTION_UI_DEFAULTS,
   reasonBadges: REASON_BADGES,
 };

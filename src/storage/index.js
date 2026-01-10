@@ -15,4 +15,4 @@ export {
 } from './localStorage/index.js';
 
 // IndexedDB
-export { IndexedDBAdapter, DebugLogStore } from './indexedDB/index.js';
+export { IndexedDBAdapter, DebugLogStore, RecordingStore } from './indexedDB/index.js';

@@ -28,3 +28,16 @@ export { AudioValidator } from './validation/index.js';
 
 // Conversation-level inference
 export { ConversationInference } from './inference/index.js';
+
+// Recording utilities
+export {
+  serializeAudio,
+  deserializeAudio,
+  serializeChunks,
+  deserializeChunks,
+  calculateStorageSize,
+  generateRecordingName,
+  generateRecordingId,
+  formatDuration,
+  formatFileSize,
+} from './recording/index.js';

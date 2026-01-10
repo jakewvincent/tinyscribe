@@ -1093,6 +1093,224 @@ details[open] .expand-icon {
 
 #enroll-status.error { color: #ef4444; }
 
+/* ==================== RECORDINGS PANEL ==================== */
+.recording-count {
+  font-size: 0.75rem;
+  font-weight: normal;
+  color: var(--text-muted);
+}
+
+.recording-session-indicator {
+  padding: 0.5rem;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.recording-session-indicator.viewing {
+  background: var(--speaker-1);
+  background: rgba(74, 144, 217, 0.15);
+  border-left: 3px solid var(--speaker-1);
+}
+
+.session-live {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.session-viewing {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  flex: 1;
+}
+
+.viewing-label {
+  color: var(--text-muted);
+}
+
+.viewing-name {
+  font-weight: 500;
+  color: var(--text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+
+.return-btn {
+  margin-left: auto;
+  font-size: 1rem;
+}
+
+.recordings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.recording-item {
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.recording-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.recording-item.selected {
+  background: rgba(74, 144, 217, 0.1);
+  border-color: var(--speaker-1);
+}
+
+.recording-name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.recording-name {
+  font-size: 0.85rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.rename-input {
+  flex: 1;
+  padding: 0.25rem 0.375rem;
+  font-size: 0.85rem;
+  border: 1px solid var(--speaker-1);
+  border-radius: 3px;
+  background: var(--bg-secondary);
+}
+
+.rename-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(74, 144, 217, 0.3);
+}
+
+.recording-actions {
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.recording-item:hover .recording-actions {
+  opacity: 1;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.btn-icon:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-color);
+}
+
+.btn-icon.delete:hover {
+  color: #ef4444;
+}
+
+.recording-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+.meta-sep {
+  opacity: 0.5;
+}
+
+.recording-date {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+.recordings-empty {
+  text-align: center;
+  padding: 1rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.recordings-empty .hint {
+  font-size: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.playback-controls {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.playback-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.play-btn {
+  font-size: 1.25rem;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.playback-progress {
+  flex: 1;
+}
+
+.progress-bar {
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--speaker-1);
+  border-radius: 3px;
+  transition: width 0.1s linear;
+}
+
+.playback-time {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-family: monospace;
+  min-width: 70px;
+  text-align: right;
+}
+
 /* ==================== MODEL STATUS ==================== */
 #model-status {
   font-size: 0.8rem;

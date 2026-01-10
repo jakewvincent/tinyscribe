@@ -5,3 +5,4 @@
 
 export { IndexedDBAdapter } from './indexedDBAdapter.js';
 export { DebugLogStore } from './stores/debugLogStore.js';
+export { RecordingStore } from './stores/recordingStore.js';
