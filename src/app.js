@@ -359,6 +359,8 @@ export class App {
         console.error('Worker error:', message);
         this.loadingMessage.textContent = message;
         this.loadingMessage.className = 'status-error';
+        // Notify Alpine components of error status
+        window.dispatchEvent(new CustomEvent('model-status-update', { detail: { status: 'error' } }));
         break;
 
       case 'debug-log':
@@ -400,6 +402,9 @@ export class App {
       this.loadModelsBtn.disabled = false;
       this.loadModelsBtn.classList.remove('hidden');
       this.updateStatusBar('ready');
+
+      // Notify Alpine components of error status
+      window.dispatchEvent(new CustomEvent('model-status-update', { detail: { status: 'error' } }));
     }
   }
 
@@ -483,6 +488,9 @@ export class App {
     this.loadModelsBtn.textContent = 'Loading...';
     this.progressContainer.innerHTML = '';
     this.progressItems.clear();
+
+    // Notify Alpine that models are loading
+    window.dispatchEvent(new CustomEvent('model-status-update', { detail: { status: 'loading' } }));
 
     this.worker.postMessage({
       type: 'load',

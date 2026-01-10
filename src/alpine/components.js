@@ -33,6 +33,31 @@ document.addEventListener('alpine:init', () => {
   }));
 
   /**
+   * Model Status panel component
+   * Extends panel with model loading state tracking
+   */
+  Alpine.data('modelStatusPanel', () => ({
+    expanded: Alpine.$persist(false).as('panel-model-status'),
+    status: 'idle', // 'idle' | 'loading' | 'ready' | 'error'
+
+    toggle() {
+      this.expanded = !this.expanded;
+    },
+
+    init() {
+      // Listen for model status updates from app.js
+      window.addEventListener('model-status-update', (e) => {
+        this.status = e.detail.status;
+      });
+
+      // Also listen for model-loaded for backwards compatibility
+      window.addEventListener('model-loaded', () => {
+        this.status = 'ready';
+      });
+    },
+  }));
+
+  /**
    * Status bar component
    * Displays app status, metrics, and processing state
    */

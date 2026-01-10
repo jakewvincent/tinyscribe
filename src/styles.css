@@ -738,10 +738,15 @@ details[open] .expand-icon {
 }
 
 .panel-chevron {
-  font-size: 0.7rem;
+  font-size: 0.85rem;
   color: var(--text-muted);
-  transition: transform 0.2s;
-  width: 12px;
+  transition: transform 0.2s ease;
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.panel-chevron.rotated {
+  transform: rotate(-90deg);
 }
 
 .panel-header h3 {
@@ -1074,8 +1079,15 @@ details[open] .expand-icon {
   font-size: 1rem;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 0;
+  padding: 0.125rem;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon i.ti {
+  font-size: inherit;
 }
 
 .btn-icon:hover { color: #ef4444; }
@@ -1214,18 +1226,14 @@ details[open] .expand-icon {
   opacity: 1;
 }
 
-.btn-icon {
-  background: none;
-  border: none;
-  cursor: pointer;
+/* Recording panel button icons - more specific styling */
+.recording-actions .btn-icon {
   padding: 0.25rem;
   font-size: 0.9rem;
-  color: var(--text-muted);
   border-radius: 3px;
-  line-height: 1;
 }
 
-.btn-icon:hover {
+.recording-actions .btn-icon:hover {
   background: var(--bg-tertiary);
   color: var(--text-color);
 }
@@ -1361,6 +1369,36 @@ details[open] .expand-icon {
 /* ==================== MODEL STATUS ==================== */
 #model-status {
   font-size: 0.8rem;
+}
+
+/* Status indicator in collapsed panel header */
+.model-status-indicator {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  font-size: 1rem;
+}
+
+.model-status-indicator .status-idle {
+  color: var(--text-muted);
+}
+
+.model-status-indicator .status-loading {
+  color: #3b82f6;
+  animation: spin 1s linear infinite;
+}
+
+.model-status-indicator .status-ready {
+  color: #10b981;
+}
+
+.model-status-indicator .status-error {
+  color: #ef4444;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 #loading-message {
@@ -1563,6 +1601,19 @@ details[open] .expand-icon {
 .btn.small {
   padding: 0.3rem 0.6rem;
   font-size: 0.75rem;
+}
+
+/* Tabler icon alignment in buttons */
+.btn i.ti {
+  vertical-align: middle;
+  margin-right: 0.3em;
+  font-size: 1.1em;
+  line-height: 1;
+}
+
+.btn.small i.ti {
+  font-size: 1em;
+  margin-right: 0.25em;
 }
 
 .btn:not(.primary):not(.secondary) {
@@ -2304,6 +2355,13 @@ details[open] .expand-icon {
   font-size: 1.1rem;
   padding: 0;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.comparison-result-close:hover {
+  color: #ef4444;
 }
 
 .comparison-segments {

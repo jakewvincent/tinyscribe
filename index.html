@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Live Transcription Studio</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
   <link rel="stylesheet" href="/src/styles.css">
 </head>
 <body>
@@ -18,15 +19,18 @@
           <button id="record-btn" class="btn"
                   :class="{ 'recording': isRecording }"
                   :disabled="!modelLoaded"
-                  @click="toggleRecording()"
-                  x-text="isRecording ? 'Stop Recording' : 'Start Recording'">Start Recording</button>
+                  @click="toggleRecording()">
+            <i x-show="!isRecording" class="ti ti-microphone"></i>
+            <i x-show="isRecording" class="ti ti-player-stop"></i>
+            <span x-text="isRecording ? 'Stop' : 'Record'"></span>
+          </button>
           <button id="upload-btn" class="btn secondary"
                   :disabled="!modelLoaded || isRecording"
-                  @click="uploadAudio()">Upload Audio</button>
+                  @click="uploadAudio()"><i class="ti ti-upload"></i> Upload</button>
           <input type="file" id="upload-file-input" accept="audio/*" class="hidden">
           <button id="clear-btn" class="btn secondary"
                   :disabled="!modelLoaded"
-                  @click="clearTranscript()">Clear</button>
+                  @click="clearTranscript()"><i class="ti ti-eraser"></i> Clear</button>
         </div>
         <div id="audio-visualizer" :class="{ 'active': isRecording }"></div>
         <div id="recording-status"></div>
@@ -61,7 +65,7 @@
           <div class="panel-header-inline">
             <h3>Raw Whisper Output</h3>
             <span class="panel-subtitle">Word-by-word transcription before processing</span>
-            <button id="export-raw-btn" class="btn secondary small" disabled>Export</button>
+            <button id="export-raw-btn" class="btn secondary small" disabled><i class="ti ti-download"></i> Export</button>
           </div>
           <div id="raw-chunks-container">
             <p class="placeholder">Raw chunk data will appear here...</p>
@@ -79,12 +83,12 @@
             <!-- Feature 7: Comparison mode toggle -->
             <div x-data="comparisonMode" class="comparison-mode-controls">
               <button class="comparison-toggle" :class="{ 'active': enabled }" @click="toggle()" title="Compare segment embeddings">
-                <span class="comparison-toggle-icon">&#x2194;</span>
+                <i class="ti ti-arrows-left-right comparison-toggle-icon"></i>
                 <span x-text="enabled ? 'Exit Compare' : 'Compare'"></span>
               </button>
             </div>
-            <button id="copy-btn" class="btn secondary small" disabled>Copy</button>
-            <button id="export-transcript-btn" class="btn secondary small" disabled>Export</button>
+            <button id="copy-btn" class="btn secondary small" disabled><i class="ti ti-copy"></i> Copy</button>
+            <button id="export-transcript-btn" class="btn secondary small" disabled><i class="ti ti-download"></i> Export</button>
           </div>
           <div id="transcript-container">
             <p class="placeholder">Transcript will appear here when you start recording...</p>
@@ -100,7 +104,7 @@
         <!-- Active Participants Panel -->
         <div class="sidebar-panel" id="panel-participants" x-data="panel('participants', true)" x-cloak>
           <div class="panel-header" @click="toggle()">
-            <span class="panel-chevron" x-text="expanded ? '&#9662;' : '&#9656;'"></span>
+            <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
             <h3>Active Participants</h3>
           </div>
           <div class="panel-content" :class="{ 'collapsed': !expanded }">
@@ -112,7 +116,7 @@
         <!-- Phrase Stats Panel -->
         <div class="sidebar-panel" id="panel-phrase-stats" x-data="panel('phrase-stats', true)" x-cloak>
           <div class="panel-header" @click="toggle()">
-            <span class="panel-chevron" x-text="expanded ? '&#9662;' : '&#9656;'"></span>
+            <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
             <h3>Last Phrase</h3>
           </div>
           <div class="panel-content" :class="{ 'collapsed': !expanded }">
@@ -151,7 +155,7 @@
         <!-- Speaker Enrollment Panel -->
         <section id="enrollment-section" class="sidebar-panel" x-data="panel('enrollment', true)" x-cloak>
           <div class="panel-header" @click="toggle()">
-            <span class="panel-chevron" x-text="expanded ? '&#9662;' : '&#9656;'"></span>
+            <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
             <h3>Speaker Enrollment <span class="optional-badge">Optional</span></h3>
           </div>
           <div class="panel-content" :class="{ 'collapsed': !expanded }" x-data="enrollmentContent()">
@@ -166,8 +170,8 @@
               <div class="enroll-actions">
                 <button id="enroll-start-btn" class="btn primary small"
                         :disabled="!modelLoaded || !speakerName.trim()"
-                        @click="startEnrollment()">Start Enrollment</button>
-                <button class="btn secondary small" @click="skip()">Skip</button>
+                        @click="startEnrollment()"><i class="ti ti-user-plus"></i> Enroll</button>
+                <button class="btn secondary small" @click="skip()"><i class="ti ti-x"></i> Skip</button>
               </div>
             </div>
 
@@ -177,7 +181,7 @@
                 <span class="enrolled-count" x-text="enrolledCountText">0 speakers enrolled</span>
                 <button id="add-speaker-btn" class="btn secondary small"
                         :disabled="!modelLoaded || enrollments.length >= 6"
-                        @click="addNewSpeaker()">+ Add</button>
+                        @click="addNewSpeaker()"><i class="ti ti-plus"></i> Add</button>
               </div>
               <div id="enrolled-items">
                 <template x-for="enrollment in enrollments" :key="enrollment.id">
@@ -185,11 +189,11 @@
                     <span class="speaker-dot" :style="`background: var(--speaker-${enrollment.colorIndex})`"></span>
                     <span class="enrolled-name" x-text="enrollment.name"></span>
                     <button class="btn-icon remove-enrollment"
-                            @click="removeEnrollment(enrollment.id)" title="Remove">&times;</button>
+                            @click="removeEnrollment(enrollment.id)" title="Remove"><i class="ti ti-x"></i></button>
                   </div>
                 </template>
               </div>
-              <button class="btn secondary small" @click="clearAll()">Clear All</button>
+              <button class="btn secondary small" @click="clearAll()"><i class="ti ti-trash"></i> Clear All</button>
             </div>
 
             <div id="enroll-status" :class="{ 'error': statusError }" x-text="statusMessage"></div>
@@ -207,7 +211,7 @@
         <!-- Recordings Panel -->
         <div class="sidebar-panel" id="panel-recordings" x-data="recordingsPanel" x-cloak>
           <div class="panel-header" @click="toggle()">
-            <span class="panel-chevron" x-text="expanded ? '&#9662;' : '&#9656;'"></span>
+            <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
             <h3>Recordings <span x-show="recordings.length > 0" class="recording-count" x-text="'(' + recordings.length + ')'"></span></h3>
           </div>
           <div class="panel-content" :class="{ 'collapsed': !expanded }">
@@ -220,7 +224,7 @@
                 <div class="session-viewing">
                   <span class="viewing-label">Viewing:</span>
                   <span class="viewing-name" x-text="viewedRecording?.name"></span>
-                  <button class="btn-icon return-btn" @click="returnToLive()" title="Return to live">&#x21A9;</button>
+                  <button class="btn-icon return-btn" @click="returnToLive()" title="Return to live"><i class="ti ti-arrow-back"></i></button>
                 </div>
               </template>
             </div>
@@ -246,8 +250,8 @@
                              @blur="confirmRename()">
                     </template>
                     <div class="recording-actions" @click.stop>
-                      <button class="btn-icon" @click="startRename(recording.id, recording.name)" title="Rename">&#x270E;</button>
-                      <button class="btn-icon delete" @click="deleteRecording(recording.id)" title="Delete">&times;</button>
+                      <button class="btn-icon" @click="startRename(recording.id, recording.name)" title="Rename"><i class="ti ti-pencil"></i></button>
+                      <button class="btn-icon delete" @click="deleteRecording(recording.id)" title="Delete"><i class="ti ti-trash"></i></button>
                     </div>
                   </div>
                   <!-- Metadata -->
@@ -273,7 +277,8 @@
             <div class="playback-controls" x-show="isViewingRecording" x-cloak>
               <div class="playback-row">
                 <button class="btn-icon play-btn" @click="togglePlay()">
-                  <span x-text="isPlaying ? '&#x23F8;' : '&#x25B6;'"></span>
+                  <i x-show="!isPlaying" class="ti ti-player-play"></i>
+                  <i x-show="isPlaying" class="ti ti-player-pause"></i>
                 </button>
                 <div class="playback-progress">
                   <div class="progress-bar">
@@ -282,7 +287,7 @@
                 </div>
                 <span class="playback-time" x-text="formatDuration(playbackTime) + ' / ' + formatDuration(playbackDuration)"></span>
                 <button class="btn-icon download-btn" @click="downloadRecording()" title="Download as WAV">
-                  &#x2913;
+                  <i class="ti ti-download"></i>
                 </button>
               </div>
 
@@ -303,14 +308,20 @@
         </div>
 
         <!-- Model Status Panel -->
-        <div class="sidebar-panel" id="panel-model-status" x-data="panel('model-status', false)" x-cloak>
+        <div class="sidebar-panel" id="panel-model-status" x-data="modelStatusPanel" x-cloak>
           <div class="panel-header" @click="toggle()">
-            <span class="panel-chevron" x-text="expanded ? '&#9662;' : '&#9656;'"></span>
+            <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
             <h3>Model Status</h3>
+            <span class="model-status-indicator" x-show="!expanded" x-cloak>
+              <i x-show="status === 'idle'" class="ti ti-loader-2 status-idle"></i>
+              <i x-show="status === 'loading'" class="ti ti-loader-2 status-loading"></i>
+              <i x-show="status === 'ready'" class="ti ti-circle-check status-ready"></i>
+              <i x-show="status === 'error'" class="ti ti-circle-x status-error"></i>
+            </span>
           </div>
           <div class="panel-content" :class="{ 'collapsed': !expanded }" id="model-status">
             <div id="loading-message">Models will auto-load...</div>
-            <button id="load-models-btn" class="btn primary small hidden">Reload Models</button>
+            <button id="load-models-btn" class="btn primary small hidden"><i class="ti ti-refresh"></i> Reload Models</button>
             <div id="progress-container"></div>
             <div id="device-info"></div>
           </div>
@@ -319,7 +330,7 @@
         <!-- Debug Logging Panel -->
         <div class="sidebar-panel" id="panel-debug" x-data="panel('debug', false)" x-cloak>
           <div class="panel-header" @click="toggle()">
-            <span class="panel-chevron" x-text="expanded ? '&#9662;' : '&#9656;'"></span>
+            <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
             <h3>Debug Logging</h3>
           </div>
           <div class="panel-content" :class="{ 'collapsed': !expanded }">
@@ -334,8 +345,8 @@
               </label>
             </div>
             <div class="debug-actions">
-              <button id="debug-export" class="btn secondary small" disabled>Export Logs</button>
-              <button id="debug-clear" class="btn secondary small" disabled>Clear Logs</button>
+              <button id="debug-export" class="btn secondary small" disabled><i class="ti ti-download"></i> Export</button>
+              <button id="debug-clear" class="btn secondary small" disabled><i class="ti ti-trash"></i> Clear</button>
             </div>
             <div id="debug-status" class="debug-status">Logging disabled</div>
           </div>
@@ -428,12 +439,12 @@
         <!-- Actions -->
         <div class="modal-actions">
           <div class="modal-record-group">
-            <button id="modal-record-btn" class="btn primary">Record</button>
-            <button id="modal-upload-btn" class="btn secondary">Upload</button>
+            <button id="modal-record-btn" class="btn primary"><i class="ti ti-microphone"></i> Record</button>
+            <button id="modal-upload-btn" class="btn secondary"><i class="ti ti-upload"></i> Upload</button>
             <input type="file" id="modal-file-input" accept="audio/*" class="hidden">
           </div>
-          <button id="modal-finish-btn" class="btn" disabled>Finish</button>
-          <button id="modal-cancel-btn" class="btn secondary">Cancel</button>
+          <button id="modal-finish-btn" class="btn" disabled><i class="ti ti-check"></i> Finish</button>
+          <button id="modal-cancel-btn" class="btn secondary"><i class="ti ti-x"></i> Cancel</button>
         </div>
       </div>
     </div>
@@ -443,7 +454,7 @@
   <div x-data="comparisonMode" x-show="result" x-cloak class="comparison-result" x-transition>
     <div class="comparison-result-header">
       <span class="comparison-result-title">Segment Comparison</span>
-      <button class="comparison-result-close" @click="toggle()">&times;</button>
+      <button class="comparison-result-close" @click="toggle()"><i class="ti ti-x"></i></button>
     </div>
 
     <template x-if="result && !result.error">
