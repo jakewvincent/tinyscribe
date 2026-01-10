@@ -69,12 +69,12 @@ Models are cached in IndexedDB after first download.
 ```
 src/
 ├── main.js                 # Entry point, instantiates App
-├── app.js                  # Main controller (audio, modals, worker communication)
+├── app.js                  # Main controller (audio, modals, worker communication, recordings)
 ├── worker.js               # Web Worker (model loading, inference)
 ├── styles.css              # All styling
 │
 ├── alpine/                 # Alpine.js UI components
-│   └── components.js       # Reactive components (panels, status bar, controls, enrollment)
+│   └── components.js       # Reactive components (panels, status bar, controls, recordings)
 │
 ├── config/                 # Centralized configuration
 │   └── defaults.js         # All configurable constants (thresholds, colors, passages)
@@ -88,6 +88,10 @@ src/
 │   │   ├── phraseDetector.js   # Detects phrase boundaries from word timestamps
 │   │   ├── overlapMerger.js    # Text-based overlap deduplication between chunks
 │   │   └── transcriptMerger.js # Processes phrases with speaker assignments
+│   ├── inference/
+│   │   └── conversationInference.js # Hypothesis-based speaker boosting and stats
+│   ├── recording/
+│   │   └── recordingSerializer.js   # Float32Array serialization for IndexedDB
 │   ├── sound/
 │   │   └── soundClassifier.js  # Classifies bracketed markers (speech vs environmental)
 │   └── validation/
@@ -95,7 +99,16 @@ src/
 │
 ├── audio/                  # Browser audio layer (reusable)
 │   ├── audioCapture.js     # Microphone capture, resampling to 16kHz
-│   └── vadProcessor.js     # VAD-triggered speech detection (Silero VAD)
+│   ├── vadProcessor.js     # VAD-triggered speech detection (Silero VAD)
+│   └── audioPlayback.js    # Web Audio API playback for saved recordings
+│
+├── storage/                # Persistence layer
+│   ├── keys.js             # All storage keys (localStorage + IndexedDB)
+│   ├── localStorage/       # Preferences, enrollments, debug settings
+│   └── indexedDB/
+│       └── stores/
+│           ├── debugLogStore.js    # Debug session logs
+│           └── recordingStore.js   # Saved recordings with audio chunks
 │
 ├── worker/                 # Worker abstraction
 │   └── workerClient.js     # Promise-based API for worker communication
@@ -103,6 +116,7 @@ src/
 ├── ui/                     # UI components
 │   └── components/
 │       ├── speakerVisualizer.js # Canvas visualization of speaker embeddings
+│       ├── participantsPanel.js # Active speakers with stats and trends
 │       └── debugPanel.js        # Debug logging UI controls
 │
 └── utils/
@@ -114,7 +128,8 @@ src/
 The codebase is organized for easy extraction:
 
 - **`core/`**: Pure algorithms with zero browser dependencies. Can be copied directly to other JS projects.
-- **`audio/`**: Browser audio capture. Reusable for any web audio application.
+- **`audio/`**: Browser audio capture and playback. Reusable for any web audio application.
+- **`storage/`**: IndexedDB and localStorage wrappers. Pattern: stores follow DebugLogStore as template.
 - **`worker/`**: WorkerClient provides promise-based async API for ML inference.
 - **`alpine/`**: Declarative UI components using Alpine.js CDN (no build step required).
 - **`config/`**: All thresholds and constants in one place for easy tuning.
@@ -173,6 +188,23 @@ Whisper may output bracketed markers for non-speech sounds:
 - Closer dots = more similar voice characteristics
 - Updates after enrollment changes
 
+### Recording Management
+
+Sessions are automatically saved when recording stops:
+- **Storage**: IndexedDB with two-store pattern (metadata separate from audio chunks for performance)
+- **Audio**: Float32Array chunks serialized to regular arrays for storage (~5-10MB per 10-min recording)
+- **Replay**: Saved recordings can be loaded and played back via Web Audio API
+- **Enrollments**: Each recording snapshots the active enrollments; when viewing, can toggle between snapshot and current enrollments to re-cluster with different speaker identities
+- **Max recordings**: Oldest auto-deleted when exceeding limit (configurable, default 20)
+
+### Hypothesis-Based Speaker Boosting
+
+The ConversationInference module tracks conversational patterns to improve attribution:
+- Builds hypotheses about who is speaking based on turn-taking patterns
+- When two speakers alternate, subsequent ambiguous segments get a "boost" toward the expected speaker
+- Tracks statistics: how often boosting changed the result, confirmation rate
+- Debug UI shows whether each segment was boosted and by how much
+
 ## Technical Notes
 
 - **Sample rate**: All audio resampled to 16kHz (model requirement)
@@ -189,6 +221,8 @@ Whisper may output bracketed markers for non-speech sounds:
 - **WebGPU**: Used for Whisper if available, otherwise WASM fallback
 - **WavLM**: Always uses WASM with fp32 for accurate frame features
 - **Alpine.js**: CDN-loaded (v3 + persist plugin), no build step. Components communicate with app.js via CustomEvents. Panel states persisted to localStorage.
+- **IndexedDB**: Used for ML model cache (~400MB) and saved recordings. Two-store pattern for recordings separates metadata from audio chunks.
+- **Audio cloning**: In `handleAudioChunk()`, audio is cloned before queuing since pipeline never mutates Float32Arrays. This captures audio for recording without interference.
 
 ## Configuration
 
@@ -198,6 +232,7 @@ All configurable constants are centralized in `src/config/defaults.js`:
 - **VAD**: min/max speech duration, overlap duration, thresholds
 - **Phrases**: gap threshold, min duration
 - **Enrollment**: min samples, outlier threshold, Rainbow Passage sentences
+- **Recordings**: max recordings, default name format, auto-save behavior
 - **UI**: speaker colors
 
 **Runtime options**:
@@ -219,7 +254,7 @@ The codebase is organized into layers with strict dependency rules. This enables
 
 **Dependency hierarchy** (each layer may only import from layers to its right):
 ```
-alpine/ → app.js → ui/ → audio/ → worker/ → core/ → config/
+alpine/ → app.js → ui/ → audio/ → storage/ → worker/ → core/ → config/
 ```
 
 **Layer responsibilities:**
@@ -228,8 +263,9 @@ alpine/ → app.js → ui/ → audio/ → worker/ → core/ → config/
 |-------|---------------|---------|----------|
 | `config/` | No | Constants, thresholds, defaults | Speaker colors, VAD thresholds |
 | `core/` | No | Pure algorithms, business logic | Clustering, phrase detection, embedding math |
+| `storage/` | Yes | Persistence (localStorage, IndexedDB) | RecordingStore, DebugLogStore |
 | `worker/` | No* | Worker communication abstraction | WorkerClient promise-based API |
-| `audio/` | Yes | Audio capture, VAD processing | AudioCapture, VADProcessor |
+| `audio/` | Yes | Audio capture, VAD, playback | AudioCapture, VADProcessor, AudioPlayback |
 | `ui/` | Yes | Reusable UI components | SpeakerVisualizer, DebugPanel |
 | `app.js` | Yes | Application orchestration | Modal dialogs, worker setup, audio routing |
 | `alpine/` | Yes | Declarative UI state | Panel collapse, status bar, controls |
@@ -248,15 +284,19 @@ alpine/ → app.js → ui/ → audio/ → worker/ → core/ → config/
    - Wraps Web Audio API, MediaRecorder, etc.
    - Should accept callbacks/options, not import app-specific code
 
-3. **Is it a reusable UI component?** → `ui/components/`
+3. **Does it persist data?** → `storage/`
+   - IndexedDB stores go in `storage/indexedDB/stores/`, follow DebugLogStore pattern
+   - Add keys to `storage/keys.js` for all storage identifiers
+
+4. **Is it a reusable UI component?** → `ui/components/`
    - Accepts a DOM element or canvas, doesn't query the DOM itself
    - Example: `SpeakerVisualizer` accepts a canvas element
 
-4. **Is it reactive UI state?** → `alpine/components.js`
+5. **Is it reactive UI state?** → `alpine/components.js`
    - Panel expand/collapse, button enabled/disabled, status display
    - Communicates with app.js via CustomEvents, not direct imports
 
-5. **Does it orchestrate multiple systems?** → `app.js`
+6. **Does it orchestrate multiple systems?** → `app.js`
    - Modal dialogs with complex audio/VAD integration
    - Coordinates between Alpine, workers, and audio capture
 
