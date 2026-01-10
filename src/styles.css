@@ -83,6 +83,17 @@ body {
   line-height: 1;
 }
 
+/* SVG Icons - for smooth animations (no wobble unlike font icons)
+ * Uses sprite sheet defined at top of index.html
+ * Reference with: <svg class="svg-icon" width="16" height="16"><use href="#icon-name"/></svg>
+ */
+.svg-icon {
+  display: inline-block;
+  vertical-align: middle;
+  fill: none;
+  stroke: currentColor;
+}
+
 /* ==================== TOPBAR ==================== */
 #topbar {
   display: flex;
@@ -1458,13 +1469,6 @@ details[open] .expand-icon {
 
 .model-status-indicator .status-loading {
   color: #3b82f6;
-  /* Fix wobble: use inline-block + explicit square dimensions + 16px font */
-  display: inline-block;
-  width: 1em;
-  height: 1em;
-  font-size: 16px; /* Multiple of 16px reduces wobble per Font Awesome docs */
-  text-align: center;
-  line-height: 1;
   animation: spin 1s linear infinite;
 }
 
