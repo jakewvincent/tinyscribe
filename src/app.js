@@ -2107,11 +2107,6 @@ export class App {
       // Clear current display
       this.clearTranscriptDisplay();
 
-      // Render saved segments
-      for (const segment of recording.segments) {
-        this.renderSegment(segment);
-      }
-
       // Initialize inference with recording data for accurate participants panel
       this.conversationInference.reset();
       const enrollments = recording.enrollmentsSnapshot || [];
@@ -2119,26 +2114,23 @@ export class App {
       this.conversationInference.setExpectedSpeakers(this.numSpeakers);
 
       // Process each segment through inference to build hypothesis
+      // Use saved inferenceAttribution if present, otherwise rebuild from debug.clustering
       for (let i = 0; i < recording.segments.length; i++) {
         const segment = recording.segments[i];
-        // Only process segments that have attribution data with similarity info
-        if (segment.attribution?.allSimilarities) {
-          // Build segment structure expected by processNewSegment
-          const segmentForInference = {
-            speaker: segment.speaker,
-            speakerLabel: segment.speakerLabel,
-            debug: {
-              clustering: {
-                allSimilarities: segment.attribution.allSimilarities,
-                similarity: segment.attribution.similarity,
-                margin: segment.attribution.margin,
-                reason: segment.attribution.reason,
-              },
-            },
-          };
-          this.conversationInference.processNewSegment(segmentForInference, i);
+
+        if (segment.inferenceAttribution) {
+          // Use saved attribution directly - preserves original boost decisions
+          this.conversationInference.segmentAttributions[i] = segment.inferenceAttribution;
+        } else if (segment.debug?.clustering?.allSimilarities) {
+          // Rebuild attribution from clustering data (for older recordings)
+          const { attribution } = this.conversationInference.processNewSegment(segment, i);
+          segment.inferenceAttribution = attribution;
         }
       }
+
+      // Render saved segments using the same renderer as live recording
+      // This ensures colors, similarity bars, reason badges, and boost indicators display correctly
+      this.renderSegments(recording.segments)
 
       // Update participants panel with recording's inference data
       this.updateParticipantsPanel();
@@ -2258,22 +2250,24 @@ export class App {
       }
 
       // Re-assign speakers to segments with embeddings
+      // Pass returnDebug=true to get full clustering info for visualization
       for (const segment of recording.segments) {
         if (segment.embedding && !segment.isEnvironmental) {
           const embedding = new Float32Array(segment.embedding);
-          const result = clusterer.assignSpeaker(embedding);
+          const result = clusterer.assignSpeaker(embedding, true);
 
           segment.speaker = result.speakerId;
-          segment.speakerLabel = result.speakerLabel;
-          segment.isEnrolledSpeaker = result.isEnrolled;
-          segment.speakerName = result.enrolledName || null;
-        }
-      }
+          segment.speakerLabel = clusterer.getSpeakerLabel(result.speakerId);
+          segment.isEnrolledSpeaker = result.debug?.isEnrolled || false;
+          segment.speakerName = clusterer.speakers[result.speakerId]?.name || null;
 
-      // Clear and re-render transcript
-      this.clearTranscriptDisplay();
-      for (const segment of recording.segments) {
-        this.renderSegment(segment);
+          // Update debug.clustering with new clustering results
+          segment.debug = segment.debug || {};
+          segment.debug.clustering = result.debug;
+
+          // Clear inferenceAttribution since it's based on old clustering
+          delete segment.inferenceAttribution;
+        }
       }
 
       // Refresh inference with new enrollments
@@ -2281,25 +2275,18 @@ export class App {
       this.conversationInference.setEnrolledSpeakers(enrollments || []);
       this.conversationInference.setExpectedSpeakers(this.numSpeakers);
 
-      // Process segments through inference (using original attribution data)
+      // Process segments through inference using new clustering data
       for (let i = 0; i < recording.segments.length; i++) {
         const segment = recording.segments[i];
-        if (segment.attribution?.allSimilarities) {
-          const segmentForInference = {
-            speaker: segment.speaker,
-            speakerLabel: segment.speakerLabel,
-            debug: {
-              clustering: {
-                allSimilarities: segment.attribution.allSimilarities,
-                similarity: segment.attribution.similarity,
-                margin: segment.attribution.margin,
-                reason: segment.attribution.reason,
-              },
-            },
-          };
-          this.conversationInference.processNewSegment(segmentForInference, i);
+        if (segment.debug?.clustering?.allSimilarities) {
+          const { attribution } = this.conversationInference.processNewSegment(segment, i);
+          segment.inferenceAttribution = attribution;
         }
       }
+
+      // Clear and re-render transcript using the same renderer as live recording
+      this.clearTranscriptDisplay();
+      this.renderSegments(recording.segments)
 
       // Update participants panel
       this.updateParticipantsPanel();
@@ -2396,43 +2383,6 @@ export class App {
       console.error('[Recording] Failed to download:', error);
       this.recordingStatus.textContent = 'Failed to download recording';
     }
-  }
-
-  /**
-   * Render a single segment to the transcript container
-   * (Extracted for use when loading saved recordings)
-   * @param {Object} segment
-   */
-  renderSegment(segment) {
-    const segmentEl = document.createElement('div');
-    segmentEl.className = 'transcript-segment';
-
-    if (segment.isEnvironmental) {
-      segmentEl.classList.add('environmental');
-    } else if (segment.speaker != null) {
-      segmentEl.style.setProperty('--speaker-color', `var(--speaker-${(segment.speaker % 6) + 1})`);
-    }
-
-    // Create label
-    const labelEl = document.createElement('div');
-    labelEl.className = 'segment-label';
-
-    const label = segment.speakerLabel || `Speaker ${segment.speaker + 1}`;
-    const timeStr = formatDuration(segment.startTime || 0);
-
-    labelEl.innerHTML = `
-      ${label}
-      <span class="timestamp">${timeStr}</span>
-    `;
-
-    // Create text
-    const textEl = document.createElement('div');
-    textEl.className = 'segment-text';
-    textEl.textContent = segment.text;
-
-    segmentEl.appendChild(labelEl);
-    segmentEl.appendChild(textEl);
-    this.transcriptContainer.appendChild(segmentEl);
   }
 
   // ==================== Enrollment Methods ====================
