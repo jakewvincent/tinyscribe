@@ -418,14 +418,16 @@ export class App {
 
     const shortName = file.split('/').pop();
 
-    if (status === 'initiate') {
-      // New file starting to download
+    // Ensure progress item exists for any status (handles out-of-order events)
+    if (!this.progressItems.has(file)) {
       this.addProgressItem(file, shortName);
-    } else if (status === 'progress') {
+    }
+
+    if (status === 'progress') {
       // Update progress
       this.updateProgressItem(file, percent, loaded, total);
-    } else if (status === 'done') {
-      // File completed
+    } else if (status === 'done' || status === 'ready') {
+      // File completed (Transformers.js sends 'ready' for cached files)
       this.completeProgressItem(file);
     }
   }

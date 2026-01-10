@@ -244,7 +244,8 @@ async function handleLoad({ device }, requestId) {
 
     await ModelManager.load(device, (progress) => {
       // Forward progress to main thread
-      if (progress.status === 'progress' || progress.status === 'initiate' || progress.status === 'done') {
+      // Include 'ready' status which Transformers.js sends for cached files
+      if (progress.status === 'progress' || progress.status === 'initiate' || progress.status === 'done' || progress.status === 'ready') {
         self.postMessage({ type: 'progress', ...progress });
       }
     });
