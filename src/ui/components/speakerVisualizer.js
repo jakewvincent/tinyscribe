@@ -68,6 +68,17 @@ export class SpeakerVisualizer {
   }
 
   /**
+   * Resize canvas to match current container size
+   * Call this when the container is resized (e.g., sidebar drag)
+   */
+  resize() {
+    if (!this.canvas) return;
+    // Reset the context scale before re-setting up
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.setupCanvas();
+  }
+
+  /**
    * Get canvas dimensions in CSS pixels
    */
   getCanvasDimensions() {

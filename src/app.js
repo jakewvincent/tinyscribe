@@ -2459,6 +2459,11 @@ export class App {
 
     window.addEventListener('sidebar-resize-complete', (e) => {
       PreferencesStore.setSidebarWidth(e.detail.width);
+      // Resize and re-render the speaker visualization canvas
+      if (this.speakerVisualizer) {
+        this.speakerVisualizer.resize();
+        this.updateVisualization();
+      }
     });
   }
 
