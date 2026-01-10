@@ -353,6 +353,25 @@ window.dispatchEvent(new CustomEvent('enrollments-updated', { detail: { enrollme
   import { SpeakerClusterer } from './core/embedding/speakerClusterer.js';
   ```
 
+### Styling
+
+All styling is in `src/styles.css` using CSS custom properties (design tokens) for consistency.
+
+**Always use design tokens** instead of hardcoded values:
+```css
+/* Good: uses design tokens */
+border-radius: var(--radius-md);
+box-shadow: var(--shadow-sm);
+padding: var(--space-sm);
+
+/* Avoid: magic numbers */
+border-radius: 6px;
+box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+padding: 0.5rem;
+```
+
+See `STYLING.md` for the complete design token reference and usage guidelines.
+
 ### Commits
 
 - Use conventional commit format (`feat:`, `fix:`, `refactor:`, `docs:`)
