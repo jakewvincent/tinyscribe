@@ -11,8 +11,239 @@
  */
 
 import * as ort from 'onnxruntime-web';
-import { mel_filter_bank, spectrogram, window_function } from '@huggingface/transformers';
 import { EmbeddingBackend } from './embeddingBackend.js';
+
+// ============================================================================
+// Pure JavaScript audio processing utilities (no ONNX dependencies)
+// ============================================================================
+
+/**
+ * Create a Hanning window
+ * @param {number} length - Window length
+ * @returns {Float32Array}
+ */
+function createHannWindow(length) {
+  const window = new Float32Array(length);
+  for (let i = 0; i < length; i++) {
+    window[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / length));
+  }
+  return window;
+}
+
+/**
+ * Convert frequency to mel scale (HTK formula)
+ * @param {number} freq - Frequency in Hz
+ * @returns {number} Mel value
+ */
+function hzToMel(freq) {
+  return 2595 * Math.log10(1 + freq / 700);
+}
+
+/**
+ * Convert mel to frequency (HTK formula)
+ * @param {number} mel - Mel value
+ * @returns {number} Frequency in Hz
+ */
+function melToHz(mel) {
+  return 700 * (Math.pow(10, mel / 2595) - 1);
+}
+
+/**
+ * Create mel filter bank matrix
+ * @param {number} numFreqBins - Number of FFT frequency bins
+ * @param {number} numMelBins - Number of mel filters
+ * @param {number} minFreq - Minimum frequency
+ * @param {number} maxFreq - Maximum frequency
+ * @param {number} sampleRate - Sample rate
+ * @returns {Float32Array[]} Array of mel filters, each of length numFreqBins
+ */
+function createMelFilterBank(numFreqBins, numMelBins, minFreq, maxFreq, sampleRate) {
+  const minMel = hzToMel(minFreq);
+  const maxMel = hzToMel(maxFreq);
+
+  // Create numMelBins + 2 points evenly spaced in mel scale
+  const melPoints = new Float32Array(numMelBins + 2);
+  for (let i = 0; i < numMelBins + 2; i++) {
+    melPoints[i] = minMel + (i * (maxMel - minMel)) / (numMelBins + 1);
+  }
+
+  // Convert back to Hz
+  const hzPoints = melPoints.map(melToHz);
+
+  // Convert to FFT bin indices
+  const binPoints = hzPoints.map(hz =>
+    Math.floor((numFreqBins * 2 - 1) * hz / sampleRate)
+  );
+
+  // Create triangular filters
+  const filters = [];
+  for (let m = 0; m < numMelBins; m++) {
+    const filter = new Float32Array(numFreqBins);
+    const startBin = binPoints[m];
+    const centerBin = binPoints[m + 1];
+    const endBin = binPoints[m + 2];
+
+    // Rising edge
+    for (let k = startBin; k < centerBin && k < numFreqBins; k++) {
+      if (centerBin !== startBin) {
+        filter[k] = (k - startBin) / (centerBin - startBin);
+      }
+    }
+
+    // Falling edge
+    for (let k = centerBin; k < endBin && k < numFreqBins; k++) {
+      if (endBin !== centerBin) {
+        filter[k] = (endBin - k) / (endBin - centerBin);
+      }
+    }
+
+    // Slaney normalization: divide by the width of the mel band
+    const melWidth = melPoints[m + 2] - melPoints[m];
+    if (melWidth > 0) {
+      for (let k = 0; k < numFreqBins; k++) {
+        filter[k] *= 2 / melWidth;
+      }
+    }
+
+    filters.push(filter);
+  }
+
+  return filters;
+}
+
+/**
+ * Compute FFT of real signal using radix-2 Cooley-Tukey algorithm
+ * @param {Float32Array} signal - Input signal (must be power of 2 length)
+ * @returns {{real: Float32Array, imag: Float32Array}} Complex FFT result
+ */
+function fft(signal) {
+  const n = signal.length;
+  const real = new Float32Array(n);
+  const imag = new Float32Array(n);
+
+  // Bit-reversal permutation
+  for (let i = 0; i < n; i++) {
+    let j = 0;
+    let x = i;
+    for (let k = 0; k < Math.log2(n); k++) {
+      j = (j << 1) | (x & 1);
+      x >>= 1;
+    }
+    real[j] = signal[i];
+  }
+
+  // Cooley-Tukey FFT
+  for (let size = 2; size <= n; size *= 2) {
+    const halfSize = size / 2;
+    const step = (2 * Math.PI) / size;
+
+    for (let i = 0; i < n; i += size) {
+      for (let j = 0; j < halfSize; j++) {
+        const angle = -step * j;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+
+        const evenIdx = i + j;
+        const oddIdx = i + j + halfSize;
+
+        const tReal = cos * real[oddIdx] - sin * imag[oddIdx];
+        const tImag = sin * real[oddIdx] + cos * imag[oddIdx];
+
+        real[oddIdx] = real[evenIdx] - tReal;
+        imag[oddIdx] = imag[evenIdx] - tImag;
+        real[evenIdx] = real[evenIdx] + tReal;
+        imag[evenIdx] = imag[evenIdx] + tImag;
+      }
+    }
+  }
+
+  return { real, imag };
+}
+
+/**
+ * Compute power spectrum from FFT
+ * @param {{real: Float32Array, imag: Float32Array}} fftResult
+ * @param {number} numBins - Number of frequency bins to return
+ * @returns {Float32Array} Power spectrum
+ */
+function powerSpectrum(fftResult, numBins) {
+  const power = new Float32Array(numBins);
+  for (let i = 0; i < numBins; i++) {
+    power[i] = fftResult.real[i] * fftResult.real[i] + fftResult.imag[i] * fftResult.imag[i];
+  }
+  return power;
+}
+
+/**
+ * Compute log mel spectrogram from audio
+ * @param {Float32Array} audio - Input audio samples
+ * @param {Float32Array} window - Window function
+ * @param {number} frameLength - Frame length in samples
+ * @param {number} hopLength - Hop length in samples
+ * @param {number} fftSize - FFT size
+ * @param {Float32Array[]} melFilters - Mel filter bank
+ * @param {number} melFloor - Minimum value for log (prevents -Inf)
+ * @returns {{data: Float32Array, numFrames: number, numMelBins: number}}
+ */
+function computeLogMelSpectrogram(audio, window, frameLength, hopLength, fftSize, melFilters, melFloor = 1e-10) {
+  const numMelBins = melFilters.length;
+  const numFreqBins = Math.floor(fftSize / 2) + 1;
+
+  // Pad audio for center alignment
+  const padLength = Math.floor(fftSize / 2);
+  const paddedAudio = new Float32Array(audio.length + 2 * padLength);
+
+  // Reflect padding
+  for (let i = 0; i < padLength; i++) {
+    paddedAudio[i] = audio[Math.min(padLength - i, audio.length - 1)];
+    paddedAudio[paddedAudio.length - 1 - i] = audio[Math.max(0, audio.length - 1 - (padLength - i))];
+  }
+  paddedAudio.set(audio, padLength);
+
+  // Calculate number of frames
+  const numFrames = Math.floor((paddedAudio.length - frameLength) / hopLength) + 1;
+
+  // Allocate output: [numFrames, numMelBins] in row-major order
+  const melSpec = new Float32Array(numFrames * numMelBins);
+
+  // Process each frame
+  const frame = new Float32Array(fftSize);
+
+  for (let t = 0; t < numFrames; t++) {
+    const start = t * hopLength;
+
+    // Apply window and zero-pad to FFT size
+    frame.fill(0);
+    for (let i = 0; i < frameLength && (start + i) < paddedAudio.length; i++) {
+      frame[i] = paddedAudio[start + i] * window[i];
+    }
+
+    // Compute FFT and power spectrum
+    const fftResult = fft(frame);
+    const power = powerSpectrum(fftResult, numFreqBins);
+
+    // Apply mel filters and compute log
+    for (let m = 0; m < numMelBins; m++) {
+      let melEnergy = 0;
+      const filter = melFilters[m];
+      for (let k = 0; k < numFreqBins; k++) {
+        melEnergy += power[k] * filter[k];
+      }
+      // Log with floor to prevent -Inf
+      melSpec[t * numMelBins + m] = Math.log(Math.max(melEnergy, melFloor));
+    }
+  }
+
+  return {
+    data: melSpec,
+    numFrames,
+    numMelBins,
+  };
+}
+
+// ============================================================================
+// ONNX Backend Implementation
+// ============================================================================
 
 // Audio preprocessing constants for speaker embedding models
 // These match the settings used by sherpa-onnx for their speaker models
@@ -117,22 +348,18 @@ export class OnnxBackend extends EmbeddingBackend {
     console.log('[OnnxBackend] Model inputs:', this.session.inputNames);
     console.log('[OnnxBackend] Model outputs:', this.session.outputNames);
 
-    // Pre-compute mel filter bank matrix
-    // mel_filter_bank returns shape [num_frequency_bins, num_mel_filters]
-    // We need [num_mel_filters, num_frequency_bins] for applying to spectrogram
+    // Pre-compute mel filter bank matrix using our pure JS implementation
     const numFreqBins = Math.floor(FFT_SIZE / 2) + 1; // 257 bins for FFT_SIZE=512
-    this.melFilters = mel_filter_bank(
+    this.melFilters = createMelFilterBank(
       numFreqBins,
       NUM_MEL_BINS,
       MIN_FREQ,
       MAX_FREQ,
-      SAMPLE_RATE,
-      'slaney',  // normalization
-      'htk'      // mel scale (htk is more common for speaker embeddings)
+      SAMPLE_RATE
     );
 
-    // Pre-compute Hanning window
-    this.window = window_function(FRAME_LENGTH, 'hann', { periodic: true });
+    // Pre-compute Hanning window using our pure JS implementation
+    this.window = createHannWindow(FRAME_LENGTH);
 
     this.isLoaded = true;
     console.log(`[OnnxBackend] Loaded ${modelConfig.name} (${modelConfig.dimensions}-dim)`);
@@ -157,7 +384,7 @@ export class OnnxBackend extends EmbeddingBackend {
     }
 
     try {
-      // 1. Compute mel spectrogram features
+      // 1. Compute mel spectrogram features (pure JS, no async)
       const features = this.computeMelSpectrogram(audioFloat32);
 
       if (!features || features.data.length === 0) {
@@ -181,50 +408,20 @@ export class OnnxBackend extends EmbeddingBackend {
    * @returns {Object} Features with shape [1, num_frames, num_mel_bins]
    */
   computeMelSpectrogram(audio) {
-    // Use Transformers.js spectrogram function which handles:
-    // - Windowing
-    // - STFT computation
-    // - Power spectrum
-    // - Mel filter application
-    // - Log scaling
-
-    const result = spectrogram(
+    const result = computeLogMelSpectrogram(
       audio,
       this.window,
       FRAME_LENGTH,
       HOP_LENGTH,
-      {
-        fft_length: FFT_SIZE,
-        power: 2.0,  // Power spectrum
-        center: true,
-        pad_mode: 'reflect',
-        mel_filters: this.melFilters,
-        log_mel: 'log',  // Natural log
-        mel_floor: 1e-10,
-      }
+      FFT_SIZE,
+      this.melFilters,
+      1e-10  // mel floor
     );
 
-    // result is shape [num_mel_bins, num_frames] from spectrogram()
-    // We need to transpose to [num_frames, num_mel_bins] for the model
-    const numMelBins = result.dims[0];
-    const numFrames = result.dims[1];
-    const transposed = new Float32Array(numFrames * numMelBins);
+    // Apply per-feature mean-variance normalization
+    this.normalizeFeatures(result.data);
 
-    for (let t = 0; t < numFrames; t++) {
-      for (let m = 0; m < numMelBins; m++) {
-        transposed[t * numMelBins + m] = result.data[m * numFrames + t];
-      }
-    }
-
-    // Apply global mean-variance normalization
-    // This is commonly applied to speaker embedding features
-    this.normalizeFeatures(transposed);
-
-    return {
-      data: transposed,
-      numFrames,
-      numMelBins,
-    };
+    return result;
   }
 
   /**
