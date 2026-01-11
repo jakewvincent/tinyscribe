@@ -19,6 +19,10 @@ window.embeddingModels = {
   },
 };
 
+// Notify Alpine components that model data is ready
+// (main.js is a module that runs after Alpine's deferred scripts)
+window.dispatchEvent(new CustomEvent('embedding-models-ready'));
+
 // Initialize app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
   // Check for required browser features

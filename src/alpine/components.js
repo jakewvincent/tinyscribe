@@ -552,6 +552,14 @@ document.addEventListener('alpine:init', () => {
 
     init() {
       // Get model config from window (set by main.js)
+      // main.js is a module that runs after Alpine, so listen for the event
+      if (window.embeddingModels) {
+        this.loadModels();
+      }
+      window.addEventListener('embedding-models-ready', () => this.loadModels());
+    },
+
+    loadModels() {
       if (window.embeddingModels) {
         this.models = window.embeddingModels.available;
         this.selectedModel = window.embeddingModels.selected;
