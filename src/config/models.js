@@ -6,8 +6,8 @@
  * performance, size, and quality tradeoffs.
  *
  * Backends:
- * - transformers-js: Uses @huggingface/transformers (current implementation)
- * - sherpa-onnx: Uses sherpa-onnx WASM package (lightweight models)
+ * - transformers-js: Uses @huggingface/transformers (WavLM models)
+ * - onnx: Uses onnxruntime-web directly with mel filterbank preprocessing
  */
 
 /**
@@ -17,9 +17,10 @@
  * @property {string} source - Model source (HuggingFace ID or ONNX filename)
  * @property {number} dimensions - Output embedding dimensions
  * @property {string} size - Approximate model size for display
- * @property {'transformers-js'|'sherpa-onnx'} backend - Inference backend to use
+ * @property {'transformers-js'|'onnx'} backend - Inference backend to use
  * @property {string} description - Brief description for UI
- * @property {string} [modelUrl] - Direct URL to model file (for sherpa-onnx models)
+ * @property {string} [modelUrl] - Direct URL to model file (for ONNX models)
+ * @property {boolean} [available] - Whether the model is available (default: true)
  */
 
 /**
@@ -42,21 +43,19 @@ export const EMBEDDING_MODELS = {
     source: '3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx',
     dimensions: 192,
     size: '~26.5MB',
-    backend: 'sherpa-onnx',
+    backend: 'onnx',
     description: 'Lightweight (13x smaller), good English performance.',
     modelUrl: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx',
-    available: false, // Backend not yet implemented for browser
   },
-  'wespeaker-ecapa-tdnn': {
-    id: 'wespeaker-ecapa-tdnn',
-    name: 'WeSpeaker ECAPA-TDNN',
+  'wespeaker-campp': {
+    id: 'wespeaker-campp',
+    name: 'WeSpeaker CAM++',
     source: 'wespeaker_en_voxceleb_CAM++.onnx',
     dimensions: 512,
     size: '~29MB',
-    backend: 'sherpa-onnx',
+    backend: 'onnx',
     description: 'Lightweight, same dimensions as WavLM.',
     modelUrl: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_CAM++.onnx',
-    available: false, // Backend not yet implemented for browser
   },
 };
 
@@ -88,13 +87,13 @@ export function getAvailableEmbeddingModels(onlyAvailable = true) {
 }
 
 /**
- * Check if a model uses sherpa-onnx backend
+ * Check if a model uses ONNX Runtime Web backend
  * @param {string} modelId
  * @returns {boolean}
  */
-export function isSherpaModel(modelId) {
+export function isOnnxModel(modelId) {
   const config = EMBEDDING_MODELS[modelId];
-  return config?.backend === 'sherpa-onnx';
+  return config?.backend === 'onnx';
 }
 
 Object.freeze(EMBEDDING_MODELS);

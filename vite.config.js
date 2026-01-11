@@ -47,6 +47,15 @@ export default defineConfig({
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
     },
+    // Proxy for ONNX model downloads (bypasses CORS during development)
+    proxy: {
+      '/models/sherpa-onnx': {
+        target: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/models\/sherpa-onnx/, ''),
+        followRedirects: true,
+      },
+    },
   },
 
   // Production preview with same headers

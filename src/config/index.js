@@ -20,5 +20,5 @@ export {
   DEFAULT_EMBEDDING_MODEL,
   getEmbeddingModelConfig,
   getAvailableEmbeddingModels,
-  isSherpaModel,
+  isOnnxModel,
 } from './models.js';

@@ -7,7 +7,7 @@
 import { pipeline } from '@huggingface/transformers';
 
 import { PhraseDetector } from './core/transcription/phraseDetector.js';
-import { TransformersBackend, SherpaBackend } from './worker/backends/index.js';
+import { TransformersBackend, OnnxBackend } from './worker/backends/index.js';
 import { getEmbeddingModelConfig, DEFAULT_EMBEDDING_MODEL } from './config/models.js';
 
 // Model identifiers
@@ -77,8 +77,8 @@ class ModelManager {
     });
 
     // Select backend based on model configuration
-    if (this.embeddingModelConfig.backend === 'sherpa-onnx') {
-      this.embeddingBackend = new SherpaBackend();
+    if (this.embeddingModelConfig.backend === 'onnx') {
+      this.embeddingBackend = new OnnxBackend();
     } else {
       this.embeddingBackend = new TransformersBackend();
     }
