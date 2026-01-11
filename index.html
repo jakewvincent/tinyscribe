@@ -124,10 +124,16 @@
       <!-- Debug Sidebar (right) -->
       <aside id="sidebar">
         <!-- Active Participants Panel -->
-        <div class="sidebar-panel" id="panel-participants" x-data="panel('participants', true)" x-cloak>
-          <div class="panel-header" @click="toggle()">
-            <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
-            <h3>Active Participants</h3>
+        <div class="sidebar-panel" id="panel-participants" x-data="panel('participants', true)" x-cloak :style="'order: ' + order">
+          <div class="panel-header">
+            <div class="panel-header-left" @click="toggle()">
+              <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
+              <h3>Active Participants</h3>
+            </div>
+            <div class="panel-header-right">
+              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveUp" @click.stop="moveUp()" title="Move up"><i class="ti ti-arrow-move-up"></i></button>
+              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveDown" @click.stop="moveDown()" title="Move down"><i class="ti ti-arrow-move-down"></i></button>
+            </div>
           </div>
           <div class="panel-content" :class="{ 'collapsed': !expanded }">
             <div id="participants-list"></div>
@@ -136,10 +142,16 @@
         </div>
 
         <!-- Phrase Stats Panel -->
-        <div class="sidebar-panel" id="panel-phrase-stats" x-data="panel('phrase-stats', true)" x-cloak>
-          <div class="panel-header" @click="toggle()">
-            <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
-            <h3>Last Phrase</h3>
+        <div class="sidebar-panel" id="panel-phrase-stats" x-data="panel('phrase-stats', true)" x-cloak :style="'order: ' + order">
+          <div class="panel-header">
+            <div class="panel-header-left" @click="toggle()">
+              <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
+              <h3>Last Phrase</h3>
+            </div>
+            <div class="panel-header-right">
+              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveUp" @click.stop="moveUp()" title="Move up"><i class="ti ti-arrow-move-up"></i></button>
+              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveDown" @click.stop="moveDown()" title="Move down"><i class="ti ti-arrow-move-down"></i></button>
+            </div>
           </div>
           <div class="panel-content" :class="{ 'collapsed': !expanded }">
             <div id="phrase-stats" x-data="phraseStats()">
@@ -175,10 +187,16 @@
         </div>
 
         <!-- Speaker Enrollment Panel -->
-        <section id="enrollment-section" class="sidebar-panel" x-data="panel('enrollment', true)" x-cloak>
-          <div class="panel-header" @click="toggle()">
-            <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
-            <h3>Speaker Enrollment <span class="optional-badge">Optional</span></h3>
+        <section id="enrollment-section" class="sidebar-panel" x-data="panel('enrollment', true)" x-cloak :style="'order: ' + order">
+          <div class="panel-header">
+            <div class="panel-header-left" @click="toggle()">
+              <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
+              <h3>Speaker Enrollment <span class="optional-badge">Optional</span></h3>
+            </div>
+            <div class="panel-header-right">
+              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveUp" @click.stop="moveUp()" title="Move up"><i class="ti ti-arrow-move-up"></i></button>
+              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveDown" @click.stop="moveDown()" title="Move down"><i class="ti ti-arrow-move-down"></i></button>
+            </div>
           </div>
           <div class="panel-content" :class="{ 'collapsed': !expanded }" x-data="enrollmentContent()">
             <!-- Intro state (before enrollment starts) -->
@@ -231,10 +249,16 @@
         </section>
 
         <!-- Recordings Panel -->
-        <div class="sidebar-panel" id="panel-recordings" x-data="recordingsPanel" x-cloak>
-          <div class="panel-header" @click="toggle()">
-            <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
-            <h3>Recordings <span x-show="recordings.length > 0" class="recording-count" x-text="'(' + recordings.length + ')'"></span></h3>
+        <div class="sidebar-panel" id="panel-recordings" x-data="recordingsPanel" x-cloak :style="'order: ' + order">
+          <div class="panel-header">
+            <div class="panel-header-left" @click="toggle()">
+              <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
+              <h3>Recordings <span x-show="recordings.length > 0" class="recording-count" x-text="'(' + recordings.length + ')'"></span></h3>
+            </div>
+            <div class="panel-header-right">
+              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveUp" @click.stop="moveUp()" title="Move up"><i class="ti ti-arrow-move-up"></i></button>
+              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveDown" @click.stop="moveDown()" title="Move down"><i class="ti ti-arrow-move-down"></i></button>
+            </div>
           </div>
           <div class="panel-content" :class="{ 'collapsed': !expanded }">
             <!-- Current session indicator -->
@@ -330,16 +354,22 @@
         </div>
 
         <!-- Model Status Panel -->
-        <div class="sidebar-panel" id="panel-model-status" x-data="modelStatusPanel" x-cloak>
-          <div class="panel-header" @click="toggle()">
-            <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
-            <h3>Model Status</h3>
-            <span class="model-status-indicator" x-show="!expanded" x-cloak>
-              <i x-show="status === 'idle'" class="ti ti-loader-2 status-idle"></i>
-              <svg x-show="status === 'loading'" class="svg-icon status-loading" width="16" height="16"><use href="#icon-loader"/></svg>
-              <i x-show="status === 'ready'" class="ti ti-circle-check status-ready"></i>
-              <i x-show="status === 'error'" class="ti ti-circle-x status-error"></i>
-            </span>
+        <div class="sidebar-panel" id="panel-model-status" x-data="modelStatusPanel" x-cloak :style="'order: ' + order">
+          <div class="panel-header">
+            <div class="panel-header-left" @click="toggle()">
+              <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
+              <h3>Model Status</h3>
+              <span class="model-status-indicator" x-show="!expanded" x-cloak>
+                <i x-show="status === 'idle'" class="ti ti-loader-2 status-idle"></i>
+                <svg x-show="status === 'loading'" class="svg-icon status-loading" width="16" height="16"><use href="#icon-loader"/></svg>
+                <i x-show="status === 'ready'" class="ti ti-circle-check status-ready"></i>
+                <i x-show="status === 'error'" class="ti ti-circle-x status-error"></i>
+              </span>
+            </div>
+            <div class="panel-header-right">
+              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveUp" @click.stop="moveUp()" title="Move up"><i class="ti ti-arrow-move-up"></i></button>
+              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveDown" @click.stop="moveDown()" title="Move down"><i class="ti ti-arrow-move-down"></i></button>
+            </div>
           </div>
           <div class="panel-content" :class="{ 'collapsed': !expanded }" id="model-status">
             <div id="loading-message">Models will auto-load...</div>
@@ -350,10 +380,16 @@
         </div>
 
         <!-- Debug Logging Panel -->
-        <div class="sidebar-panel" id="panel-debug" x-data="panel('debug', false)" x-cloak>
-          <div class="panel-header" @click="toggle()">
-            <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
-            <h3>Debug Logging</h3>
+        <div class="sidebar-panel" id="panel-debug" x-data="panel('debug', false)" x-cloak :style="'order: ' + order">
+          <div class="panel-header">
+            <div class="panel-header-left" @click="toggle()">
+              <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
+              <h3>Debug Logging</h3>
+            </div>
+            <div class="panel-header-right">
+              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveUp" @click.stop="moveUp()" title="Move up"><i class="ti ti-arrow-move-up"></i></button>
+              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveDown" @click.stop="moveDown()" title="Move down"><i class="ti ti-arrow-move-down"></i></button>
+            </div>
           </div>
           <div class="panel-content" :class="{ 'collapsed': !expanded }">
             <div class="debug-toggles">
@@ -375,10 +411,16 @@
         </div>
 
         <!-- Boosting Tuning Panel -->
-        <div class="sidebar-panel" id="panel-boosting-tuning" x-data="boostingTuningPanel" x-cloak>
-          <div class="panel-header" @click="toggle()">
-            <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
-            <h3>Boosting Tuning</h3>
+        <div class="sidebar-panel" id="panel-boosting-tuning" x-data="boostingTuningPanel" x-cloak :style="'order: ' + order">
+          <div class="panel-header">
+            <div class="panel-header-left" @click="toggle()">
+              <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
+              <h3>Boosting Tuning</h3>
+            </div>
+            <div class="panel-header-right">
+              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveUp" @click.stop="moveUp()" title="Move up"><i class="ti ti-arrow-move-up"></i></button>
+              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveDown" @click.stop="moveDown()" title="Move down"><i class="ti ti-arrow-move-down"></i></button>
+            </div>
           </div>
           <div class="panel-content" :class="{ 'collapsed': !expanded }">
             <p class="tuning-intro">Adjust parameters to experiment with speaker boosting behavior.</p>
@@ -450,11 +492,17 @@
         </div>
 
         <!-- Model Selection Panel -->
-        <div class="sidebar-panel" id="panel-model-selection" x-data="modelSelection" x-cloak>
-          <div class="panel-header" @click="toggle()">
-            <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
-            <h3>Embedding Model</h3>
-            <span class="panel-badge" x-text="currentModelInfo?.name || 'Loading...'"></span>
+        <div class="sidebar-panel" id="panel-model-selection" x-data="modelSelection" x-cloak :style="'order: ' + order">
+          <div class="panel-header">
+            <div class="panel-header-left" @click="toggle()">
+              <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
+              <h3>Embedding Model</h3>
+              <span class="panel-badge" x-text="currentModelInfo?.name || 'Loading...'"></span>
+            </div>
+            <div class="panel-header-right">
+              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveUp" @click.stop="moveUp()" title="Move up"><i class="ti ti-arrow-move-up"></i></button>
+              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveDown" @click.stop="moveDown()" title="Move down"><i class="ti ti-arrow-move-down"></i></button>
+            </div>
           </div>
           <div class="panel-content" :class="{ 'collapsed': !expanded }">
             <p class="model-intro">Select embedding model for speaker identification. Changing requires page reload.</p>

@@ -5,6 +5,119 @@
 
 document.addEventListener('alpine:init', () => {
   /**
+   * Default panel order (used if no saved order exists)
+   */
+  const DEFAULT_PANEL_ORDER = [
+    'participants',
+    'phrase-stats',
+    'enrollment',
+    'recordings',
+    'model-status',
+    'debug',
+    'boosting-tuning',
+    'model-selection',
+  ];
+
+  /**
+   * Sidebar panel order store
+   * Manages panel ordering with persistence and move operations
+   */
+  Alpine.store('sidebarOrder', {
+    // Load saved order from localStorage or use default
+    order: (() => {
+      try {
+        const saved = localStorage.getItem('sidebar-panel-order');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          // Validate saved order has all panels
+          if (Array.isArray(parsed) && parsed.length === DEFAULT_PANEL_ORDER.length) {
+            return parsed;
+          }
+        }
+      } catch (e) {
+        // Ignore localStorage errors
+      }
+      return [...DEFAULT_PANEL_ORDER];
+    })(),
+
+    /**
+     * Save current order to localStorage
+     */
+    _save() {
+      try {
+        localStorage.setItem('sidebar-panel-order', JSON.stringify(this.order));
+      } catch (e) {
+        // Ignore localStorage errors
+      }
+    },
+
+    /**
+     * Get the CSS order value for a panel
+     * @param {string} panelId - Panel identifier
+     * @returns {number} CSS order value
+     */
+    getOrder(panelId) {
+      const idx = this.order.indexOf(panelId);
+      return idx >= 0 ? idx : 999;
+    },
+
+    /**
+     * Check if a panel can move up
+     * @param {string} panelId - Panel identifier
+     * @returns {boolean}
+     */
+    canMoveUp(panelId) {
+      return this.order.indexOf(panelId) > 0;
+    },
+
+    /**
+     * Check if a panel can move down
+     * @param {string} panelId - Panel identifier
+     * @returns {boolean}
+     */
+    canMoveDown(panelId) {
+      const idx = this.order.indexOf(panelId);
+      return idx >= 0 && idx < this.order.length - 1;
+    },
+
+    /**
+     * Move a panel up in the order
+     * @param {string} panelId - Panel identifier
+     */
+    moveUp(panelId) {
+      const idx = this.order.indexOf(panelId);
+      if (idx > 0) {
+        const newOrder = [...this.order];
+        [newOrder[idx - 1], newOrder[idx]] = [newOrder[idx], newOrder[idx - 1]];
+        this.order = newOrder;
+        this._save();
+      }
+    },
+
+    /**
+     * Move a panel down in the order
+     * @param {string} panelId - Panel identifier
+     */
+    moveDown(panelId) {
+      const idx = this.order.indexOf(panelId);
+      if (idx >= 0 && idx < this.order.length - 1) {
+        const newOrder = [...this.order];
+        [newOrder[idx], newOrder[idx + 1]] = [newOrder[idx + 1], newOrder[idx]];
+        this.order = newOrder;
+        this._save();
+      }
+    },
+
+    /**
+     * Reset to default order
+     */
+    resetOrder() {
+      this.order = [...DEFAULT_PANEL_ORDER];
+      this._save();
+    },
+  });
+
+  /**
    * Collapsible panel component with persistence
    * Usage: x-data="panel('panel-name', true)"
    * @param {string} name - Unique panel identifier for persistence
@@ -12,9 +125,27 @@ document.addEventListener('alpine:init', () => {
    */
   Alpine.data('panel', (name, defaultExpanded = true) => ({
     expanded: Alpine.$persist(defaultExpanded).as(`panel-${name}`),
+    panelId: name,
 
     toggle() {
       this.expanded = !this.expanded;
+    },
+
+    // Panel order helpers (delegate to store)
+    get order() {
+      return Alpine.store('sidebarOrder').getOrder(this.panelId);
+    },
+    get canMoveUp() {
+      return Alpine.store('sidebarOrder').canMoveUp(this.panelId);
+    },
+    get canMoveDown() {
+      return Alpine.store('sidebarOrder').canMoveDown(this.panelId);
+    },
+    moveUp() {
+      Alpine.store('sidebarOrder').moveUp(this.panelId);
+    },
+    moveDown() {
+      Alpine.store('sidebarOrder').moveDown(this.panelId);
     },
 
     // Listen for programmatic collapse/expand from app.js
@@ -39,9 +170,27 @@ document.addEventListener('alpine:init', () => {
   Alpine.data('modelStatusPanel', () => ({
     expanded: false, // Always start collapsed (no persistence)
     status: 'idle', // 'idle' | 'loading' | 'ready' | 'error'
+    panelId: 'model-status',
 
     toggle() {
       this.expanded = !this.expanded;
+    },
+
+    // Panel order helpers (delegate to store)
+    get order() {
+      return Alpine.store('sidebarOrder').getOrder(this.panelId);
+    },
+    get canMoveUp() {
+      return Alpine.store('sidebarOrder').canMoveUp(this.panelId);
+    },
+    get canMoveDown() {
+      return Alpine.store('sidebarOrder').canMoveDown(this.panelId);
+    },
+    moveUp() {
+      Alpine.store('sidebarOrder').moveUp(this.panelId);
+    },
+    moveDown() {
+      Alpine.store('sidebarOrder').moveDown(this.panelId);
     },
 
     init() {
@@ -328,6 +477,7 @@ document.addEventListener('alpine:init', () => {
    */
   Alpine.data('recordingsPanel', () => ({
     expanded: Alpine.$persist(true).as('panel-recordings'),
+    panelId: 'recordings',
     recordings: [],
     selectedId: null,
     isViewingRecording: false,
@@ -338,6 +488,23 @@ document.addEventListener('alpine:init', () => {
     enrollmentSource: 'snapshot', // 'snapshot' or 'current'
     isRenaming: null, // ID of recording being renamed
     renameValue: '',
+
+    // Panel order helpers (delegate to store)
+    get order() {
+      return Alpine.store('sidebarOrder').getOrder(this.panelId);
+    },
+    get canMoveUp() {
+      return Alpine.store('sidebarOrder').canMoveUp(this.panelId);
+    },
+    get canMoveDown() {
+      return Alpine.store('sidebarOrder').canMoveDown(this.panelId);
+    },
+    moveUp() {
+      Alpine.store('sidebarOrder').moveUp(this.panelId);
+    },
+    moveDown() {
+      Alpine.store('sidebarOrder').moveDown(this.panelId);
+    },
 
     init() {
       // Listen for recordings list updates
@@ -475,6 +642,24 @@ document.addEventListener('alpine:init', () => {
    */
   Alpine.data('boostingTuningPanel', () => ({
     expanded: Alpine.$persist(false).as('panel-boosting-tuning'),
+    panelId: 'boosting-tuning',
+
+    // Panel order helpers (delegate to store)
+    get order() {
+      return Alpine.store('sidebarOrder').getOrder(this.panelId);
+    },
+    get canMoveUp() {
+      return Alpine.store('sidebarOrder').canMoveUp(this.panelId);
+    },
+    get canMoveDown() {
+      return Alpine.store('sidebarOrder').canMoveDown(this.panelId);
+    },
+    moveUp() {
+      Alpine.store('sidebarOrder').moveUp(this.panelId);
+    },
+    moveDown() {
+      Alpine.store('sidebarOrder').moveDown(this.panelId);
+    },
 
     // Tunable parameters (will be populated from defaults)
     boostFactor: 1.10,
@@ -548,9 +733,27 @@ document.addEventListener('alpine:init', () => {
    */
   Alpine.data('modelSelection', () => ({
     expanded: Alpine.$persist(false).as('panel-model-selection'),
+    panelId: 'model-selection',
     models: [],
     selectedModel: '',
     isLoading: false,
+
+    // Panel order helpers (delegate to store)
+    get order() {
+      return Alpine.store('sidebarOrder').getOrder(this.panelId);
+    },
+    get canMoveUp() {
+      return Alpine.store('sidebarOrder').canMoveUp(this.panelId);
+    },
+    get canMoveDown() {
+      return Alpine.store('sidebarOrder').canMoveDown(this.panelId);
+    },
+    moveUp() {
+      Alpine.store('sidebarOrder').moveUp(this.panelId);
+    },
+    moveDown() {
+      Alpine.store('sidebarOrder').moveDown(this.panelId);
+    },
 
     init() {
       // Get model config from window (set by main.js)

@@ -763,21 +763,75 @@ body.resizing * {
 .panel-header {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: space-between;
   padding: 0.5rem 0.75rem;
-  cursor: pointer;
   user-select: none;
   background: var(--panel-bg);
   border-bottom: 1px solid transparent;
   transition: background 0.15s ease;
 }
 
-.panel-header:hover {
-  background: rgba(59, 130, 246, 0.05);
+.panel-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
 }
 
-.panel-header:active {
-  background: rgba(59, 130, 246, 0.08);
+.panel-header-left:hover {
+  color: var(--accent-color);
+}
+
+.panel-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.panel-header:hover .panel-header-right {
+  opacity: 1;
+}
+
+/* Small icon button for panel controls */
+.btn-icon-sm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-icon-sm:hover:not(:disabled) {
+  background: var(--bg-muted);
+  color: var(--text-color);
+}
+
+.btn-icon-sm:active:not(:disabled) {
+  background: var(--bg-strong);
+}
+
+.btn-icon-sm:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.btn-icon-sm i {
+  font-size: 1rem;
+}
+
+.panel-move-btn:disabled {
+  color: var(--text-muted);
 }
 
 .panel-chevron {
