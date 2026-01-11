@@ -7,3 +7,4 @@ export { LocalStorageAdapter } from './localStorageAdapter.js';
 export { PreferencesStore } from './stores/preferencesStore.js';
 export { EnrollmentStore } from './stores/enrollmentStore.js';
 export { DebugSettingsStore } from './stores/debugSettingsStore.js';
+export { ModelSelectionStore } from './stores/modelSelectionStore.js';

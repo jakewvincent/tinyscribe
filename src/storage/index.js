@@ -12,6 +12,7 @@ export {
   PreferencesStore,
   EnrollmentStore,
   DebugSettingsStore,
+  ModelSelectionStore,
 } from './localStorage/index.js';
 
 // IndexedDB

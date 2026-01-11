@@ -19,6 +19,9 @@ export const LOCAL_STORAGE_KEYS = {
   // Debug Settings
   DEBUG_LOGGING_ENABLED: 'debug-logging-enabled',
   DEBUG_LOGGING_VERBOSE: 'debug-logging-verbose',
+
+  // Model Selection
+  EMBEDDING_MODEL_SELECTION: 'embedding-model-selection',
 };
 
 // IndexedDB configuration

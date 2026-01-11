@@ -448,6 +448,51 @@
             </button>
           </div>
         </div>
+
+        <!-- Model Selection Panel -->
+        <div class="sidebar-panel" id="panel-model-selection" x-data="modelSelection" x-cloak>
+          <div class="panel-header" @click="toggle()">
+            <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
+            <h3>Embedding Model</h3>
+            <span class="panel-badge" x-text="currentModelInfo?.name || 'Loading...'"></span>
+          </div>
+          <div class="panel-content" :class="{ 'collapsed': !expanded }">
+            <p class="model-intro">Select embedding model for speaker identification. Changing requires page reload.</p>
+
+            <div class="model-select-wrapper">
+              <select class="model-select"
+                      :value="selectedModel"
+                      @change="changeModel($event.target.value)"
+                      :disabled="isLoading">
+                <template x-for="model in models" :key="model.id">
+                  <option :value="model.id" x-text="model.name" :selected="model.id === selectedModel"></option>
+                </template>
+              </select>
+            </div>
+
+            <template x-if="currentModelInfo">
+              <div class="model-info">
+                <div class="model-info-row">
+                  <span class="model-info-label">Size:</span>
+                  <span class="model-info-value" x-text="currentModelInfo.size"></span>
+                </div>
+                <div class="model-info-row">
+                  <span class="model-info-label">Dimensions:</span>
+                  <span class="model-info-value" x-text="currentModelInfo.dimensions"></span>
+                </div>
+                <div class="model-info-row">
+                  <span class="model-info-label">Backend:</span>
+                  <span class="model-info-value" x-text="currentModelInfo.backend"></span>
+                </div>
+                <p class="model-description" x-text="currentModelInfo.description"></p>
+              </div>
+            </template>
+
+            <div class="model-warning" x-show="isLoading">
+              <i class="ti ti-loader"></i> Reloading...
+            </div>
+          </div>
+        </div>
       </aside>
     </main>
 

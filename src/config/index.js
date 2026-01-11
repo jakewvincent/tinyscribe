@@ -14,3 +14,11 @@ export {
   SPEAKER_COLORS,
   RAINBOW_PASSAGES,
 } from './defaults.js';
+
+export {
+  EMBEDDING_MODELS,
+  DEFAULT_EMBEDDING_MODEL,
+  getEmbeddingModelConfig,
+  getAvailableEmbeddingModels,
+  isSherpaModel,
+} from './models.js';

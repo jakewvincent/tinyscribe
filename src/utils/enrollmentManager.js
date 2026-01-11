@@ -6,7 +6,7 @@
 
 import { l2Normalize, l2NormalizeCopy, cosineSimilarity } from '../core/embedding/embeddingUtils.js';
 import { ENROLLMENT_DEFAULTS, RAINBOW_PASSAGES } from '../config/index.js';
-import { EnrollmentStore } from '../storage/index.js';
+import { EnrollmentStore, ModelSelectionStore } from '../storage/index.js';
 
 export class EnrollmentManager {
   /**
@@ -27,6 +27,8 @@ export class EnrollmentManager {
     // Samples indexed by passage group (allows re-recording)
     // null = not recorded, Float32Array = recorded
     this.samples = new Array(this.passages.length).fill(null);
+    // Audio samples for each passage (allows recomputing embeddings when changing models)
+    this.audioSamples = new Array(this.passages.length).fill(null);
     this.speakerName = '';
     this.currentGroupIndex = 0; // Which group is currently selected
     this.rejectedSamples = []; // Track samples rejected during centroid computation
@@ -103,10 +105,14 @@ export class EnrollmentManager {
    * Record or re-record a sample at the current group index
    * Normalizes the embedding before storing
    * @param {Float32Array|Array} embedding - The embedding to store
+   * @param {Float32Array|Array} [audio] - Raw audio sample (for recomputing embeddings on model switch)
    */
-  addSample(embedding) {
+  addSample(embedding, audio = null) {
     const normalizedEmbedding = l2NormalizeCopy(embedding);
     this.samples[this.currentGroupIndex] = normalizedEmbedding;
+    if (audio) {
+      this.audioSamples[this.currentGroupIndex] = audio instanceof Float32Array ? audio : new Float32Array(audio);
+    }
     // Auto-advance to next unrecorded group if available
     this.advanceToNextEmpty();
   }
@@ -115,12 +121,24 @@ export class EnrollmentManager {
    * Record or re-record a sample at a specific index
    * @param {number} index - Group index to record
    * @param {Float32Array|Array} embedding - The embedding to store
+   * @param {Float32Array|Array} [audio] - Raw audio sample
    */
-  setSample(index, embedding) {
+  setSample(index, embedding, audio = null) {
     if (index >= 0 && index < this.passages.length) {
       const normalizedEmbedding = l2NormalizeCopy(embedding);
       this.samples[index] = normalizedEmbedding;
+      if (audio) {
+        this.audioSamples[index] = audio instanceof Float32Array ? audio : new Float32Array(audio);
+      }
     }
+  }
+
+  /**
+   * Get collected audio samples (non-null entries)
+   * @returns {Float32Array[]}
+   */
+  getAudioSamples() {
+    return this.audioSamples.filter((s) => s !== null);
   }
 
   /**
@@ -277,6 +295,7 @@ export class EnrollmentManager {
    */
   reset() {
     this.samples = new Array(this.passages.length).fill(null);
+    this.audioSamples = new Array(this.passages.length).fill(null);
     this.speakerName = '';
     this.currentGroupIndex = 0;
     this.rejectedSamples = [];
@@ -313,10 +332,16 @@ export class EnrollmentManager {
    * Add a new enrollment
    * @param {string} name - Speaker name
    * @param {Float32Array|Array} embedding - Averaged embedding
+   * @param {Object} [options] - Additional options
+   * @param {Array<Float32Array|number[]>} [options.audioSamples] - Raw audio samples for recomputing embeddings
    * @returns {Object} The created enrollment
    */
-  static addEnrollment(name, embedding) {
-    return EnrollmentStore.add(name, embedding);
+  static addEnrollment(name, embedding, options = {}) {
+    const modelId = ModelSelectionStore.getEmbeddingModel();
+    return EnrollmentStore.add(name, embedding, {
+      audioSamples: options.audioSamples,
+      modelId,
+    });
   }
 
   /**

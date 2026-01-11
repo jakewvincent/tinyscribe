@@ -539,4 +539,42 @@ document.addEventListener('alpine:init', () => {
       return typeof value === 'number' ? value.toFixed(decimals) : value;
     },
   }));
+
+  /**
+   * Model Selection component
+   * Allows switching between embedding models (requires page reload)
+   */
+  Alpine.data('modelSelection', () => ({
+    expanded: Alpine.$persist(false).as('panel-model-selection'),
+    models: [],
+    selectedModel: '',
+    isLoading: false,
+
+    init() {
+      // Get model config from window (set by main.js)
+      if (window.embeddingModels) {
+        this.models = window.embeddingModels.available;
+        this.selectedModel = window.embeddingModels.selected;
+      }
+    },
+
+    toggle() {
+      this.expanded = !this.expanded;
+    },
+
+    changeModel(modelId) {
+      if (modelId === this.selectedModel || !modelId) return;
+
+      // Confirm since this will reload the page
+      if (confirm('Changing models will reload the page. Continue?')) {
+        this.isLoading = true;
+        window.embeddingModels.setModel(modelId);
+      }
+    },
+
+    // Get display info for current model
+    get currentModelInfo() {
+      return this.models.find(m => m.id === this.selectedModel) || null;
+    },
+  }));
 });

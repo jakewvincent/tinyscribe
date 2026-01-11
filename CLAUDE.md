@@ -64,6 +64,74 @@ App.js handles audio capture, modal dialogs, and worker communication.
 
 Models are cached in IndexedDB after first download.
 
+### Future Direction: Swappable Models
+
+To support the experimental nature of this project, we're working toward making model choices **configurable and swappable** at runtime. This allows A/B testing different models and observing their behavior differences - perfect for gaining insight into how different architectures perform.
+
+#### Model Categories to Make Swappable
+
+1. **Speaker Embedding Models** (first priority)
+   - Extract voice identity vectors for clustering/matching
+   - Different models produce different embedding dimensions
+
+2. **Speaker Segmentation Models** (second priority)
+   - Detect speaker boundaries at the audio level
+   - Current approach uses text-gap heuristics; proper segmentation models work acoustically
+
+3. **ASR Models** (lower priority)
+   - Speech-to-text; currently Whisper Tiny
+
+#### Suggested Model Combinations for Experimentation
+
+**Lightweight + Better Diarization (Recommended to try):**
+
+| Component | Model | Size | Embedding Dim | Notes |
+|-----------|-------|------|---------------|-------|
+| Segmentation | [pyannote-segmentation-3.0](https://huggingface.co/onnx-community/pyannote-segmentation-3.0) | ~6MB | N/A | Frame-level speaker classification |
+| Embedding | [3D-Speaker ERes2Net](https://github.com/modelscope/3D-Speaker) | ~26.5MB | 192 | VoxCeleb-trained, good English performance |
+
+**Alternative Embedding Models to Compare:**
+
+| Model | Size | Embedding Dim | Source | Notes |
+|-------|------|---------------|--------|-------|
+| WavLM Base+ SV (current) | ~360MB | 512 | `Xenova/wavlm-base-plus-sv` | Large but high quality |
+| 3D-Speaker ERes2Net | ~26.5MB | 192 | sherpa-onnx releases | 13x smaller than WavLM |
+| 3D-Speaker ERes2NetV2 | ~71MB | 192 | sherpa-onnx releases | Better on short utterances |
+| NeMo TitaNet-S | ~24MB | 192 | NVIDIA NeMo | 6M params, near SOTA |
+| WeSpeaker ResNet34-LM | ~100MB | 256 | pyannote default | Good balance |
+| WeSpeaker ECAPA-TDNN512 | ~80MB | 512 | WeSpeaker | Efficient architecture |
+
+**Segmentation Model Options:**
+
+| Model | Size | Notes |
+|-------|------|-------|
+| Phrase-gap heuristic (current) | 0MB | Text-based, uses Whisper word timing |
+| pyannote-segmentation-3.0 | ~6MB | Acoustic, handles overlapping speech |
+| sherpa-onnx-reverb-diarization-v1 | TBD | Alternative acoustic segmentation |
+
+#### Architecture Goal
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Model Registry                          │
+│  ┌─────────────────┐  ┌─────────────────┐                  │
+│  │ Embedding Models│  │Segmentation Models│                 │
+│  └────────┬────────┘  └────────┬────────┘                  │
+│           │                    │                            │
+│           ▼                    ▼                            │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │              Unified Interfaces                      │   │
+│  │  SpeakerEmbedder { extractEmbedding(audio) }        │   │
+│  │  SpeakerSegmenter { segment(audio) }                │   │
+│  └─────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Key resources:
+- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) - WebAssembly-ready speech toolkit with speaker diarization
+- [sherpa-onnx WASM demo](https://huggingface.co/spaces/k2-fsa/web-assembly-speaker-diarization-sherpa-onnx)
+- [pyannote-segmentation-3.0 ONNX](https://huggingface.co/onnx-community/pyannote-segmentation-3.0) - Works with Transformers.js
+
 ## Key Files
 
 ```

@@ -19,7 +19,10 @@ import { ConversationInference } from './core/inference/index.js';
 import { EnrollmentManager } from './utils/enrollmentManager.js';
 
 // Storage layer
-import { PreferencesStore, RecordingStore } from './storage/index.js';
+import { PreferencesStore, RecordingStore, ModelSelectionStore } from './storage/index.js';
+
+// Model configuration
+import { getEmbeddingModelConfig } from './config/models.js';
 
 // Core modules (pure logic, no browser dependencies)
 import { OverlapMerger, TranscriptMerger } from './core/transcription/index.js';
@@ -54,6 +57,7 @@ export class App {
     this.pendingChunks = new Map();
     this.pendingEnrollmentSampleId = null;
     this.pendingExpectedSentence = null;
+    this.pendingEnrollmentAudio = null; // Combined audio for current enrollment recording
     this.pendingTranscriptionResult = null;
     this.pendingEmbeddingResult = null;
 
@@ -508,12 +512,21 @@ export class App {
     this.progressContainer.innerHTML = '';
     this.progressItems.clear();
 
+    // Get selected embedding model configuration
+    const embeddingModelId = ModelSelectionStore.getEmbeddingModel();
+    const embeddingModelConfig = getEmbeddingModelConfig(embeddingModelId);
+
+    console.log(`[App] Loading models with embedding model: ${embeddingModelConfig.name}`);
+
     // Notify Alpine that models are loading
     window.dispatchEvent(new CustomEvent('model-status-update', { detail: { status: 'loading' } }));
 
     this.worker.postMessage({
       type: 'load',
-      data: { device: this.device },
+      data: {
+        device: this.device,
+        embeddingModel: embeddingModelConfig,
+      },
     });
   }
 
@@ -3143,6 +3156,7 @@ export class App {
 
     this.pendingEnrollmentSampleId = this.enrollmentManager.getCurrentIndex();
     this.pendingExpectedSentence = this.enrollmentManager.getCurrentSentence();
+    this.pendingEnrollmentAudio = combinedAudio; // Store for addSample
     this.pendingTranscriptionResult = null;
     this.pendingEmbeddingResult = null;
 
@@ -3178,9 +3192,10 @@ export class App {
     const avgEmbedding = this.enrollmentManager.computeAverageEmbedding();
     const name = this.enrollmentManager.getName();
     const rejectedCount = this.enrollmentManager.getRejectedCount();
+    const audioSamples = this.enrollmentManager.getAudioSamples();
 
-    // Save to storage
-    const newEnrollment = EnrollmentManager.addEnrollment(name, avgEmbedding);
+    // Save to storage (with audio samples for model switching support)
+    const newEnrollment = EnrollmentManager.addEnrollment(name, avgEmbedding, { audioSamples });
 
     // Import into speaker clusterer
     this.transcriptMerger.speakerClusterer.enrollSpeaker(
@@ -3261,8 +3276,9 @@ export class App {
       }
     }
 
-    // Add sample to enrollment manager
-    this.enrollmentManager.addSample(embedding.embedding);
+    // Add sample to enrollment manager (with audio for model switching support)
+    this.enrollmentManager.addSample(embedding.embedding, this.pendingEnrollmentAudio);
+    this.pendingEnrollmentAudio = null; // Clear after use
 
     // Update modal UI
     this.syncModalProgressDots();

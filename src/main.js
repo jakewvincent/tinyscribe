@@ -5,6 +5,19 @@
 
 import { App } from './app.js';
 import './styles.css';
+import { getAvailableEmbeddingModels, DEFAULT_EMBEDDING_MODEL } from './config/models.js';
+import { ModelSelectionStore } from './storage/index.js';
+
+// Expose model configuration for Alpine components
+window.embeddingModels = {
+  available: getAvailableEmbeddingModels(),
+  selected: ModelSelectionStore.getEmbeddingModel(),
+  defaultModel: DEFAULT_EMBEDDING_MODEL,
+  setModel(modelId) {
+    ModelSelectionStore.setEmbeddingModel(modelId);
+    window.location.reload();
+  },
+};
 
 // Initialize app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {

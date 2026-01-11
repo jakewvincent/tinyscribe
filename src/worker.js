@@ -4,18 +4,14 @@
  * Uses phrase-based diarization: Whisper word timestamps + WavLM frame features.
  */
 
-import {
-  pipeline,
-  AutoProcessor,
-  AutoModel,
-} from '@huggingface/transformers';
+import { pipeline } from '@huggingface/transformers';
 
 import { PhraseDetector } from './core/transcription/phraseDetector.js';
+import { TransformersBackend, SherpaBackend } from './worker/backends/index.js';
+import { getEmbeddingModelConfig, DEFAULT_EMBEDDING_MODEL } from './config/models.js';
 
 // Model identifiers
 const ASR_MODEL_ID = 'Xenova/whisper-tiny.en';
-// Speaker verification model - trained to distinguish speakers (outputs embeddings directly)
-const EMBEDDING_MODEL_ID = 'Xenova/wavlm-base-plus-sv';
 
 // Phrase detector instance
 const phraseDetector = new PhraseDetector({
@@ -26,20 +22,26 @@ const phraseDetector = new PhraseDetector({
 // Singleton model manager
 class ModelManager {
   static transcriber = null;
-  static embeddingProcessor = null;
-  static embeddingModel = null;
+  static embeddingBackend = null;
+  static embeddingModelConfig = null;
   static isLoaded = false;
   static device = 'wasm';
 
   /**
    * Load all models
+   * @param {string} device - Device to use for ASR ('webgpu' or 'wasm')
+   * @param {import('./config/models.js').EmbeddingModelConfig} [embeddingModelConfig] - Embedding model config
+   * @param {function} progressCallback - Progress callback
    */
-  static async load(device, progressCallback) {
+  static async load(device, embeddingModelConfig, progressCallback) {
     if (this.isLoaded) return;
 
     this.device = device;
 
-    // Configure device-specific settings
+    // Use provided config or fall back to default
+    this.embeddingModelConfig = embeddingModelConfig || getEmbeddingModelConfig(DEFAULT_EMBEDDING_MODEL);
+
+    // Configure device-specific settings for ASR
     const asrConfig = {
       progress_callback: progressCallback,
     };
@@ -68,27 +70,24 @@ class ModelManager {
       asrConfig
     );
 
-    // Load WavLM speaker embedding model (for frame-level features)
+    // Load speaker embedding model using appropriate backend
     self.postMessage({
       type: 'loading-stage',
-      stage: 'Loading speaker embedding model...',
+      stage: `Loading speaker embedding model (${this.embeddingModelConfig.name})...`,
     });
 
-    this.embeddingProcessor = await AutoProcessor.from_pretrained(
-      EMBEDDING_MODEL_ID,
-      { progress_callback: progressCallback }
-    );
+    // Select backend based on model configuration
+    if (this.embeddingModelConfig.backend === 'sherpa-onnx') {
+      this.embeddingBackend = new SherpaBackend();
+    } else {
+      this.embeddingBackend = new TransformersBackend();
+    }
 
-    this.embeddingModel = await AutoModel.from_pretrained(
-      EMBEDDING_MODEL_ID,
-      {
-        device: 'wasm',
-        dtype: 'fp32', // fp32 for accurate frame-level features
-        progress_callback: progressCallback,
-      }
-    );
+    await this.embeddingBackend.load(this.embeddingModelConfig, progressCallback);
 
     this.isLoaded = true;
+
+    console.log(`[ModelManager] Loaded embedding model: ${this.embeddingModelConfig.name} (${this.embeddingModelConfig.backend})`);
   }
 
   /**
@@ -127,41 +126,32 @@ class ModelManager {
   }
 
   /**
-   * Extract speaker embedding from audio segment using SV model
+   * Extract speaker embedding from audio segment using configured backend
    * @param {Float32Array} audioSegment - Audio data for one speaker segment
-   * @returns {Float32Array} Speaker embedding vector (512-dimensional for SV model)
+   * @returns {Float32Array} Speaker embedding vector (dimensions depend on model)
    */
   static async extractEmbedding(audioSegment) {
+    if (!this.embeddingBackend || !this.embeddingBackend.isReady()) {
+      console.error('[ModelManager] Embedding backend not loaded');
+      return null;
+    }
+
     try {
       // Normalize audio to handle gain/distance variation
       const normalizedAudio = this.normalizeAudio(audioSegment);
-      const inputs = await this.embeddingProcessor(normalizedAudio);
-      const output = await this.embeddingModel(inputs);
-
-      // SV model outputs embeddings directly with shape [1, embedding_dim]
-      const embeddings = output.embeddings;
-      if (!embeddings) {
-        console.error('No embeddings in model output. Keys:', Object.keys(output));
-        return null;
-      }
-
-      // Diagnostic: Log raw embedding stats before any normalization
-      const raw = embeddings.data;
-      let norm = 0, min = Infinity, max = -Infinity, sum = 0;
-      for (let i = 0; i < raw.length; i++) {
-        norm += raw[i] * raw[i];
-        sum += raw[i];
-        if (raw[i] < min) min = raw[i];
-        if (raw[i] > max) max = raw[i];
-      }
-      console.log(`[WavLM Raw] dim=${raw.length}, norm=${Math.sqrt(norm).toFixed(4)}, mean=${(sum/raw.length).toFixed(6)}, range=[${min.toFixed(4)}, ${max.toFixed(4)}]`);
-
-      // Return as Float32Array
-      return new Float32Array(embeddings.data);
+      return await this.embeddingBackend.extractEmbedding(normalizedAudio);
     } catch (error) {
-      console.error('Embedding extraction error:', error);
+      console.error('[ModelManager] Embedding extraction error:', error);
       return null;
     }
+  }
+
+  /**
+   * Get info about the loaded embedding model
+   * @returns {import('./worker/backends/embeddingBackend.js').ModelInfo|null}
+   */
+  static getEmbeddingModelInfo() {
+    return this.embeddingBackend?.getModelInfo() || null;
   }
 
   /**
@@ -233,16 +223,21 @@ async function checkWebGPU(requestId) {
 
 /**
  * Load models
+ * @param {Object} params
+ * @param {string} params.device - Device to use ('webgpu' or 'wasm')
+ * @param {import('./config/models.js').EmbeddingModelConfig} [params.embeddingModel] - Embedding model config
+ * @param {string} requestId
  */
-async function handleLoad({ device }, requestId) {
+async function handleLoad({ device, embeddingModel }, requestId) {
   try {
+    const modelName = embeddingModel?.name || 'default';
     self.postMessage({
       type: 'status',
       status: 'loading',
       message: `Loading models using ${device.toUpperCase()}...`,
     });
 
-    await ModelManager.load(device, (progress) => {
+    await ModelManager.load(device, embeddingModel, (progress) => {
       // Forward progress to main thread
       // Include 'ready' status which Transformers.js sends for cached files
       if (progress.status === 'progress' || progress.status === 'initiate' || progress.status === 'done' || progress.status === 'ready') {
@@ -263,10 +258,12 @@ async function handleLoad({ device }, requestId) {
       await ModelManager.transcriber(warmupAudio, { language: 'en' });
     }
 
+    const embeddingModelInfo = ModelManager.getEmbeddingModelInfo();
     self.postMessage({
       type: 'status',
       status: 'ready',
       message: 'Models loaded and ready!',
+      embeddingModel: embeddingModelInfo,
     });
 
     // Send completion signal for promise-based API
@@ -274,6 +271,7 @@ async function handleLoad({ device }, requestId) {
       self.postMessage({
         type: 'load-complete',
         requestId,
+        embeddingModel: embeddingModelInfo,
       });
     }
   } catch (error) {
