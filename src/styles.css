@@ -995,33 +995,35 @@ body.resizing * {
   margin-bottom: 0.5rem;
 }
 
-.enroll-name-row {
+.enroll-input-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   margin: 0.5rem 0;
 }
 
-.enroll-name-row label {
+.enroll-input-row label {
   font-size: 0.8rem;
   color: var(--text-muted);
+  flex-shrink: 0;
 }
 
-.enroll-name-row input {
+.enroll-input-row input {
   padding: 0.375rem 0.5rem;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
   font-size: 0.85rem;
-  width: 120px;
+  width: 100px;
+  flex-shrink: 0;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.enroll-name-row input:hover {
+.enroll-input-row input:hover {
   border-color: #94a3b8;
   box-shadow: var(--shadow-sm);
 }
 
-.enroll-name-row input:focus {
+.enroll-input-row input:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
@@ -1095,6 +1097,11 @@ body.resizing * {
   color: var(--text-muted);
 }
 
+.enrolled-actions {
+  display: flex;
+  gap: 0.375rem;
+}
+
 #enrolled-items {
   margin-bottom: 0.5rem;
 }
@@ -1141,12 +1148,6 @@ body.resizing * {
 }
 
 .btn-icon:hover { color: #ef4444; }
-
-.enroll-actions {
-  display: flex;
-  gap: 0.375rem;
-  margin-top: 0.5rem;
-}
 
 #enroll-status {
   margin-top: 0.5rem;
@@ -1684,6 +1685,21 @@ body.resizing * {
   transform: translateY(0);
 }
 
+.btn.danger-text {
+  background: transparent;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+.btn.danger-text:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #f87171;
+}
+
+.btn.danger-text:active:not(:disabled) {
+  background: #fee2e2;
+}
+
 .btn.small {
   gap: 0.25em;
   padding: 0.3rem 0.6rem;
@@ -1699,19 +1715,19 @@ body.resizing * {
   font-size: 1em;
 }
 
-.btn:not(.primary):not(.secondary) {
+.btn:not(.primary):not(.secondary):not(.danger-text) {
   background: #10b981;
   color: white;
   box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
 }
 
-.btn:not(.primary):not(.secondary):hover:not(:disabled) {
+.btn:not(.primary):not(.secondary):not(.danger-text):hover:not(:disabled) {
   background: #059669;
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(16, 185, 129, 0.35);
 }
 
-.btn:not(.primary):not(.secondary):active:not(:disabled) {
+.btn:not(.primary):not(.secondary):not(.danger-text):active:not(:disabled) {
   transform: translateY(0);
   box-shadow: 0 1px 2px rgba(16, 185, 129, 0.3);
 }

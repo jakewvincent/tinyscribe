@@ -184,12 +184,10 @@
             <!-- Intro state (before enrollment starts) -->
             <div x-show="state === 'intro'">
               <p>Record your voice to help identify you in conversations.</p>
-              <div class="enroll-name-row">
+              <div class="enroll-input-row">
                 <label for="enroll-name">Name:</label>
                 <input type="text" id="enroll-name" x-model="speakerName"
                        placeholder="e.g., Jake" maxlength="20">
-              </div>
-              <div class="enroll-actions">
                 <button id="enroll-start-btn" class="btn primary small"
                         :disabled="!modelLoaded || !speakerName.trim()"
                         @click="startEnrollment()"><i class="ti ti-user-plus"></i> Enroll</button>
@@ -201,9 +199,12 @@
             <div x-show="state === 'complete'">
               <div class="enrolled-header">
                 <span class="enrolled-count" x-text="enrolledCountText">0 speakers enrolled</span>
-                <button id="add-speaker-btn" class="btn secondary small"
-                        :disabled="!modelLoaded || enrollments.length >= 6"
-                        @click="addNewSpeaker()"><i class="ti ti-plus"></i> Add</button>
+                <div class="enrolled-actions">
+                  <button class="btn danger-text small" @click="clearAll()" title="Remove all enrolled speakers"><i class="ti ti-trash"></i> Clear All</button>
+                  <button id="add-speaker-btn" class="btn primary small"
+                          :disabled="!modelLoaded || enrollments.length >= 6"
+                          @click="addNewSpeaker()"><i class="ti ti-plus"></i> Add</button>
+                </div>
               </div>
               <div id="enrolled-items">
                 <template x-for="enrollment in enrollments" :key="enrollment.id">
@@ -215,7 +216,6 @@
                   </div>
                 </template>
               </div>
-              <button class="btn secondary small" @click="clearAll()"><i class="ti ti-trash"></i> Clear All</button>
             </div>
 
             <div id="enroll-status" :class="{ 'error': statusError }" x-text="statusMessage"></div>

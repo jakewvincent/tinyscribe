@@ -253,7 +253,9 @@ document.addEventListener('alpine:init', () => {
     },
 
     clearAll() {
-      window.dispatchEvent(new CustomEvent('enrollment-clear-all'));
+      if (confirm('Are you sure you want to permanently delete *all* enrolled speakers?')) {
+        window.dispatchEvent(new CustomEvent('enrollment-clear-all'));
+      }
     },
   }));
 
