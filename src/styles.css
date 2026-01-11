@@ -756,6 +756,7 @@ body.resizing * {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  flex-shrink: 0; /* Don't compress panels - let sidebar scroll */
   box-shadow: var(--shadow-md);
 }
 
