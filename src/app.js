@@ -19,7 +19,7 @@ import { ConversationInference } from './core/inference/index.js';
 import { EnrollmentManager } from './utils/enrollmentManager.js';
 
 // Storage layer
-import { PreferencesStore, RecordingStore, ModelSelectionStore } from './storage/index.js';
+import { PreferencesStore, RecordingStore, ModelSelectionStore, EnrollmentStore } from './storage/index.js';
 
 // Model configuration
 import { getEmbeddingModelConfig } from './config/models.js';
@@ -27,7 +27,7 @@ import { getEmbeddingModelConfig } from './config/models.js';
 // Core modules (pure logic, no browser dependencies)
 import { OverlapMerger, TranscriptMerger } from './core/transcription/index.js';
 import { AudioValidator } from './core/validation/index.js';
-import { cosineSimilarity } from './core/embedding/embeddingUtils.js';
+import { cosineSimilarity, l2Normalize } from './core/embedding/embeddingUtils.js';
 import {
   serializeChunks,
   deserializeChunks,
@@ -412,6 +412,10 @@ export class App {
       window.dispatchEvent(
         new CustomEvent('panel-collapse', { detail: { panel: 'model-status' } })
       );
+
+      // Recompute enrollments for current model if needed
+      // (enrollments may have been created with a different model)
+      this.recomputeEnrollmentsForCurrentModel();
     } else if (status === 'loading') {
       this.updateStatusBar('loading');
       // Expand model status panel during load (via Alpine event)
@@ -2594,19 +2598,141 @@ export class App {
 
   /**
    * Load saved enrollments from storage
+   * Uses model-specific embeddings when available
    */
   loadSavedEnrollments() {
     const enrollments = EnrollmentManager.loadAll();
     if (enrollments.length > 0) {
+      // Prepare enrollments with model-specific embeddings for the clusterer
+      const modelId = ModelSelectionStore.getEmbeddingModel();
+      const enrollmentsForClusterer = this.prepareEnrollmentsForModel(enrollments, modelId);
+
       // Import all into speaker clusterer
-      this.transcriptMerger.speakerClusterer.importEnrolledSpeakers(enrollments);
+      this.transcriptMerger.speakerClusterer.importEnrolledSpeakers(enrollmentsForClusterer);
 
       // Update inference with enrolled speakers
-      this.conversationInference.setEnrolledSpeakers(enrollments);
+      this.conversationInference.setEnrolledSpeakers(enrollmentsForClusterer);
 
       // Update Alpine UI with enrolled state
       this.dispatchEnrollmentsUpdated(enrollments);
     }
+  }
+
+  /**
+   * Prepare enrollments for the current model by using model-specific embeddings
+   * @param {Array} enrollments - Raw enrollments from storage
+   * @param {string} modelId - Current model ID
+   * @returns {Array} Enrollments with centroid set to model-specific embedding
+   */
+  prepareEnrollmentsForModel(enrollments, modelId) {
+    return enrollments.map(e => {
+      // Try to get model-specific embedding
+      const modelEmbedding = EnrollmentStore.getEmbeddingForModel(e.id, modelId);
+
+      if (modelEmbedding) {
+        // Use model-specific embedding
+        return { ...e, centroid: Array.from(modelEmbedding) };
+      } else if (e.centroid) {
+        // Fall back to legacy centroid (may be wrong dimensions for different model)
+        console.warn(`[App] Enrollment "${e.name}" has no embedding for model ${modelId}, using legacy centroid`);
+        return e;
+      } else {
+        // No embedding at all - skip this enrollment
+        console.warn(`[App] Enrollment "${e.name}" has no usable embedding, skipping`);
+        return null;
+      }
+    }).filter(e => e !== null);
+  }
+
+  /**
+   * Recompute embeddings for enrollments that don't have embeddings for the current model
+   * Called after model finishes loading
+   */
+  async recomputeEnrollmentsForCurrentModel() {
+    const modelId = ModelSelectionStore.getEmbeddingModel();
+    const enrollmentsNeedingRecompute = EnrollmentStore.getEnrollmentsNeedingEmbeddings(modelId);
+
+    if (enrollmentsNeedingRecompute.length === 0) {
+      console.log('[App] All enrollments have embeddings for current model');
+      return;
+    }
+
+    console.log(`[App] Recomputing embeddings for ${enrollmentsNeedingRecompute.length} enrollment(s) using model: ${modelId}`);
+
+    for (const enrollment of enrollmentsNeedingRecompute) {
+      const audioSamples = EnrollmentStore.getAudioSamples(enrollment.id);
+      if (!audioSamples || audioSamples.length === 0) {
+        console.warn(`[App] Enrollment "${enrollment.name}" has no audio samples for recomputation`);
+        continue;
+      }
+
+      try {
+        // Extract embeddings for each audio sample
+        const embeddings = [];
+        for (const audio of audioSamples) {
+          const embedding = await this.extractEmbeddingFromWorker(audio);
+          if (embedding) {
+            embeddings.push(new Float32Array(embedding));
+          }
+        }
+
+        if (embeddings.length === 0) {
+          console.warn(`[App] Failed to extract any embeddings for "${enrollment.name}"`);
+          continue;
+        }
+
+        // Compute average embedding (centroid)
+        const dim = embeddings[0].length;
+        const avgEmbedding = new Float32Array(dim);
+        for (const emb of embeddings) {
+          for (let i = 0; i < dim; i++) {
+            avgEmbedding[i] += emb[i];
+          }
+        }
+        for (let i = 0; i < dim; i++) {
+          avgEmbedding[i] /= embeddings.length;
+        }
+        l2Normalize(avgEmbedding);
+
+        // Cache the computed embedding
+        EnrollmentStore.setEmbeddingForModel(enrollment.id, modelId, avgEmbedding);
+        console.log(`[App] Recomputed embedding for "${enrollment.name}" (${dim}-dim)`);
+      } catch (error) {
+        console.error(`[App] Failed to recompute embedding for "${enrollment.name}":`, error);
+      }
+    }
+
+    // Reload enrollments into clusterer with new embeddings
+    this.loadSavedEnrollments();
+  }
+
+  /**
+   * Extract embedding from audio using the worker
+   * @param {Float32Array} audio - Audio samples at 16kHz
+   * @returns {Promise<number[]|null>} Embedding array or null on failure
+   */
+  extractEmbeddingFromWorker(audio) {
+    return new Promise((resolve) => {
+      const requestId = `recompute-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      const handler = (event) => {
+        const { type, requestId: respId, embedding, data } = event.data;
+        if (type === 'embedding-result' && respId === requestId) {
+          this.worker.removeEventListener('message', handler);
+          resolve(data?.embedding || embedding || null);
+        } else if (type === 'error' && respId === requestId) {
+          this.worker.removeEventListener('message', handler);
+          resolve(null);
+        }
+      };
+
+      this.worker.addEventListener('message', handler);
+      this.worker.postMessage({
+        type: 'extract-embedding',
+        requestId,
+        data: { audio },
+      });
+    });
   }
 
   /**
