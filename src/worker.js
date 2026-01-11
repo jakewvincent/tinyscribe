@@ -6,18 +6,14 @@
 
 import { pipeline } from '@huggingface/transformers';
 
-import { PhraseDetector } from './core/transcription/phraseDetector.js';
 import { TransformersBackend, OnnxBackend } from './worker/backends/index.js';
+import { PhraseGapBackend, PyannoteSegBackend } from './worker/backends/segmentation/index.js';
+import { mapWordsToSegments } from './core/transcription/wordSegmentMapper.js';
 import { getEmbeddingModelConfig, DEFAULT_EMBEDDING_MODEL } from './config/models.js';
+import { getSegmentationModelConfig, DEFAULT_SEGMENTATION_MODEL } from './config/segmentation.js';
 
 // Model identifiers
 const ASR_MODEL_ID = 'Xenova/whisper-tiny.en';
-
-// Phrase detector instance
-const phraseDetector = new PhraseDetector({
-  gapThreshold: 0.300,    // 300ms gap triggers phrase boundary
-  minPhraseDuration: 0.5, // 500ms minimum for reliable embedding
-});
 
 // Singleton model manager
 class ModelManager {
@@ -173,6 +169,90 @@ class ModelManager {
   }
 }
 
+// Singleton segmentation manager
+class SegmentationManager {
+  static backend = null;
+  static modelConfig = null;
+  static isLoaded = false;
+
+  /**
+   * Load segmentation model
+   * @param {import('./config/segmentation.js').SegmentationModelConfig} [segModelConfig]
+   * @param {function} progressCallback
+   * @param {Record<string, number>} [initialParams] - Initial parameter values
+   */
+  static async load(segModelConfig, progressCallback, initialParams = {}) {
+    // Use provided config or fall back to default
+    this.modelConfig = segModelConfig || getSegmentationModelConfig(DEFAULT_SEGMENTATION_MODEL);
+
+    console.log(`[SegmentationManager] Loading ${this.modelConfig.name} (${this.modelConfig.backend})`);
+
+    // Select backend based on config
+    switch (this.modelConfig.backend) {
+      case 'text-gap':
+        this.backend = new PhraseGapBackend();
+        break;
+      case 'transformers-js':
+        this.backend = new PyannoteSegBackend();
+        break;
+      default:
+        throw new Error(`Unknown segmentation backend: ${this.modelConfig.backend}`);
+    }
+
+    await this.backend.load(this.modelConfig, progressCallback, initialParams);
+    this.isLoaded = true;
+
+    console.log(`[SegmentationManager] Loaded ${this.modelConfig.name}`);
+  }
+
+  /**
+   * Segment audio into speaker turns
+   * @param {Float32Array} audio - Audio at 16kHz
+   * @param {Object} options
+   * @param {Array} [options.words] - Whisper words (for text-gap backend)
+   * @returns {Promise<import('./worker/backends/segmentation/segmentationBackend.js').SegmentationResult>}
+   */
+  static async segment(audio, options = {}) {
+    if (!this.isReady()) {
+      throw new Error('[SegmentationManager] Segmentation model not loaded');
+    }
+    return this.backend.segment(audio, options);
+  }
+
+  /**
+   * Check if segmentation is ready
+   * @returns {boolean}
+   */
+  static isReady() {
+    return this.isLoaded && this.backend?.isReady();
+  }
+
+  /**
+   * Get info about the loaded segmentation model
+   * @returns {import('./worker/backends/segmentation/segmentationBackend.js').SegmentationModelInfo|null}
+   */
+  static getModelInfo() {
+    return this.backend?.getModelInfo() || null;
+  }
+
+  /**
+   * Get current segmentation parameters
+   * @returns {Record<string, number>}
+   */
+  static getParams() {
+    return this.backend?.getParams() || {};
+  }
+
+  /**
+   * Set segmentation parameters (merges with existing)
+   * @param {Record<string, number>} params
+   */
+  static setParams(params) {
+    if (!this.backend) return;
+    this.backend.setParams(params);
+  }
+}
+
 // Handle messages from main thread
 self.addEventListener('message', async (event) => {
   const { type, requestId, ...payload } = event.data;
@@ -195,8 +275,38 @@ self.addEventListener('message', async (event) => {
     case 'check-webgpu':
       await checkWebGPU(requestId);
       break;
+    case 'set-segmentation-params':
+      handleSetSegmentationParams(data, requestId);
+      break;
   }
 });
+
+/**
+ * Handle real-time segmentation parameter updates
+ */
+function handleSetSegmentationParams(data, requestId) {
+  const { params } = data;
+  if (!SegmentationManager.isReady()) {
+    console.warn('[Worker] Cannot update params: segmentation model not loaded');
+    self.postMessage({
+      type: 'set-segmentation-params',
+      requestId,
+      success: false,
+      error: 'Segmentation model not loaded',
+    });
+    return;
+  }
+
+  SegmentationManager.setParams(params);
+  console.log('[Worker] Updated segmentation params:', params);
+
+  self.postMessage({
+    type: 'set-segmentation-params',
+    requestId,
+    success: true,
+    params: SegmentationManager.getParams(),
+  });
+}
 
 /**
  * Check WebGPU availability
@@ -226,9 +336,11 @@ async function checkWebGPU(requestId) {
  * @param {Object} params
  * @param {string} params.device - Device to use ('webgpu' or 'wasm')
  * @param {import('./config/models.js').EmbeddingModelConfig} [params.embeddingModel] - Embedding model config
+ * @param {import('./config/segmentation.js').SegmentationModelConfig} [params.segmentationModel] - Segmentation model config
+ * @param {Record<string, number>} [params.segmentationParams] - Initial segmentation parameter values
  * @param {string} requestId
  */
-async function handleLoad({ device, embeddingModel }, requestId) {
+async function handleLoad({ device, embeddingModel, segmentationModel, segmentationParams }, requestId) {
   try {
     const modelName = embeddingModel?.name || 'default';
     self.postMessage({
@@ -237,13 +349,24 @@ async function handleLoad({ device, embeddingModel }, requestId) {
       message: `Loading models using ${device.toUpperCase()}...`,
     });
 
-    await ModelManager.load(device, embeddingModel, (progress) => {
+    const progressCallback = (progress) => {
       // Forward progress to main thread
       // Include 'ready' status which Transformers.js sends for cached files
       if (progress.status === 'progress' || progress.status === 'initiate' || progress.status === 'done' || progress.status === 'ready') {
         self.postMessage({ type: 'progress', ...progress });
       }
+    };
+
+    await ModelManager.load(device, embeddingModel, progressCallback);
+
+    // Load segmentation model
+    const segModelName = segmentationModel?.name || 'default';
+    self.postMessage({
+      type: 'loading-stage',
+      stage: `Loading segmentation model (${segModelName})...`,
     });
+
+    await SegmentationManager.load(segmentationModel, progressCallback, segmentationParams || {});
 
     // Warmup for WebGPU (compile shaders)
     if (device === 'webgpu') {
@@ -259,11 +382,13 @@ async function handleLoad({ device, embeddingModel }, requestId) {
     }
 
     const embeddingModelInfo = ModelManager.getEmbeddingModelInfo();
+    const segmentationModelInfo = SegmentationManager.getModelInfo();
     self.postMessage({
       type: 'status',
       status: 'ready',
       message: 'Models loaded and ready!',
       embeddingModel: embeddingModelInfo,
+      segmentationModel: segmentationModelInfo,
     });
 
     // Send completion signal for promise-based API
@@ -272,6 +397,7 @@ async function handleLoad({ device, embeddingModel }, requestId) {
         type: 'load-complete',
         requestId,
         embeddingModel: embeddingModelInfo,
+        segmentationModel: segmentationModelInfo,
       });
     }
   } catch (error) {
@@ -411,27 +537,52 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, overlapDur
     // No more last-word-discard or splitPoint calculation
     const wordsToKeep = words;
 
-    // 3. Detect phrase boundaries from all words
-    const phrases = phraseDetector.detectPhrases(wordsToKeep);
+    // 3. Segment audio using configured backend (text-gap or acoustic)
+    const segStartTime = performance.now();
+    const segResult = await SegmentationManager.segment(audioData, { words: wordsToKeep });
+    const segTime = performance.now() - segStartTime;
 
-    // Debug: Log phrase detection results
+    // 4. Get phrases - either directly from text-gap or by mapping words to acoustic segments
+    let phrases;
+    if (segResult.method === 'acoustic') {
+      // Map Whisper words to acoustic segment boundaries
+      phrases = mapWordsToSegments(wordsToKeep, segResult.segments);
+    } else {
+      // Text-gap already returns phrases with words attached
+      phrases = segResult.segments;
+    }
+
+    // Debug: Log segmentation results
     self.postMessage({
       type: 'debug-log',
-      logType: 'phrases',
+      logType: 'segmentation',
       data: {
         chunkIndex,
+        method: segResult.method,
+        segmentCount: segResult.segments?.length || 0,
         phraseCount: phrases.length,
+        segTimeMs: Math.round(segTime),
+        // For acoustic, show raw segments
+        ...(segResult.method === 'acoustic' && {
+          acousticSegments: segResult.segments.map(s => ({
+            speakerId: s.speakerId,
+            start: s.start,
+            end: s.end,
+            confidence: s.confidence?.toFixed(2),
+          })),
+        }),
         phrases: phrases.map(p => ({
-          text: p.words.map(w => w.text).join(''),
+          text: p.words?.map(w => w.text).join('') || '',
           start: p.start,
           end: p.end,
           duration: p.end - p.start,
-          wordCount: p.words.length,
+          wordCount: p.words?.length || 0,
+          acousticSpeakerId: p.acousticSpeakerId,
         })),
       },
     });
 
-    // 4. Extract audio segments for each phrase and get SV embeddings
+    // 5. Extract audio segments for each phrase and get SV embeddings
     const embeddingStartTime = performance.now();
     const phrasesWithEmbeddings = [];
 
@@ -513,7 +664,8 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, overlapDur
         // Debug timing breakdown
         debug: {
           asrTime: Math.round(asrTime),
-          featureTime: 0,
+          segTime: Math.round(segTime),
+          segMethod: segResult.method,
           embeddingTime: Math.round(embeddingTime),
         },
       },

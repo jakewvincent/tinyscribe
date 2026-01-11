@@ -22,6 +22,7 @@ export const LOCAL_STORAGE_KEYS = {
 
   // Model Selection
   EMBEDDING_MODEL_SELECTION: 'embedding-model-selection',
+  SEGMENTATION_MODEL_SELECTION: 'segmentation-model-selection',
 };
 
 // IndexedDB configuration

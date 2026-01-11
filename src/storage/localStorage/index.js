@@ -8,3 +8,4 @@ export { PreferencesStore } from './stores/preferencesStore.js';
 export { EnrollmentStore } from './stores/enrollmentStore.js';
 export { DebugSettingsStore } from './stores/debugSettingsStore.js';
 export { ModelSelectionStore } from './stores/modelSelectionStore.js';
+export { SegmentationModelStore } from './stores/segmentationModelStore.js';

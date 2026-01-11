@@ -22,3 +22,12 @@ export {
   getAvailableEmbeddingModels,
   isOnnxModel,
 } from './models.js';
+
+export {
+  SEGMENTATION_MODELS,
+  DEFAULT_SEGMENTATION_MODEL,
+  getSegmentationModelConfig,
+  getAvailableSegmentationModels,
+  getDefaultSegmentationParams,
+  getSegmentationParamConfigs,
+} from './segmentation.js';

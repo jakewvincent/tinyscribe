@@ -5,3 +5,4 @@
 export { PhraseDetector } from './phraseDetector.js';
 export { OverlapMerger } from './overlapMerger.js';
 export { TranscriptMerger } from './transcriptMerger.js';
+export { mapWordsToSegments, debugPrintMapping } from './wordSegmentMapper.js';

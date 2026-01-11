@@ -2738,6 +2738,9 @@ body.resizing * {
 }
 
 .tuning-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--text-muted);
@@ -2747,6 +2750,28 @@ body.resizing * {
   margin-bottom: 0.25rem;
   padding-top: 0.375rem;
   border-top: 1px solid var(--border-color);
+}
+
+.btn-text-small {
+  background: none;
+  border: none;
+  padding: 0.125rem 0.25rem;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.btn-text-small:hover {
+  color: var(--text-primary);
+}
+
+.btn-text-small i {
+  font-size: 0.75rem;
 }
 
 .tuning-row {

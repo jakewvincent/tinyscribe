@@ -6,7 +6,13 @@
 import { App } from './app.js';
 import './styles.css';
 import { getAvailableEmbeddingModels, DEFAULT_EMBEDDING_MODEL } from './config/models.js';
-import { ModelSelectionStore } from './storage/index.js';
+import {
+  getAvailableSegmentationModels,
+  DEFAULT_SEGMENTATION_MODEL,
+  getDefaultSegmentationParams,
+  getSegmentationParamConfigs,
+} from './config/segmentation.js';
+import { ModelSelectionStore, SegmentationModelStore } from './storage/index.js';
 
 // Expose model configuration for Alpine components
 window.embeddingModels = {
@@ -19,9 +25,36 @@ window.embeddingModels = {
   },
 };
 
+window.segmentationModels = {
+  available: getAvailableSegmentationModels(),
+  selected: SegmentationModelStore.getSegmentationModel(),
+  defaultModel: DEFAULT_SEGMENTATION_MODEL,
+  setModel(modelId) {
+    SegmentationModelStore.setSegmentationModel(modelId);
+    window.location.reload();
+  },
+  // Param getters/setters for tuning
+  getParams(modelId) {
+    return SegmentationModelStore.getParams(modelId);
+  },
+  setParam(modelId, key, value) {
+    return SegmentationModelStore.setParam(modelId, key, value);
+  },
+  resetParams(modelId) {
+    return SegmentationModelStore.resetParams(modelId);
+  },
+  getParamConfigs(modelId) {
+    return getSegmentationParamConfigs(modelId);
+  },
+  getDefaults(modelId) {
+    return getDefaultSegmentationParams(modelId);
+  },
+};
+
 // Notify Alpine components that model data is ready
 // (main.js is a module that runs after Alpine's deferred scripts)
 window.dispatchEvent(new CustomEvent('embedding-models-ready'));
+window.dispatchEvent(new CustomEvent('segmentation-models-ready'));
 
 // Initialize app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {

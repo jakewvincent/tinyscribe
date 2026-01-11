@@ -19,10 +19,11 @@ import { ConversationInference } from './core/inference/index.js';
 import { EnrollmentManager } from './utils/enrollmentManager.js';
 
 // Storage layer
-import { PreferencesStore, RecordingStore, ModelSelectionStore, EnrollmentStore } from './storage/index.js';
+import { PreferencesStore, RecordingStore, ModelSelectionStore, SegmentationModelStore, EnrollmentStore } from './storage/index.js';
 
 // Model configuration
 import { getEmbeddingModelConfig } from './config/models.js';
+import { getSegmentationModelConfig } from './config/segmentation.js';
 
 // Core modules (pure logic, no browser dependencies)
 import { OverlapMerger, TranscriptMerger } from './core/transcription/index.js';
@@ -329,6 +330,31 @@ export class App {
       this.conversationInference.resetConfig();
       this.reprocessBoostingForCurrentSegments();
     });
+
+    // Segmentation tuning events - forward to worker
+    window.addEventListener('segmentation-param-update', (e) => {
+      const { key, value } = e.detail;
+      this.updateSegmentationParams({ [key]: value });
+    });
+    window.addEventListener('segmentation-params-reset', (e) => {
+      const { params } = e.detail;
+      this.updateSegmentationParams(params);
+    });
+  }
+
+  /**
+   * Send updated segmentation params to the worker
+   * @param {Record<string, number>} params - Params to update
+   */
+  updateSegmentationParams(params) {
+    if (!this.worker) {
+      console.warn('[App] Cannot update segmentation params: worker not ready');
+      return;
+    }
+    this.worker.postMessage({
+      type: 'set-segmentation-params',
+      data: { params },
+    });
   }
 
   /**
@@ -520,7 +546,12 @@ export class App {
     const embeddingModelId = ModelSelectionStore.getEmbeddingModel();
     const embeddingModelConfig = getEmbeddingModelConfig(embeddingModelId);
 
-    console.log(`[App] Loading models with embedding model: ${embeddingModelConfig.name}`);
+    // Get selected segmentation model configuration and saved params
+    const segmentationModelId = SegmentationModelStore.getSegmentationModel();
+    const segmentationModelConfig = getSegmentationModelConfig(segmentationModelId);
+    const segmentationParams = SegmentationModelStore.getParams(segmentationModelId);
+
+    console.log(`[App] Loading models - embedding: ${embeddingModelConfig.name}, segmentation: ${segmentationModelConfig.name}`);
 
     // Notify Alpine that models are loading
     window.dispatchEvent(new CustomEvent('model-status-update', { detail: { status: 'loading' } }));
@@ -530,6 +561,8 @@ export class App {
       data: {
         device: this.device,
         embeddingModel: embeddingModelConfig,
+        segmentationModel: segmentationModelConfig,
+        segmentationParams: segmentationParams,
       },
     });
   }

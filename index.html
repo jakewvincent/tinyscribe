@@ -541,6 +541,81 @@
             </div>
           </div>
         </div>
+
+        <!-- Segmentation Selection Panel -->
+        <div class="sidebar-panel" id="panel-segmentation-selection" x-data="segmentationSelection" x-cloak :style="'order: ' + order">
+          <div class="panel-header">
+            <div class="panel-header-left" @click="toggle()">
+              <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
+              <h3>Segmentation</h3>
+              <span class="panel-badge" x-text="currentModelInfo?.name || 'Loading...'"></span>
+            </div>
+            <div class="panel-header-right">
+              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveUp" @click.stop="moveUp()" title="Move up"><i class="ti ti-arrow-move-up"></i></button>
+              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveDown" @click.stop="moveDown()" title="Move down"><i class="ti ti-arrow-move-down"></i></button>
+            </div>
+          </div>
+          <div class="panel-content" :class="{ 'collapsed': !expanded }">
+            <p class="model-intro">Select speaker segmentation method. Text-gap uses word timing; acoustic models detect speaker boundaries from audio.</p>
+
+            <div class="model-select-wrapper">
+              <select class="model-select"
+                      :value="selectedModel"
+                      @change="changeModel($event.target.value)"
+                      :disabled="isLoading">
+                <template x-for="model in models" :key="model.id">
+                  <option :value="model.id" x-text="model.name" :selected="model.id === selectedModel"></option>
+                </template>
+              </select>
+            </div>
+
+            <template x-if="currentModelInfo">
+              <div class="model-info">
+                <div class="model-info-row">
+                  <span class="model-info-label">Size:</span>
+                  <span class="model-info-value" x-text="currentModelInfo.size"></span>
+                </div>
+                <div class="model-info-row" x-show="currentModelInfo.maxSpeakers">
+                  <span class="model-info-label">Max Speakers:</span>
+                  <span class="model-info-value" x-text="currentModelInfo.maxSpeakers + ' per chunk'"></span>
+                </div>
+                <div class="model-info-row">
+                  <span class="model-info-label">Backend:</span>
+                  <span class="model-info-value" x-text="currentModelInfo.backend"></span>
+                </div>
+                <p class="model-description" x-text="currentModelInfo.description"></p>
+              </div>
+            </template>
+
+            <!-- Model-specific tuning parameters -->
+            <template x-if="paramKeys.length > 0">
+              <div class="tuning-controls segmentation-tuning">
+                <div class="tuning-section-header">
+                  <span>Tuning</span>
+                  <button class="btn-text-small" x-show="hasCustomParams" @click="resetParams()" title="Reset to defaults">
+                    <i class="ti ti-refresh"></i> Reset
+                  </button>
+                </div>
+                <template x-for="key in paramKeys" :key="key">
+                  <div class="tuning-row" :title="paramConfigs[key]?.description || ''">
+                    <label x-text="paramConfigs[key]?.label || key"></label>
+                    <input type="range"
+                           :min="paramConfigs[key]?.min"
+                           :max="paramConfigs[key]?.max"
+                           :step="paramConfigs[key]?.step"
+                           :value="params[key]"
+                           @input="updateParam(key, $event.target.value)">
+                    <span class="tuning-value" x-text="formatValue(key, params[key])"></span>
+                  </div>
+                </template>
+              </div>
+            </template>
+
+            <div class="model-warning" x-show="isLoading">
+              <i class="ti ti-loader"></i> Reloading...
+            </div>
+          </div>
+        </div>
       </aside>
     </main>
 

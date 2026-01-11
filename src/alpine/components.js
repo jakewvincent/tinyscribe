@@ -16,6 +16,7 @@ document.addEventListener('alpine:init', () => {
     'debug',
     'boosting-tuning',
     'model-selection',
+    'segmentation-selection',
   ];
 
   /**
@@ -783,6 +784,143 @@ document.addEventListener('alpine:init', () => {
         this.isLoading = true;
         window.embeddingModels.setModel(modelId);
       }
+    },
+
+    // Get display info for current model
+    get currentModelInfo() {
+      return this.models.find(m => m.id === this.selectedModel) || null;
+    },
+  }));
+
+  /**
+   * Segmentation Selection component
+   * Allows switching between segmentation methods (requires page reload)
+   * Also provides model-specific parameter tuning with live updates
+   */
+  Alpine.data('segmentationSelection', () => ({
+    expanded: Alpine.$persist(false).as('panel-segmentation-selection'),
+    panelId: 'segmentation-selection',
+    models: [],
+    selectedModel: '',
+    isLoading: false,
+
+    // Model-specific params
+    params: {},         // Current param values
+    paramConfigs: {},   // Param metadata (min/max/step/label/description)
+    defaults: {},       // Default values for reset
+
+    // Panel order helpers (delegate to store)
+    get order() {
+      return Alpine.store('sidebarOrder').getOrder(this.panelId);
+    },
+    get canMoveUp() {
+      return Alpine.store('sidebarOrder').canMoveUp(this.panelId);
+    },
+    get canMoveDown() {
+      return Alpine.store('sidebarOrder').canMoveDown(this.panelId);
+    },
+    moveUp() {
+      Alpine.store('sidebarOrder').moveUp(this.panelId);
+    },
+    moveDown() {
+      Alpine.store('sidebarOrder').moveDown(this.panelId);
+    },
+
+    init() {
+      // Get model config from window (set by main.js)
+      if (window.segmentationModels) {
+        this.loadModels();
+      }
+      window.addEventListener('segmentation-models-ready', () => this.loadModels());
+    },
+
+    loadModels() {
+      if (window.segmentationModels) {
+        this.models = window.segmentationModels.available;
+        this.selectedModel = window.segmentationModels.selected;
+
+        // Load params for current model
+        this.loadParams();
+      }
+    },
+
+    loadParams() {
+      if (!window.segmentationModels) return;
+
+      const modelId = this.selectedModel;
+      this.params = window.segmentationModels.getParams(modelId) || {};
+      this.paramConfigs = window.segmentationModels.getParamConfigs(modelId) || {};
+      this.defaults = window.segmentationModels.getDefaults(modelId) || {};
+    },
+
+    toggle() {
+      this.expanded = !this.expanded;
+    },
+
+    changeModel(modelId) {
+      if (modelId === this.selectedModel || !modelId) return;
+
+      // Confirm since this will reload the page
+      if (confirm('Changing segmentation model will reload the page. Continue?')) {
+        this.isLoading = true;
+        window.segmentationModels.setModel(modelId);
+      }
+    },
+
+    // Update a single param value
+    updateParam(key, value) {
+      const numValue = parseFloat(value);
+      if (isNaN(numValue)) return;
+
+      this.params[key] = numValue;
+
+      // Persist to storage
+      if (window.segmentationModels) {
+        window.segmentationModels.setParam(this.selectedModel, key, numValue);
+      }
+
+      // Notify worker to update in real-time
+      window.dispatchEvent(new CustomEvent('segmentation-param-update', {
+        detail: { key, value: numValue, modelId: this.selectedModel },
+      }));
+    },
+
+    // Reset all params to defaults
+    resetParams() {
+      if (window.segmentationModels) {
+        window.segmentationModels.resetParams(this.selectedModel);
+        this.loadParams();
+
+        // Notify worker of reset
+        window.dispatchEvent(new CustomEvent('segmentation-params-reset', {
+          detail: { modelId: this.selectedModel, params: this.params },
+        }));
+      }
+    },
+
+    // Check if any params differ from defaults
+    get hasCustomParams() {
+      for (const key of Object.keys(this.defaults)) {
+        if (this.params[key] !== this.defaults[key]) return true;
+      }
+      return false;
+    },
+
+    // Get param keys as array for iteration
+    get paramKeys() {
+      return Object.keys(this.paramConfigs);
+    },
+
+    // Format value for display
+    formatValue(key, value) {
+      const config = this.paramConfigs[key];
+      if (!config) return value;
+
+      // Format to appropriate precision based on step
+      const step = config.step || 0.01;
+      const decimals = step < 0.01 ? 3 : step < 0.1 ? 2 : step < 1 ? 1 : 0;
+      const formatted = parseFloat(value).toFixed(decimals);
+      return config.unit ? `${formatted}${config.unit}` : formatted;
     },
 
     // Get display info for current model
