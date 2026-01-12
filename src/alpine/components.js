@@ -123,10 +123,22 @@ document.addEventListener('alpine:init', () => {
    * Manages job-related UI state (sidebars, etc.)
    */
   Alpine.store('jobUI', {
-    participantsSidebarOpen: Alpine.$persist(false).as('job-participants-sidebar'),
+    participantsSidebarOpen: (() => {
+      try {
+        const saved = localStorage.getItem('job-participants-sidebar');
+        return saved === 'true';
+      } catch (e) {
+        return false;
+      }
+    })(),
 
     toggleParticipants() {
       this.participantsSidebarOpen = !this.participantsSidebarOpen;
+      try {
+        localStorage.setItem('job-participants-sidebar', String(this.participantsSidebarOpen));
+      } catch (e) {
+        // Ignore localStorage errors
+      }
     },
   });
 
