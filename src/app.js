@@ -46,6 +46,12 @@ import {
 
 // Configuration
 import { REASON_BADGES, ATTRIBUTION_UI_DEFAULTS } from './config/defaults.js';
+import {
+  buildJobSettings,
+  createJob,
+  JOB_STATUS,
+  ENROLLMENT_SOURCE,
+} from './config/jobDefaults.js';
 
 export class App {
   constructor() {
@@ -95,6 +101,7 @@ export class App {
     this.sessionTranscriptionData = []; // Raw Whisper output per chunk for saving
     this.isViewingRecording = false; // True when viewing a saved recording
     this.viewedRecordingId = null; // ID of currently viewed recording
+    this.viewedJobId = null; // ID of currently viewed job within the recording
     this.audioPlayback = null; // AudioPlayback instance for replay
 
     // Components
@@ -314,6 +321,15 @@ export class App {
     window.addEventListener('recording-rename', (e) => this.renameRecording(e.detail.id, e.detail.name));
     window.addEventListener('recording-return-to-live', () => this.returnToLive());
     window.addEventListener('recording-download', (e) => this.downloadRecordingAsWav(e.detail.id));
+
+    // Job management events
+    window.addEventListener('job-switch', (e) => this.switchJob(e.detail.jobId));
+    window.addEventListener('job-create-new', () => this.createNewJob());
+    window.addEventListener('job-clone', (e) => this.cloneJob(e.detail.sourceJobId));
+    window.addEventListener('job-delete', (e) => this.deleteJob(e.detail.jobId));
+    window.addEventListener('job-update-name', (e) => this.updateJobName(e.detail.jobId, e.detail.name));
+    window.addEventListener('job-update-notes', (e) => this.updateJobNotes(e.detail.jobId, e.detail.notes));
+    window.addEventListener('job-process', (e) => this.processJob(e.detail.jobId, e.detail.mode || 'quick'));
 
     // Playback control events
     window.addEventListener('playback-toggle', () => this.togglePlayback());
@@ -2099,7 +2115,7 @@ export class App {
   }
 
   /**
-   * Save the current recording session
+   * Save the current recording session (v2 job-based schema)
    */
   async saveCurrentSession() {
     if (this.sessionAudioChunks.length === 0) {
@@ -2123,22 +2139,7 @@ export class App {
       const enrollmentsSnapshot = EnrollmentManager.loadAll();
 
       // Extract participants from segments
-      const speakerSet = new Map();
-      for (const seg of segments) {
-        if (seg.speaker != null && !seg.isEnvironmental) {
-          if (!speakerSet.has(seg.speaker)) {
-            speakerSet.set(seg.speaker, {
-              speakerId: seg.speaker,
-              label: seg.speakerLabel,
-              name: seg.speakerName || null,
-              segmentCount: 0,
-              isEnrolled: seg.isEnrolledSpeaker || false,
-            });
-          }
-          speakerSet.get(seg.speaker).segmentCount++;
-        }
-      }
-      const participants = Array.from(speakerSet.values());
+      const participants = this._extractParticipants(segments);
 
       // Serialize chunks and transcription data
       const serializedChunks = serializeChunks(this.sessionAudioChunks);
@@ -2147,44 +2148,46 @@ export class App {
       // Calculate storage size (includes transcription data)
       const sizeBytes = calculateStorageSize(segments, this.sessionAudioChunks, this.sessionTranscriptionData);
 
-      // Get current model configuration for processingInfo
+      // Get current model configuration
       const embeddingModelId = ModelSelectionStore.getEmbeddingModel();
-      const embeddingModelConfig = getEmbeddingModelConfig(embeddingModelId);
       const segmentationModelId = SegmentationModelStore.getSegmentationModel();
-      const segmentationModelConfig = getSegmentationModelConfig(segmentationModelId);
       const segmentationParams = SegmentationModelStore.getParams(segmentationModelId);
 
-      // Create recording object
+      // Build job settings from current global state
+      const jobSettings = buildJobSettings({
+        embeddingModelId,
+        segmentationModelId,
+        segmentationParams,
+        clustering: {
+          numSpeakers: this.numSpeakers,
+        },
+        enrollmentSource: ENROLLMENT_SOURCE.SNAPSHOT,
+      });
+
+      // Create the first job with processed results
+      const job = createJob({
+        name: 'Live Recording',
+        settings: jobSettings,
+        status: JOB_STATUS.PROCESSED,
+      });
+      job.processedAt = Date.now();
+      job.segments = segments;
+      job.participants = participants;
+
+      // Create recording (v2 schema) as container for jobs
       const recording = {
         id: generateRecordingId(),
         name: generateRecordingName(),
         createdAt: Date.now(),
         duration,
-        segments,
-        participants,
         enrollmentsSnapshot,
-        numSpeakersConfig: this.numSpeakers,
-        processingInfo: {
-          embeddingModel: {
-            id: embeddingModelId,
-            name: embeddingModelConfig?.name || embeddingModelId,
-            dimensions: embeddingModelConfig?.dimensions || null,
-          },
-          segmentationModel: {
-            id: segmentationModelId,
-            name: segmentationModelConfig?.name || segmentationModelId,
-          },
-          segmentationParams: segmentationParams || {},
-          asrModel: { id: 'whisper-tiny.en', name: 'Whisper Tiny (English)' },
-          processedAt: Date.now(),
-          sourceRecordingId: null,
-          reprocessMode: null,
-        },
         metadata: {
           chunkCount: this.sessionAudioChunks.length,
-          segmentCount: segments.length,
           sizeBytes,
         },
+        jobs: [job],
+        activeJobId: job.id,
+        // schemaVersion is set by recordingStore.save()
       };
 
       // Save to IndexedDB
@@ -2214,10 +2217,35 @@ export class App {
   }
 
   /**
-   * Load and display a saved recording
-   * @param {string} recordingId
+   * Extract participants from segments
+   * @param {Object[]} segments
+   * @returns {Object[]} participants
    */
-  async loadRecording(recordingId) {
+  _extractParticipants(segments) {
+    const speakerSet = new Map();
+    for (const seg of segments) {
+      if (seg.speaker != null && !seg.isEnvironmental) {
+        if (!speakerSet.has(seg.speaker)) {
+          speakerSet.set(seg.speaker, {
+            speakerId: seg.speaker,
+            label: seg.speakerLabel,
+            name: seg.speakerName || null,
+            segmentCount: 0,
+            isEnrolled: seg.isEnrolledSpeaker || false,
+          });
+        }
+        speakerSet.get(seg.speaker).segmentCount++;
+      }
+    }
+    return Array.from(speakerSet.values());
+  }
+
+  /**
+   * Load and display a saved recording (v2 job-based schema)
+   * @param {string} recordingId
+   * @param {string} [jobId] - Optional specific job ID to display (defaults to activeJobId)
+   */
+  async loadRecording(recordingId, jobId = null) {
     if (this.isRecording) {
       this.recordingStatus.textContent = 'Stop recording before loading a saved recording';
       return;
@@ -2236,13 +2264,25 @@ export class App {
 
       const { recording, chunks, transcriptionData } = data;
 
+      // Find the job to display (specified or active)
+      const targetJobId = jobId || recording.activeJobId;
+      const activeJob = recording.jobs.find((j) => j.id === targetJobId);
+      if (!activeJob) {
+        this.recordingStatus.textContent = 'Job not found';
+        this.updateStatusBar('ready');
+        return;
+      }
+
       // Set viewing state
       this.isViewingRecording = true;
       this.viewedRecordingId = recordingId;
+      this.viewedJobId = activeJob.id;
 
       // Store references for re-processing (e.g., when boosting config changes)
-      this._currentViewedSegments = recording.segments;
+      this._currentViewedSegments = activeJob.segments || [];
       this._currentViewedEnrollments = recording.enrollmentsSnapshot || [];
+      this._currentViewedJob = activeJob;
+      this._currentViewedRecording = recording;
 
       // Clear current display
       this.clearTranscriptDisplay();
@@ -2252,12 +2292,13 @@ export class App {
       this.conversationInference.reset();
       const enrollments = recording.enrollmentsSnapshot || [];
       this.conversationInference.setEnrolledSpeakers(enrollments);
-      this.conversationInference.setExpectedSpeakers(this.numSpeakers);
+      this.conversationInference.setExpectedSpeakers(activeJob.settings?.clustering?.numSpeakers || this.numSpeakers);
 
       // Process each segment through inference to build hypothesis
       // Use saved inferenceAttribution if present, otherwise rebuild from debug.clustering
-      for (let i = 0; i < recording.segments.length; i++) {
-        const segment = recording.segments[i];
+      const segments = activeJob.segments || [];
+      for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
 
         if (segment.inferenceAttribution) {
           // Use saved attribution directly - preserves original boost decisions
@@ -2271,7 +2312,7 @@ export class App {
 
       // Render saved segments using the same renderer as live recording
       // This ensures colors, similarity bars, reason badges, and boost indicators display correctly
-      this.renderSegments(recording.segments)
+      this.renderSegments(segments);
 
       // Render raw chunk data if available (for recordings saved with transcription data)
       // Uses the same renderRawChunk() as live recording for identical display
@@ -2305,21 +2346,24 @@ export class App {
       // Load audio chunks
       await this.audioPlayback.load(audioChunks);
 
-      // Notify Alpine
+      // Notify Alpine with full job information
       window.dispatchEvent(new CustomEvent('recording-loaded', {
         detail: {
           id: recording.id,
           name: recording.name,
           duration: recording.duration,
           enrollmentsSnapshot: recording.enrollmentsSnapshot,
-          participants: recording.participants,
+          participants: activeJob.participants || [],
+          jobs: recording.jobs,
+          activeJobId: activeJob.id,
+          activeJob: activeJob,
         },
       }));
 
       this.recordingStatus.textContent = `Viewing: ${recording.name}`;
       this.updateStatusBar('ready');
 
-      console.log(`[Recording] Loaded "${recording.name}"`);
+      console.log(`[Recording] Loaded "${recording.name}" - Job: "${activeJob.name}"`);
     } catch (error) {
       console.error('[Recording] Failed to load:', error);
       this.recordingStatus.textContent = 'Failed to load recording';
@@ -2335,8 +2379,11 @@ export class App {
 
     this.isViewingRecording = false;
     this.viewedRecordingId = null;
+    this.viewedJobId = null;
     this._currentViewedSegments = null;
     this._currentViewedEnrollments = null;
+    this._currentViewedJob = null;
+    this._currentViewedRecording = null;
 
     // Clean up audio playback
     if (this.audioPlayback) {
@@ -2370,6 +2417,492 @@ export class App {
   seekPlayback(time) {
     if (!this.audioPlayback || !this.isViewingRecording) return;
     this.audioPlayback.seek(time);
+  }
+
+  // ==================== Job Management Methods ====================
+
+  /**
+   * Switch to viewing a different job within the same recording
+   * @param {string} jobId - Job ID to switch to
+   */
+  async switchJob(jobId) {
+    if (!this.isViewingRecording || !this.viewedRecordingId) return;
+    if (this.viewedJobId === jobId) return;
+
+    const recordingId = this.viewedRecordingId;
+
+    try {
+      // Update activeJobId in storage
+      await this.recordingStore.setActiveJob(recordingId, jobId);
+
+      // Reload the recording with the new job
+      await this.loadRecording(recordingId, jobId);
+
+      console.log(`[Job] Switched to job: ${jobId}`);
+    } catch (error) {
+      console.error('[Job] Failed to switch job:', error);
+      this.recordingStatus.textContent = 'Failed to switch job';
+    }
+  }
+
+  /**
+   * Create a new unprocessed job for the current recording
+   * Uses current global settings as defaults
+   */
+  async createNewJob() {
+    if (!this.isViewingRecording || !this.viewedRecordingId) return;
+
+    const recordingId = this.viewedRecordingId;
+
+    try {
+      // Get current model configuration
+      const embeddingModelId = ModelSelectionStore.getEmbeddingModel();
+      const segmentationModelId = SegmentationModelStore.getSegmentationModel();
+      const segmentationParams = SegmentationModelStore.getParams(segmentationModelId);
+
+      // Build job settings from current global state
+      const jobSettings = buildJobSettings({
+        embeddingModelId,
+        segmentationModelId,
+        segmentationParams,
+        clustering: {
+          numSpeakers: this.numSpeakers,
+        },
+        enrollmentSource: ENROLLMENT_SOURCE.SNAPSHOT,
+      });
+
+      // Create new unprocessed job
+      const newJob = createJob({
+        settings: jobSettings,
+        status: JOB_STATUS.UNPROCESSED,
+      });
+
+      // Add to recording and set as active
+      await this.recordingStore.addJob(recordingId, newJob, true);
+
+      // Reload to show the new job
+      await this.loadRecording(recordingId, newJob.id);
+
+      // Notify Alpine about job creation (for auto-opening settings)
+      window.dispatchEvent(new CustomEvent('job-created', {
+        detail: { jobId: newJob.id, job: newJob, isUnprocessed: true },
+      }));
+
+      console.log(`[Job] Created new job: ${newJob.name}`);
+    } catch (error) {
+      console.error('[Job] Failed to create job:', error);
+      this.recordingStatus.textContent = 'Failed to create job';
+    }
+  }
+
+  /**
+   * Clone a job's settings to create a new unprocessed job
+   * @param {string} sourceJobId - Job ID to clone from
+   */
+  async cloneJob(sourceJobId) {
+    if (!this.isViewingRecording || !this.viewedRecordingId) return;
+
+    const recordingId = this.viewedRecordingId;
+
+    try {
+      // Get the source job
+      const sourceJob = await this.recordingStore.getJob(recordingId, sourceJobId);
+      if (!sourceJob) {
+        throw new Error('Source job not found');
+      }
+
+      // Import clone helper
+      const { cloneJobSettings } = await import('./config/jobDefaults.js');
+
+      // Clone the job
+      const newJob = cloneJobSettings(sourceJob);
+
+      // Add to recording and set as active
+      await this.recordingStore.addJob(recordingId, newJob, true);
+
+      // Reload to show the cloned job
+      await this.loadRecording(recordingId, newJob.id);
+
+      // Notify Alpine about job creation
+      window.dispatchEvent(new CustomEvent('job-created', {
+        detail: { jobId: newJob.id, job: newJob, isUnprocessed: true },
+      }));
+
+      console.log(`[Job] Cloned job "${sourceJob.name}" → "${newJob.name}"`);
+    } catch (error) {
+      console.error('[Job] Failed to clone job:', error);
+      this.recordingStatus.textContent = 'Failed to clone job';
+    }
+  }
+
+  /**
+   * Delete a job from the current recording
+   * @param {string} jobId - Job ID to delete
+   */
+  async deleteJob(jobId) {
+    if (!this.isViewingRecording || !this.viewedRecordingId) return;
+
+    const recordingId = this.viewedRecordingId;
+
+    try {
+      // Delete the job
+      await this.recordingStore.deleteJob(recordingId, jobId);
+
+      // Get the recording to find the new active job
+      const recording = await this.recordingStore.get(recordingId);
+
+      // Reload with the new active job
+      await this.loadRecording(recordingId, recording.activeJobId);
+
+      console.log(`[Job] Deleted job: ${jobId}`);
+    } catch (error) {
+      console.error('[Job] Failed to delete job:', error);
+      this.recordingStatus.textContent = error.message || 'Failed to delete job';
+    }
+  }
+
+  /**
+   * Update a job's name
+   * @param {string} jobId - Job ID
+   * @param {string} name - New name
+   */
+  async updateJobName(jobId, name) {
+    if (!this.isViewingRecording || !this.viewedRecordingId) return;
+
+    try {
+      await this.recordingStore.updateJob(this.viewedRecordingId, jobId, { name });
+      console.log(`[Job] Updated name: ${name}`);
+    } catch (error) {
+      console.error('[Job] Failed to update name:', error);
+    }
+  }
+
+  /**
+   * Update a job's notes
+   * @param {string} jobId - Job ID
+   * @param {string} notes - New notes
+   */
+  async updateJobNotes(jobId, notes) {
+    if (!this.isViewingRecording || !this.viewedRecordingId) return;
+
+    try {
+      await this.recordingStore.updateJob(this.viewedRecordingId, jobId, { notes });
+      console.log(`[Job] Updated notes`);
+    } catch (error) {
+      console.error('[Job] Failed to update notes:', error);
+    }
+  }
+
+  /**
+   * Process an unprocessed job
+   * @param {string} jobId - Job ID to process
+   * @param {string} [mode='quick'] - 'quick' (re-embed only) or 'full' (full pipeline)
+   */
+  async processJob(jobId, mode = 'quick') {
+    if (!this.isViewingRecording || !this.viewedRecordingId) return;
+
+    if (this.isRecording) {
+      this.recordingStatus.textContent = 'Stop recording before processing';
+      return;
+    }
+
+    if (!this.isModelLoaded) {
+      this.recordingStatus.textContent = 'Wait for models to load before processing';
+      return;
+    }
+
+    const recordingId = this.viewedRecordingId;
+
+    try {
+      // Get job and verify it's unprocessed
+      const job = await this.recordingStore.getJob(recordingId, jobId);
+      if (!job) {
+        throw new Error('Job not found');
+      }
+      if (job.status === JOB_STATUS.PROCESSED) {
+        this.recordingStatus.textContent = 'Job is already processed';
+        return;
+      }
+
+      // Mark job as processing
+      await this.recordingStore.updateJob(recordingId, jobId, { status: JOB_STATUS.PROCESSING });
+
+      // Notify Alpine
+      window.dispatchEvent(new CustomEvent('job-processing-start', {
+        detail: { jobId, mode },
+      }));
+
+      this.recordingStatus.textContent = 'Loading recording for processing...';
+      this.updateStatusBar('processing');
+
+      // Load recording with chunks
+      const data = await this.recordingStore.getWithChunks(recordingId);
+      if (!data) {
+        throw new Error('Recording not found');
+      }
+
+      const { recording, chunks, transcriptionData } = data;
+
+      // Apply job settings to clusterer
+      this._applyJobSettings(job.settings);
+
+      // Process based on mode
+      let newSegments;
+      if (mode === 'quick') {
+        newSegments = await this._processJobQuick(recording, job, chunks);
+      } else {
+        newSegments = await this._processJobFull(recording, job, chunks, transcriptionData);
+      }
+
+      // Extract participants from new segments
+      const participants = this._extractParticipants(newSegments);
+
+      // Update job with results
+      await this.recordingStore.updateJob(recordingId, jobId, {
+        status: JOB_STATUS.PROCESSED,
+        processedAt: Date.now(),
+        segments: newSegments,
+        participants,
+      });
+
+      // Notify Alpine
+      window.dispatchEvent(new CustomEvent('job-processing-complete', {
+        detail: { jobId, mode },
+      }));
+
+      // Reload to display the processed job
+      await this.loadRecording(recordingId, jobId);
+
+      this.updateStatusBar('ready');
+      console.log(`[Job] Processed job "${job.name}" (${mode})`);
+    } catch (error) {
+      console.error('[Job] Processing failed:', error);
+
+      // Revert job to unprocessed
+      await this.recordingStore.updateJob(recordingId, jobId, { status: JOB_STATUS.UNPROCESSED });
+
+      this.recordingStatus.textContent = 'Processing failed: ' + error.message;
+      this.updateStatusBar('ready');
+
+      window.dispatchEvent(new CustomEvent('job-processing-complete', {
+        detail: { jobId, mode, error: error.message },
+      }));
+    }
+  }
+
+  /**
+   * Apply job settings to the clusterer/inference system
+   * @param {Object} settings - JobSettings object
+   */
+  _applyJobSettings(settings) {
+    // Get enrollments based on job's enrollment source
+    let enrollments;
+    if (settings.enrollmentSource === ENROLLMENT_SOURCE.CURRENT) {
+      enrollments = EnrollmentManager.loadAll();
+    } else {
+      // Use snapshot from recording
+      enrollments = this._currentViewedEnrollments || [];
+    }
+
+    // Configure clusterer
+    const clusterer = this.transcriptMerger.speakerClusterer;
+    clusterer.reset();
+    clusterer.similarityThreshold = settings.clustering?.similarityThreshold ?? 0.75;
+    clusterer.confidenceMargin = settings.clustering?.confidenceMargin ?? 0.15;
+
+    // Seed with enrollments
+    if (enrollments.length > 0) {
+      clusterer.importEnrolledSpeakers(enrollments);
+    }
+
+    // Configure inference
+    if (settings.boosting) {
+      this.conversationInference.config.boostFactor = settings.boosting.boostFactor;
+      this.conversationInference.config.ambiguityMarginThreshold = settings.boosting.ambiguityMarginThreshold;
+      this.conversationInference.config.skipBoostIfConfident = settings.boosting.skipBoostIfConfident;
+      this.conversationInference.config.minSimilarityForBoosting = settings.boosting.minSimilarityForBoosting;
+      this.conversationInference.config.boostEligibilityRank = settings.boosting.boostEligibilityRank;
+      this.conversationInference.config.minSimilarityAfterBoost = settings.boosting.minSimilarityAfterBoost;
+    }
+
+    this.conversationInference.reset();
+    this.conversationInference.setEnrolledSpeakers(enrollments);
+    this.conversationInference.setExpectedSpeakers(settings.clustering?.numSpeakers || this.numSpeakers);
+  }
+
+  /**
+   * Quick job processing: keep ASR, re-extract embeddings, re-cluster
+   * @param {Object} recording - Recording metadata
+   * @param {Object} job - Job with settings
+   * @param {Object[]} chunks - Serialized audio chunks
+   * @returns {Promise<Object[]>} New segments
+   */
+  async _processJobQuick(recording, job, chunks) {
+    this.recordingStatus.textContent = 'Processing (quick): preparing audio...';
+
+    // Deserialize and combine audio chunks
+    const audioChunks = deserializeChunks(chunks);
+    const combinedAudio = combineChunks(audioChunks);
+
+    // Get reference segments - use existing processed job's segments if available
+    const existingJob = recording.jobs.find(j => j.status === JOB_STATUS.PROCESSED);
+    const referenceSegments = existingJob?.segments || [];
+
+    if (referenceSegments.length === 0) {
+      throw new Error('No reference segments found - try full processing instead');
+    }
+
+    // Build segment audio slices from reference segment timings
+    const segmentsToProcess = [];
+
+    for (let i = 0; i < referenceSegments.length; i++) {
+      const seg = referenceSegments[i];
+      if (seg.startTime != null && seg.endTime != null && !seg.isEnvironmental) {
+        const startSample = Math.floor(seg.startTime * 16000);
+        const endSample = Math.ceil(seg.endTime * 16000);
+        if (endSample > startSample && endSample <= combinedAudio.length) {
+          segmentsToProcess.push({
+            index: i,
+            audio: Array.from(combinedAudio.slice(startSample, endSample)),
+          });
+        }
+      }
+    }
+
+    if (segmentsToProcess.length === 0) {
+      throw new Error('No segments to process');
+    }
+
+    this.recordingStatus.textContent = `Processing (quick): extracting embeddings 0/${segmentsToProcess.length}...`;
+
+    // Request batch embedding extraction from worker
+    const embeddings = await this.batchExtractEmbeddings(segmentsToProcess);
+
+    // Create a map of new embeddings by segment index
+    const embeddingMap = new Map();
+    for (const result of embeddings) {
+      if (result.embedding) {
+        embeddingMap.set(result.index, new Float32Array(result.embedding));
+      }
+    }
+
+    this.recordingStatus.textContent = 'Processing (quick): clustering speakers...';
+
+    // Get clusterer (already configured by _applyJobSettings)
+    const clusterer = this.transcriptMerger.speakerClusterer;
+
+    // Build new segments with updated embeddings and speaker assignments
+    const newSegments = referenceSegments.map((seg, i) => {
+      const newSeg = { ...seg };
+
+      if (seg.isEnvironmental) {
+        return newSeg;
+      }
+
+      const newEmbedding = embeddingMap.get(i);
+      if (newEmbedding) {
+        newSeg.embedding = Array.from(newEmbedding);
+        const result = clusterer.assignSpeaker(newEmbedding, true);
+        newSeg.speaker = result.speakerId;
+        newSeg.speakerLabel = clusterer.getSpeakerLabel(result.speakerId);
+        newSeg.isEnrolledSpeaker = result.debug?.isEnrolled || false;
+        newSeg.speakerName = clusterer.speakers[result.speakerId]?.name || null;
+        newSeg.debug = { ...newSeg.debug, clustering: result.debug };
+      }
+
+      return newSeg;
+    });
+
+    return newSegments;
+  }
+
+  /**
+   * Full job processing: re-run ASR, segmentation, and embeddings
+   * @param {Object} recording - Recording metadata
+   * @param {Object} job - Job with settings
+   * @param {Object[]} chunks - Serialized audio chunks
+   * @param {Object[]} transcriptionData - Original transcription data
+   * @returns {Promise<Object[]>} New segments
+   */
+  async _processJobFull(recording, job, chunks, transcriptionData) {
+    this.recordingStatus.textContent = 'Processing (full): initializing...';
+
+    // Deserialize audio chunks
+    const audioChunks = deserializeChunks(chunks);
+
+    // Reset transcript merger state
+    this.transcriptMerger.reset();
+
+    // Clusterer already configured by _applyJobSettings
+
+    // Track state for overlap merging
+    let lastChunkResult = null;
+    let globalTimeOffset = 0;
+    const allSegments = [];
+
+    // Process each chunk through worker
+    for (let i = 0; i < audioChunks.length; i++) {
+      const chunk = audioChunks[i];
+
+      // Emit progress
+      window.dispatchEvent(new CustomEvent('job-processing-progress', {
+        detail: { current: i + 1, total: audioChunks.length, mode: 'full' },
+      }));
+
+      this.recordingStatus.textContent = `Processing (full): chunk ${i + 1}/${audioChunks.length}...`;
+
+      // Send to worker and await result
+      const result = await this.workerTranscribePromise(chunk.audio, i, chunk.overlapDuration, chunk.isFinal);
+
+      if (!result || !result.data) continue;
+
+      const { data } = result;
+      const transcript = data.transcript;
+      let phrases = data.phrases || [];
+
+      // Handle overlap merging
+      let wordsToUse = transcript?.chunks || [];
+      let chunkStartTime = globalTimeOffset;
+
+      if (lastChunkResult && chunk.overlapDuration > 0) {
+        const prevWords = lastChunkResult.transcript?.chunks || [];
+        const mergeResult = this.overlapMerger.findMergePoint(prevWords, wordsToUse, chunk.overlapDuration);
+
+        if (mergeResult.mergeIndex > 0) {
+          const mergeTimestamp = wordsToUse[mergeResult.mergeIndex]?.timestamp?.[0] || 0;
+          wordsToUse = wordsToUse.slice(mergeResult.mergeIndex);
+          phrases = phrases.filter(p => p.end > mergeTimestamp);
+          chunkStartTime = globalTimeOffset;
+          wordsToUse = this.overlapMerger.adjustTimestamps(wordsToUse, chunk.overlapDuration);
+          phrases = phrases.map(p => ({
+            ...p,
+            start: p.start - chunk.overlapDuration,
+            end: p.end - chunk.overlapDuration,
+          }));
+        }
+      }
+
+      // Build filtered transcript
+      const filteredTranscript = {
+        ...transcript,
+        chunks: wordsToUse,
+      };
+
+      // Merge phrases into segments
+      const mergedSegments = this.transcriptMerger.merge(filteredTranscript, phrases, chunkStartTime);
+      allSegments.push(...mergedSegments);
+
+      // Update time offset for next chunk
+      if (wordsToUse.length > 0) {
+        const lastWord = wordsToUse[wordsToUse.length - 1];
+        const lastWordEnd = lastWord.timestamp?.[1] || lastWord.timestamp?.[0] || 0;
+        globalTimeOffset = chunkStartTime + lastWordEnd;
+      }
+
+      lastChunkResult = { transcript: filteredTranscript, phrases };
+    }
+
+    return allSegments;
   }
 
   /**

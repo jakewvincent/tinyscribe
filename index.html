@@ -112,8 +112,391 @@
             <button id="copy-btn" class="btn secondary small" disabled><i class="ti ti-copy"></i> Copy</button>
             <button id="export-transcript-btn" class="btn secondary small" disabled><i class="ti ti-download"></i> Export</button>
           </div>
-          <div id="transcript-container">
-            <p class="placeholder">Transcript will appear here when you start recording...</p>
+
+          <!-- Job Navigation Bar (visible when viewing a recording) -->
+          <div x-data="jobNavigation" x-show="jobs.length > 0" x-cloak class="job-navigation-bar">
+            <!-- Left: Navigation arrows and dropdown -->
+            <div class="job-nav-left">
+              <!-- Prev button -->
+              <button class="btn-icon-sm job-nav-arrow" :disabled="!canGoPrev" @click="goPrev()" title="Previous job">
+                <i class="ti ti-chevron-left"></i>
+              </button>
+
+              <!-- Job dropdown -->
+              <div class="job-dropdown-container">
+                <button class="job-dropdown-trigger" @click.stop="toggleDropdown()">
+                  <span class="job-dropdown-label">
+                    <span class="job-name" x-text="activeJob?.name || 'Select Job'"></span>
+                    <span class="job-count" x-text="'(' + (currentIndex + 1) + '/' + jobCount + ')'"></span>
+                  </span>
+                  <i class="ti ti-chevron-down job-dropdown-chevron" :class="{ 'rotated': dropdownOpen }"></i>
+                </button>
+
+                <!-- Dropdown menu -->
+                <div x-show="dropdownOpen" x-transition:enter="dropdown-enter" x-transition:leave="dropdown-leave" class="job-dropdown-menu">
+                  <template x-for="job in jobs" :key="job.id">
+                    <div class="job-dropdown-item" :class="{ 'active': job.id === activeJobId }" @click="switchToJob(job.id)">
+                      <div class="job-item-main">
+                        <span class="job-item-name" x-text="job.name"></span>
+                        <span class="job-item-status" :class="getStatusClass(job.status)" x-text="formatStatus(job.status)"></span>
+                        <span x-show="hasNotes(job)" class="job-item-notes-dot" title="Has notes"></span>
+                      </div>
+                      <div class="job-item-meta">
+                        <span class="job-item-summary" x-text="getSettingsSummary(job)"></span>
+                        <span class="job-item-date" x-text="formatDate(job.processedAt || job.createdAt)"></span>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+
+              <!-- Next button -->
+              <button class="btn-icon-sm job-nav-arrow" :disabled="!canGoNext" @click="goNext()" title="Next job">
+                <i class="ti ti-chevron-right"></i>
+              </button>
+            </div>
+
+            <!-- Center: Status badge (for unprocessed jobs) -->
+            <div class="job-nav-center">
+              <template x-if="isActiveJobUnprocessed">
+                <div class="job-unprocessed-notice">
+                  <span class="status-badge status-unprocessed">Unprocessed</span>
+                  <button class="btn primary small" @click="processJob('quick')" :disabled="isProcessing">
+                    <i class="ti ti-player-play"></i> Process
+                  </button>
+                </div>
+              </template>
+              <template x-if="isActiveJobProcessing">
+                <div class="job-processing-notice">
+                  <span class="status-badge status-processing">
+                    <i class="ti ti-loader-2 spinning"></i>
+                    Processing...
+                  </span>
+                  <span x-show="processingProgress.total > 0" class="processing-progress" x-text="processingProgress.current + '/' + processingProgress.total"></span>
+                </div>
+              </template>
+            </div>
+
+            <!-- Right: Actions -->
+            <div class="job-nav-right">
+              <!-- New Job button -->
+              <button class="btn secondary small" @click="createNewJob()" :disabled="isProcessing" title="Create new job with current settings">
+                <i class="ti ti-plus"></i> New Job
+              </button>
+
+              <!-- Clone button -->
+              <button class="btn secondary small" @click="cloneJob()" :disabled="isProcessing" title="Clone this job's settings">
+                <i class="ti ti-copy"></i> Clone
+              </button>
+
+              <!-- Edit popover -->
+              <div class="job-edit-popover-container">
+                <button class="btn-icon-sm" @click.stop="openEditPopover()" title="Edit job name and notes">
+                  <i class="ti ti-pencil"></i>
+                </button>
+
+                <div x-show="editPopoverOpen" x-transition class="job-edit-popover">
+                  <div class="popover-header">
+                    <span class="popover-title">Edit Job</span>
+                    <button class="btn-icon-sm popover-close" @click="closeEditPopover()"><i class="ti ti-x"></i></button>
+                  </div>
+                  <div class="popover-body">
+                    <div class="form-group">
+                      <label>Name</label>
+                      <input type="text" x-model="editName" class="form-input" @keydown.enter="saveEdit()">
+                    </div>
+                    <div class="form-group">
+                      <label>Notes</label>
+                      <textarea x-model="editNotes" class="form-textarea" rows="3" placeholder="Add notes about this job..."></textarea>
+                    </div>
+                    <div class="form-group" x-show="activeJob?.settings">
+                      <label>Settings Summary</label>
+                      <div class="settings-summary-readonly" x-text="getSettingsSummary(activeJob)"></div>
+                    </div>
+                  </div>
+                  <div class="popover-footer">
+                    <button class="btn primary small" @click="saveEdit()">Done</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Delete with confirmation -->
+              <div class="job-delete-confirm-container">
+                <button class="btn-icon-sm" :class="{ 'danger': deleteConfirmOpen }" :disabled="!canDelete" @click.stop="confirmDelete()" title="Delete job">
+                  <i class="ti ti-trash"></i>
+                </button>
+
+                <div x-show="deleteConfirmOpen" x-transition class="job-delete-confirm">
+                  <span class="confirm-text">Delete this job?</span>
+                  <button class="btn danger small" @click="deleteJob()">Delete</button>
+                  <button class="btn secondary small" @click="cancelDelete()">Cancel</button>
+                </div>
+              </div>
+
+              <!-- Settings toggle -->
+              <button class="btn-icon-sm job-settings-toggle" :class="{ 'active': settingsSidebarOpen }" @click="toggleSettings()" title="Toggle job settings">
+                <i class="ti ti-settings"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Transcript body with optional settings sidebar -->
+          <div class="transcript-body" x-data="jobSettingsPanel">
+            <div id="transcript-container">
+              <p class="placeholder">Transcript will appear here when you start recording...</p>
+            </div>
+
+            <!-- Job Settings Sidebar -->
+            <div class="job-settings-sidebar" x-show="isVisible && activeJob" x-cloak x-transition>
+              <div class="settings-header">
+                <span class="settings-title">Job Settings</span>
+                <template x-if="isReadOnly">
+                  <span class="readonly-badge">Read-only</span>
+                </template>
+                <template x-if="isLocked">
+                  <span class="readonly-badge">Locked</span>
+                </template>
+              </div>
+
+              <!-- Settings content (scrollable) -->
+              <div class="settings-content">
+                <!-- Read-only hint for processed jobs -->
+                <template x-if="isReadOnly">
+                  <p class="settings-hint">This job has been processed. To change settings, clone this job.</p>
+                </template>
+
+                <!-- Locked hint for processing jobs -->
+                <template x-if="isLocked">
+                  <p class="settings-hint">Processing in progress. Settings are locked.</p>
+                </template>
+
+                <!-- ===== MODELS SECTION ===== -->
+                <div class="settings-group">
+                  <div class="settings-group-header">Models</div>
+
+                  <template x-if="isEditable">
+                    <div class="settings-group-content">
+                      <div class="settings-section">
+                        <label class="settings-label">Embedding Model</label>
+                        <select class="settings-select" x-model="settings.embeddingModelId" @change="updateSetting('embeddingModelId', $event.target.value)">
+                          <template x-for="model in embeddingModels" :key="model.id">
+                            <option :value="model.id" x-text="model.name"></option>
+                          </template>
+                        </select>
+                      </div>
+
+                      <div class="settings-section">
+                        <label class="settings-label">Segmentation</label>
+                        <select class="settings-select" x-model="settings.segmentationModelId" @change="onSegmentationModelChange($event.target.value)">
+                          <template x-for="model in segmentationModels" :key="model.id">
+                            <option :value="model.id" x-text="model.name"></option>
+                          </template>
+                        </select>
+                      </div>
+                    </div>
+                  </template>
+
+                  <template x-if="isReadOnly || isLocked">
+                    <div class="settings-readonly">
+                      <div class="settings-readonly-row">
+                        <span class="settings-readonly-label">Embedding:</span>
+                        <span class="settings-readonly-value" x-text="getEmbeddingModelName(settings.embeddingModelId)"></span>
+                      </div>
+                      <div class="settings-readonly-row">
+                        <span class="settings-readonly-label">Segmentation:</span>
+                        <span class="settings-readonly-value" x-text="getSegmentationModelName(settings.segmentationModelId)"></span>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+
+                <!-- ===== SEGMENTATION PARAMS SECTION ===== -->
+                <template x-if="segmentationParamKeys.length > 0">
+                  <div class="settings-group">
+                    <div class="settings-group-header">Segmentation Params</div>
+
+                    <template x-if="isEditable">
+                      <div class="settings-group-content">
+                        <template x-for="key in segmentationParamKeys" :key="key">
+                          <div class="settings-section">
+                            <label class="settings-label" :title="getSegParamDescription(key)" x-text="getSegParamLabel(key)"></label>
+                            <div class="settings-row">
+                              <input type="range" class="settings-slider"
+                                     :min="getSegParamMin(key)"
+                                     :max="getSegParamMax(key)"
+                                     :step="getSegParamStep(key)"
+                                     :value="settings.segmentationParams[key]"
+                                     @input="updateSegmentationParam(key, parseFloat($event.target.value))">
+                              <span class="settings-value" x-text="formatSegParamValue(key, settings.segmentationParams[key])"></span>
+                            </div>
+                          </div>
+                        </template>
+                      </div>
+                    </template>
+
+                    <template x-if="isReadOnly || isLocked">
+                      <div class="settings-readonly">
+                        <template x-for="key in segmentationParamKeys" :key="key">
+                          <div class="settings-readonly-row">
+                            <span class="settings-readonly-label" x-text="getSegParamLabel(key) + ':'"></span>
+                            <span class="settings-readonly-value" x-text="formatSegParamValue(key, settings.segmentationParams[key])"></span>
+                          </div>
+                        </template>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+
+                <!-- ===== CLUSTERING SECTION ===== -->
+                <div class="settings-group">
+                  <div class="settings-group-header">Speaker Matching</div>
+
+                  <template x-if="isEditable">
+                    <div class="settings-group-content">
+                      <div class="settings-section">
+                        <label class="settings-label" title="Minimum cosine similarity to match a speaker">Similarity Threshold</label>
+                        <div class="settings-row">
+                          <input type="range" class="settings-slider" min="0.5" max="0.95" step="0.05" x-model="settings.similarityThreshold" @input="updateSetting('similarityThreshold', parseFloat($event.target.value))">
+                          <span class="settings-value" x-text="formatThreshold(settings.similarityThreshold)"></span>
+                        </div>
+                      </div>
+
+                      <div class="settings-section">
+                        <label class="settings-label" title="Required margin between best and runner-up match">Confidence Margin</label>
+                        <div class="settings-row">
+                          <input type="range" class="settings-slider" min="0" max="0.3" step="0.01" x-model="settings.confidenceMargin" @input="updateSetting('confidenceMargin', parseFloat($event.target.value))">
+                          <span class="settings-value" x-text="formatThreshold(settings.confidenceMargin)"></span>
+                        </div>
+                      </div>
+
+                      <div class="settings-section">
+                        <label class="settings-label" title="Maximum number of speakers to identify">Max Speakers</label>
+                        <select class="settings-select" x-model="settings.numSpeakers" @change="updateSetting('numSpeakers', parseInt($event.target.value))">
+                          <option value="1">1</option>
+                          <option value="2">2</option>
+                          <option value="3">3</option>
+                          <option value="4">4</option>
+                          <option value="5">5</option>
+                          <option value="6">6</option>
+                        </select>
+                      </div>
+                    </div>
+                  </template>
+
+                  <template x-if="isReadOnly || isLocked">
+                    <div class="settings-readonly">
+                      <div class="settings-readonly-row">
+                        <span class="settings-readonly-label">Similarity:</span>
+                        <span class="settings-readonly-value" x-text="formatThreshold(settings.similarityThreshold)"></span>
+                      </div>
+                      <div class="settings-readonly-row">
+                        <span class="settings-readonly-label">Confidence:</span>
+                        <span class="settings-readonly-value" x-text="formatThreshold(settings.confidenceMargin)"></span>
+                      </div>
+                      <div class="settings-readonly-row">
+                        <span class="settings-readonly-label">Max Speakers:</span>
+                        <span class="settings-readonly-value" x-text="settings.numSpeakers"></span>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+
+                <!-- ===== BOOSTING SECTION ===== -->
+                <div class="settings-group">
+                  <div class="settings-group-header">Conversation Boosting</div>
+
+                  <template x-if="isEditable">
+                    <div class="settings-group-content">
+                      <div class="settings-section">
+                        <label class="settings-label" title="Multiplier applied to similarity scores for hypothesized speakers">Boost Factor</label>
+                        <div class="settings-row">
+                          <input type="range" class="settings-slider" min="1.0" max="1.30" step="0.01" x-model="settings.boostFactor" @input="updateSetting('boostFactor', parseFloat($event.target.value))">
+                          <span class="settings-value" x-text="formatThreshold(settings.boostFactor)"></span>
+                        </div>
+                      </div>
+
+                      <div class="settings-section">
+                        <label class="settings-label" title="Speaker must be in top N matches to receive boost">Eligibility Rank</label>
+                        <div class="settings-row">
+                          <input type="range" class="settings-slider" min="1" max="4" step="1" x-model="settings.boostEligibilityRank" @input="updateSetting('boostEligibilityRank', parseInt($event.target.value))">
+                          <span class="settings-value" x-text="settings.boostEligibilityRank"></span>
+                        </div>
+                      </div>
+
+                      <div class="settings-section">
+                        <label class="settings-label" title="Only boost when margin between top candidates is below this">Max Margin</label>
+                        <div class="settings-row">
+                          <input type="range" class="settings-slider" min="0.05" max="0.40" step="0.01" x-model="settings.ambiguityMarginThreshold" @input="updateSetting('ambiguityMarginThreshold', parseFloat($event.target.value))">
+                          <span class="settings-value" x-text="formatThreshold(settings.ambiguityMarginThreshold)"></span>
+                        </div>
+                      </div>
+
+                      <div class="settings-section">
+                        <label class="settings-label" title="Skip boosting if best match similarity is above this">Skip if Confident</label>
+                        <div class="settings-row">
+                          <input type="range" class="settings-slider" min="0.70" max="0.95" step="0.01" x-model="settings.skipBoostIfConfident" @input="updateSetting('skipBoostIfConfident', parseFloat($event.target.value))">
+                          <span class="settings-value" x-text="formatThreshold(settings.skipBoostIfConfident)"></span>
+                        </div>
+                      </div>
+
+                      <div class="settings-section">
+                        <label class="settings-label" title="Don't boost if best match is below this (garbage match)">Min Similarity</label>
+                        <div class="settings-row">
+                          <input type="range" class="settings-slider" min="0.40" max="0.75" step="0.01" x-model="settings.minSimilarityForBoosting" @input="updateSetting('minSimilarityForBoosting', parseFloat($event.target.value))">
+                          <span class="settings-value" x-text="formatThreshold(settings.minSimilarityForBoosting)"></span>
+                        </div>
+                      </div>
+
+                      <div class="settings-section">
+                        <label class="settings-label" title="Even with boost, must meet this threshold for assignment">Min After Boost</label>
+                        <div class="settings-row">
+                          <input type="range" class="settings-slider" min="0.60" max="0.85" step="0.01" x-model="settings.minSimilarityAfterBoost" @input="updateSetting('minSimilarityAfterBoost', parseFloat($event.target.value))">
+                          <span class="settings-value" x-text="formatThreshold(settings.minSimilarityAfterBoost)"></span>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
+
+                  <template x-if="isReadOnly || isLocked">
+                    <div class="settings-readonly">
+                      <div class="settings-readonly-row">
+                        <span class="settings-readonly-label">Boost Factor:</span>
+                        <span class="settings-readonly-value" x-text="formatThreshold(settings.boostFactor)"></span>
+                      </div>
+                      <div class="settings-readonly-row">
+                        <span class="settings-readonly-label">Eligibility Rank:</span>
+                        <span class="settings-readonly-value" x-text="settings.boostEligibilityRank"></span>
+                      </div>
+                      <div class="settings-readonly-row">
+                        <span class="settings-readonly-label">Max Margin:</span>
+                        <span class="settings-readonly-value" x-text="formatThreshold(settings.ambiguityMarginThreshold)"></span>
+                      </div>
+                      <div class="settings-readonly-row">
+                        <span class="settings-readonly-label">Skip if Confident:</span>
+                        <span class="settings-readonly-value" x-text="formatThreshold(settings.skipBoostIfConfident)"></span>
+                      </div>
+                      <div class="settings-readonly-row">
+                        <span class="settings-readonly-label">Min Similarity:</span>
+                        <span class="settings-readonly-value" x-text="formatThreshold(settings.minSimilarityForBoosting)"></span>
+                      </div>
+                      <div class="settings-readonly-row">
+                        <span class="settings-readonly-label">Min After Boost:</span>
+                        <span class="settings-readonly-value" x-text="formatThreshold(settings.minSimilarityAfterBoost)"></span>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+
+              <!-- Process button (for unprocessed jobs) -->
+              <template x-if="isEditable">
+                <div class="settings-footer">
+                  <button class="btn primary" @click="processJob('quick')">
+                    <i class="ti ti-player-play"></i> Process
+                  </button>
+                </div>
+              </template>
+            </div>
           </div>
         </div>
       </section>

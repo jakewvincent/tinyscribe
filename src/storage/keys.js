@@ -37,13 +37,16 @@ export const INDEXED_DB_CONFIG = {
   },
   RECORDINGS: {
     name: 'transcription-recordings',
-    version: 1,
+    version: 2, // v2: Job-based architecture (recordings contain jobs array)
     stores: {
       RECORDINGS: 'recordings',
       CHUNKS: 'recording-chunks',
     },
   },
 };
+
+// Recording schema version (for lazy migration)
+export const RECORDING_SCHEMA_VERSION = 2;
 
 // Freeze to prevent accidental modification
 Object.freeze(LOCAL_STORAGE_KEYS);

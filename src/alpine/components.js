@@ -988,4 +988,559 @@ document.addEventListener('alpine:init', () => {
       return this.models.find(m => m.id === this.selectedModel) || null;
     },
   }));
+
+  /**
+   * Job Navigation component
+   * Handles job switching, creation, editing, and settings sidebar toggle
+   * Displayed in transcript header when viewing a recording
+   */
+  Alpine.data('jobNavigation', () => ({
+    // Job state
+    jobs: [],
+    activeJobId: null,
+    activeJob: null,
+
+    // UI state
+    dropdownOpen: false,
+    editPopoverOpen: false,
+    deleteConfirmOpen: false,
+    settingsSidebarOpen: Alpine.$persist(false).as('job-settings-sidebar'),
+
+    // Edit state
+    editName: '',
+    editNotes: '',
+
+    // Processing state
+    isProcessing: false,
+    processingProgress: { current: 0, total: 0, mode: null },
+
+    init() {
+      // Listen for recording loaded with job data
+      window.addEventListener('recording-loaded', (e) => {
+        this.jobs = e.detail.jobs || [];
+        this.activeJobId = e.detail.activeJobId;
+        this.activeJob = e.detail.activeJob || null;
+        this.editName = this.activeJob?.name || '';
+        this.editNotes = this.activeJob?.notes || '';
+        this.dropdownOpen = false;
+        this.editPopoverOpen = false;
+        this.deleteConfirmOpen = false;
+
+        // Auto-open settings for unprocessed jobs
+        if (this.activeJob?.status === 'unprocessed') {
+          this.settingsSidebarOpen = true;
+        }
+      });
+
+      // Listen for recording closed
+      window.addEventListener('recording-closed', () => {
+        this.jobs = [];
+        this.activeJobId = null;
+        this.activeJob = null;
+        this.dropdownOpen = false;
+        this.editPopoverOpen = false;
+        this.deleteConfirmOpen = false;
+      });
+
+      // Listen for job creation (auto-open settings)
+      window.addEventListener('job-created', (e) => {
+        if (e.detail.isUnprocessed) {
+          this.settingsSidebarOpen = true;
+        }
+      });
+
+      // Listen for job processing events
+      window.addEventListener('job-processing-start', (e) => {
+        this.isProcessing = true;
+        this.processingProgress = { current: 0, total: 0, mode: e.detail.mode };
+      });
+
+      window.addEventListener('job-processing-progress', (e) => {
+        this.processingProgress = e.detail;
+      });
+
+      window.addEventListener('job-processing-complete', () => {
+        this.isProcessing = false;
+        this.processingProgress = { current: 0, total: 0, mode: null };
+      });
+
+      // Close dropdowns when clicking outside
+      document.addEventListener('click', (e) => {
+        if (this.dropdownOpen && !e.target.closest('.job-dropdown-container')) {
+          this.dropdownOpen = false;
+        }
+        if (this.editPopoverOpen && !e.target.closest('.job-edit-popover-container')) {
+          this.editPopoverOpen = false;
+        }
+        if (this.deleteConfirmOpen && !e.target.closest('.job-delete-confirm-container')) {
+          this.deleteConfirmOpen = false;
+        }
+      });
+    },
+
+    // Navigation
+    get currentIndex() {
+      return this.jobs.findIndex(j => j.id === this.activeJobId);
+    },
+
+    get canGoPrev() {
+      return this.currentIndex > 0;
+    },
+
+    get canGoNext() {
+      return this.currentIndex < this.jobs.length - 1;
+    },
+
+    goPrev() {
+      if (this.canGoPrev) {
+        const prevJob = this.jobs[this.currentIndex - 1];
+        this.switchToJob(prevJob.id);
+      }
+    },
+
+    goNext() {
+      if (this.canGoNext) {
+        const nextJob = this.jobs[this.currentIndex + 1];
+        this.switchToJob(nextJob.id);
+      }
+    },
+
+    // Job switching
+    switchToJob(jobId) {
+      if (jobId === this.activeJobId) {
+        this.dropdownOpen = false;
+        return;
+      }
+      this.dropdownOpen = false;
+      window.dispatchEvent(new CustomEvent('job-switch', { detail: { jobId } }));
+    },
+
+    // Job creation
+    createNewJob() {
+      window.dispatchEvent(new CustomEvent('job-create-new'));
+    },
+
+    cloneJob() {
+      if (!this.activeJobId) return;
+      window.dispatchEvent(new CustomEvent('job-clone', {
+        detail: { sourceJobId: this.activeJobId },
+      }));
+    },
+
+    // Job deletion
+    confirmDelete() {
+      this.deleteConfirmOpen = true;
+    },
+
+    cancelDelete() {
+      this.deleteConfirmOpen = false;
+    },
+
+    deleteJob() {
+      if (!this.activeJobId) return;
+      this.deleteConfirmOpen = false;
+      window.dispatchEvent(new CustomEvent('job-delete', {
+        detail: { jobId: this.activeJobId },
+      }));
+    },
+
+    // Edit popover
+    openEditPopover() {
+      this.editName = this.activeJob?.name || '';
+      this.editNotes = this.activeJob?.notes || '';
+      this.editPopoverOpen = true;
+    },
+
+    closeEditPopover() {
+      this.editPopoverOpen = false;
+    },
+
+    saveEdit() {
+      if (!this.activeJobId) return;
+
+      // Update name if changed
+      const newName = this.editName.trim();
+      if (newName && newName !== this.activeJob?.name) {
+        window.dispatchEvent(new CustomEvent('job-update-name', {
+          detail: { jobId: this.activeJobId, name: newName },
+        }));
+        if (this.activeJob) this.activeJob.name = newName;
+      }
+
+      // Update notes if changed
+      if (this.editNotes !== this.activeJob?.notes) {
+        window.dispatchEvent(new CustomEvent('job-update-notes', {
+          detail: { jobId: this.activeJobId, notes: this.editNotes },
+        }));
+        if (this.activeJob) this.activeJob.notes = this.editNotes;
+      }
+
+      this.editPopoverOpen = false;
+    },
+
+    // Processing
+    processJob(mode = 'quick') {
+      if (!this.activeJobId) return;
+      window.dispatchEvent(new CustomEvent('job-process', {
+        detail: { jobId: this.activeJobId, mode },
+      }));
+    },
+
+    // Settings sidebar
+    toggleSettings() {
+      this.settingsSidebarOpen = !this.settingsSidebarOpen;
+      window.dispatchEvent(new CustomEvent('job-settings-toggle', {
+        detail: { open: this.settingsSidebarOpen },
+      }));
+    },
+
+    // Dropdown toggle
+    toggleDropdown() {
+      this.dropdownOpen = !this.dropdownOpen;
+    },
+
+    // Helper methods
+    get jobCount() {
+      return this.jobs.length;
+    },
+
+    get canDelete() {
+      return this.jobs.length > 1 && !this.isProcessing;
+    },
+
+    get isActiveJobProcessed() {
+      return this.activeJob?.status === 'processed';
+    },
+
+    get isActiveJobUnprocessed() {
+      return this.activeJob?.status === 'unprocessed';
+    },
+
+    get isActiveJobProcessing() {
+      return this.activeJob?.status === 'processing' || this.isProcessing;
+    },
+
+    // Format job status for display
+    formatStatus(status) {
+      if (status === 'processed') return 'Processed';
+      if (status === 'processing') return 'Processing...';
+      return 'Unprocessed';
+    },
+
+    // Get status class for badge
+    getStatusClass(status) {
+      if (status === 'processed') return 'status-processed';
+      if (status === 'processing') return 'status-processing';
+      return 'status-unprocessed';
+    },
+
+    // Get short settings summary for dropdown items
+    getSettingsSummary(job) {
+      if (!job?.settings) return '';
+      const embed = job.settings.embeddingModel?.name?.replace(' SV', '').replace('Base+ ', '') || '?';
+      const seg = job.settings.segmentationModel?.name?.replace('Text-based ', '').replace(' Heuristic', '') || '?';
+      return `${embed} • ${seg}`;
+    },
+
+    // Check if job has notes
+    hasNotes(job) {
+      return Boolean(job?.notes?.trim());
+    },
+
+    // Format date
+    formatDate(timestamp) {
+      if (!timestamp) return '';
+      return new Date(timestamp).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    },
+  }));
+
+  /**
+   * Job Settings Panel component
+   * Displays job settings in sidebar, editable for unprocessed jobs
+   */
+  Alpine.data('jobSettingsPanel', () => ({
+    // Job state (synced with jobNavigation)
+    activeJob: null,
+    isVisible: false,
+
+    // Editable settings (for unprocessed jobs)
+    settings: {
+      // Models
+      embeddingModelId: 'wavlm-base-sv',
+      segmentationModelId: 'phrase-gap',
+      // Segmentation params (dynamic based on model)
+      segmentationParams: {},
+      // Clustering
+      similarityThreshold: 0.75,
+      confidenceMargin: 0.15,
+      numSpeakers: 2,
+      // Boosting
+      boostFactor: 1.10,
+      boostEligibilityRank: 2,
+      ambiguityMarginThreshold: 0.18,
+      skipBoostIfConfident: 0.82,
+      minSimilarityForBoosting: 0.65,
+      minSimilarityAfterBoost: 0.75,
+    },
+
+    // Available models (populated on init)
+    embeddingModels: [],
+    segmentationModels: [],
+
+    // Segmentation param configs for current model
+    segmentationParamConfigs: {},
+
+    // Processing state
+    isProcessing: false,
+
+    init() {
+      // Load available models
+      if (window.embeddingModels) {
+        this.embeddingModels = window.embeddingModels.available || [];
+      }
+      if (window.segmentationModels) {
+        this.segmentationModels = window.segmentationModels.available || [];
+        this.loadSegmentationParamConfigs();
+      }
+
+      // Listen for models ready
+      window.addEventListener('embedding-models-ready', () => {
+        if (window.embeddingModels) {
+          this.embeddingModels = window.embeddingModels.available || [];
+        }
+      });
+      window.addEventListener('segmentation-models-ready', () => {
+        if (window.segmentationModels) {
+          this.segmentationModels = window.segmentationModels.available || [];
+          this.loadSegmentationParamConfigs();
+        }
+      });
+
+      // Listen for recording loaded
+      window.addEventListener('recording-loaded', (e) => {
+        this.activeJob = e.detail.activeJob || null;
+        this.syncSettingsFromJob();
+
+        // Auto-show for unprocessed
+        if (this.activeJob?.status === 'unprocessed') {
+          this.isVisible = true;
+        }
+      });
+
+      // Listen for recording closed
+      window.addEventListener('recording-closed', () => {
+        this.activeJob = null;
+        this.isVisible = false;
+      });
+
+      // Listen for job switched
+      window.addEventListener('job-switched', (e) => {
+        this.activeJob = e.detail.job || null;
+        this.syncSettingsFromJob();
+
+        // Auto-show for unprocessed
+        if (this.activeJob?.status === 'unprocessed') {
+          this.isVisible = true;
+        }
+      });
+
+      // Listen for job created
+      window.addEventListener('job-created', (e) => {
+        this.activeJob = e.detail.job || null;
+        this.syncSettingsFromJob();
+        if (e.detail.isUnprocessed) {
+          this.isVisible = true;
+        }
+      });
+
+      // Listen for processing events
+      window.addEventListener('job-processing-start', () => {
+        this.isProcessing = true;
+      });
+
+      window.addEventListener('job-processing-complete', () => {
+        this.isProcessing = false;
+      });
+
+      // Listen for settings toggle from jobNavigation
+      window.addEventListener('job-settings-toggle', (e) => {
+        this.isVisible = e.detail.open;
+      });
+    },
+
+    // Load param configs for the current segmentation model
+    loadSegmentationParamConfigs() {
+      const modelId = this.settings.segmentationModelId;
+      const model = this.segmentationModels.find(m => m.id === modelId);
+      this.segmentationParamConfigs = model?.params || {};
+    },
+
+    // Get segmentation param keys for current model
+    get segmentationParamKeys() {
+      return Object.keys(this.segmentationParamConfigs);
+    },
+
+    // Sync local settings from active job
+    syncSettingsFromJob() {
+      if (!this.activeJob?.settings) return;
+
+      const s = this.activeJob.settings;
+
+      // Models
+      this.settings.embeddingModelId = s.embeddingModel?.id || 'wavlm-base-sv';
+      this.settings.segmentationModelId = s.segmentationModel?.id || 'phrase-gap';
+
+      // Segmentation params
+      this.settings.segmentationParams = { ...(s.segmentationParams || {}) };
+      this.loadSegmentationParamConfigs();
+
+      // Clustering
+      this.settings.similarityThreshold = s.clustering?.similarityThreshold ?? 0.75;
+      this.settings.confidenceMargin = s.clustering?.confidenceMargin ?? 0.15;
+      this.settings.numSpeakers = s.clustering?.numSpeakers ?? 2;
+
+      // Boosting
+      this.settings.boostFactor = s.boosting?.boostFactor ?? 1.10;
+      this.settings.boostEligibilityRank = s.boosting?.boostEligibilityRank ?? 2;
+      this.settings.ambiguityMarginThreshold = s.boosting?.ambiguityMarginThreshold ?? 0.18;
+      this.settings.skipBoostIfConfident = s.boosting?.skipBoostIfConfident ?? 0.82;
+      this.settings.minSimilarityForBoosting = s.boosting?.minSimilarityForBoosting ?? 0.65;
+      this.settings.minSimilarityAfterBoost = s.boosting?.minSimilarityAfterBoost ?? 0.75;
+    },
+
+    // Check if job is editable
+    get isEditable() {
+      return this.activeJob?.status === 'unprocessed' && !this.isProcessing;
+    },
+
+    get isReadOnly() {
+      return this.activeJob?.status === 'processed';
+    },
+
+    get isLocked() {
+      return this.activeJob?.status === 'processing' || this.isProcessing;
+    },
+
+    // Handle segmentation model change
+    onSegmentationModelChange(modelId) {
+      this.settings.segmentationModelId = modelId;
+      this.loadSegmentationParamConfigs();
+
+      // Reset segmentation params to defaults for new model
+      const newParams = {};
+      for (const [key, config] of Object.entries(this.segmentationParamConfigs)) {
+        newParams[key] = config.default;
+      }
+      this.settings.segmentationParams = newParams;
+
+      // Update job settings
+      if (this.activeJob?.settings) {
+        this.activeJob.settings.segmentationParams = { ...newParams };
+      }
+
+      this.updateSetting('segmentationModelId', modelId);
+    },
+
+    // Update segmentation param
+    updateSegmentationParam(key, value) {
+      if (!this.isEditable || !this.activeJob) return;
+
+      this.settings.segmentationParams[key] = value;
+
+      // Update job settings
+      if (this.activeJob?.settings) {
+        if (!this.activeJob.settings.segmentationParams) {
+          this.activeJob.settings.segmentationParams = {};
+        }
+        this.activeJob.settings.segmentationParams[key] = value;
+      }
+    },
+
+    // Update job settings (for unprocessed jobs)
+    updateSetting(key, value) {
+      if (!this.isEditable || !this.activeJob) return;
+
+      this.settings[key] = value;
+
+      // Update the job's settings in memory
+      if (this.activeJob.settings) {
+        // Clustering settings
+        if (['similarityThreshold', 'confidenceMargin', 'numSpeakers'].includes(key)) {
+          if (!this.activeJob.settings.clustering) this.activeJob.settings.clustering = {};
+          this.activeJob.settings.clustering[key] = value;
+        }
+        // Boosting settings
+        else if ([
+          'boostFactor',
+          'boostEligibilityRank',
+          'ambiguityMarginThreshold',
+          'skipBoostIfConfident',
+          'minSimilarityForBoosting',
+          'minSimilarityAfterBoost',
+        ].includes(key)) {
+          if (!this.activeJob.settings.boosting) this.activeJob.settings.boosting = {};
+          this.activeJob.settings.boosting[key] = value;
+        }
+        // Model settings would need full config lookup
+      }
+    },
+
+    // Process the job
+    processJob(mode = 'quick') {
+      if (!this.activeJob) return;
+      window.dispatchEvent(new CustomEvent('job-process', {
+        detail: { jobId: this.activeJob.id, mode },
+      }));
+    },
+
+    // Get display name for embedding model
+    getEmbeddingModelName(id) {
+      const model = this.embeddingModels.find(m => m.id === id);
+      return model?.name || id || 'Unknown';
+    },
+
+    // Get display name for segmentation model
+    getSegmentationModelName(id) {
+      const model = this.segmentationModels.find(m => m.id === id);
+      return model?.name || id || 'Unknown';
+    },
+
+    // Segmentation param helpers
+    getSegParamLabel(key) {
+      return this.segmentationParamConfigs[key]?.label || key;
+    },
+
+    getSegParamDescription(key) {
+      return this.segmentationParamConfigs[key]?.description || '';
+    },
+
+    getSegParamMin(key) {
+      return this.segmentationParamConfigs[key]?.min ?? 0;
+    },
+
+    getSegParamMax(key) {
+      return this.segmentationParamConfigs[key]?.max ?? 1;
+    },
+
+    getSegParamStep(key) {
+      return this.segmentationParamConfigs[key]?.step ?? 0.1;
+    },
+
+    formatSegParamValue(key, value) {
+      const config = this.segmentationParamConfigs[key];
+      const unit = config?.unit || '';
+      const formatted = parseFloat(value).toFixed(unit === 's' ? 2 : 2);
+      return unit ? `${formatted}${unit}` : formatted;
+    },
+
+    // Format values for display
+    formatThreshold(value) {
+      return parseFloat(value).toFixed(2);
+    },
+  }));
 });
