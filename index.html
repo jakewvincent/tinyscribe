@@ -109,8 +109,7 @@
                 <span x-text="enabled ? 'Exit Compare' : 'Compare'"></span>
               </button>
             </div>
-            <button id="copy-btn" class="btn secondary small" disabled><i class="ti ti-copy"></i> Copy</button>
-            <button id="export-transcript-btn" class="btn secondary small" disabled><i class="ti ti-download"></i> Export</button>
+            <button id="export-all-jobs-btn" class="btn secondary small" disabled><i class="ti ti-package-export"></i> Export All</button>
           </div>
 
           <!-- Job Navigation Bar (visible when viewing a recording) -->
@@ -179,6 +178,16 @@
 
             <!-- Right: Actions -->
             <div class="job-nav-right">
+              <!-- Copy JSON button -->
+              <button class="btn secondary small" @click="copyJobJson()" :disabled="!activeJob || activeJob.status !== 'processed'" title="Copy job transcript as JSON">
+                <i class="ti ti-clipboard"></i> Copy JSON
+              </button>
+
+              <!-- Export button -->
+              <button class="btn secondary small" @click="exportJob()" :disabled="!activeJob || activeJob.status !== 'processed'" title="Export job transcript">
+                <i class="ti ti-download"></i> Export
+              </button>
+
               <!-- New Job button -->
               <button class="btn secondary small" @click="createNewJob()" :disabled="isProcessing" title="Create new job with current settings">
                 <i class="ti ti-plus"></i> New Job

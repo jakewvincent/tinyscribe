@@ -122,8 +122,7 @@ export class App {
     this.uploadBtn = document.getElementById('upload-btn');
     this.uploadFileInput = document.getElementById('upload-file-input');
     this.clearBtn = document.getElementById('clear-btn');
-    this.copyBtn = document.getElementById('copy-btn');
-    this.exportTranscriptBtn = document.getElementById('export-transcript-btn');
+    this.exportAllJobsBtn = document.getElementById('export-all-jobs-btn');
     this.exportRawBtn = document.getElementById('export-raw-btn');
     this.micSelect = document.getElementById('mic-select');
     this.numSpeakersSelect = document.getElementById('num-speakers');
@@ -284,9 +283,12 @@ export class App {
     window.addEventListener('upload-audio', () => this.uploadFileInput.click());
     this.uploadFileInput.addEventListener('change', (e) => this.handleFileUpload(e));
     this.loadModelsBtn.addEventListener('click', () => this.loadModels());
-    this.copyBtn.addEventListener('click', () => this.copyTranscript());
-    this.exportTranscriptBtn.addEventListener('click', () => this.exportTranscript());
+    this.exportAllJobsBtn.addEventListener('click', () => this.exportAllJobs());
     this.exportRawBtn.addEventListener('click', () => this.exportRawChunks());
+
+    // Job export events (from jobNavigation component)
+    window.addEventListener('job-copy-json', (e) => this.copyJobJson(e.detail.jobId));
+    window.addEventListener('job-export', (e) => this.exportJob(e.detail.jobId));
     this.numSpeakersSelect.addEventListener('change', (e) => this.handleNumSpeakersChange(e));
 
     // Enrollment controls - Alpine sidebar dispatches events, we listen here
@@ -1392,10 +1394,9 @@ export class App {
     // Auto-scroll to bottom
     this.transcriptContainer.scrollTop = this.transcriptContainer.scrollHeight;
 
-    // Enable copy/export buttons
-    if (segments.length > 0) {
-      this.copyBtn.disabled = false;
-      this.exportTranscriptBtn.disabled = false;
+    // Enable export all button when viewing recording with jobs
+    if (segments.length > 0 && this.isViewingRecording) {
+      this.exportAllJobsBtn.disabled = false;
     }
   }
 
@@ -1733,8 +1734,7 @@ export class App {
     this.conversationInference.reset();
     this.clearTranscriptDisplay();
     this.clearRawChunksDisplay();
-    this.copyBtn.disabled = true;
-    this.exportTranscriptBtn.disabled = true;
+    this.exportAllJobsBtn.disabled = true;
 
     // Reset participants panel
     if (this.participantsPanel) {
@@ -1743,37 +1743,152 @@ export class App {
   }
 
   /**
-   * Copy transcript to clipboard
+   * Copy job transcript as JSON to clipboard
+   * @param {string} jobId - Job ID to copy
    */
-  async copyTranscript() {
-    const text = this.transcriptMerger.exportAsText();
-    if (!text) return;
+  async copyJobJson(jobId) {
+    if (!this.isViewingRecording || !this.viewedRecordingId) return;
 
     try {
-      await navigator.clipboard.writeText(text);
-      const originalText = this.copyBtn.textContent;
-      this.copyBtn.textContent = 'Copied!';
-      setTimeout(() => {
-        this.copyBtn.textContent = originalText;
-      }, 2000);
+      const job = await this.recordingStore.getJob(this.viewedRecordingId, jobId);
+      if (!job || job.status !== 'processed' || !job.segments) {
+        console.warn('[Export] Job not processed or has no segments');
+        return;
+      }
+
+      const exportData = this._buildJobExportData(job);
+      const json = JSON.stringify(exportData, null, 2);
+
+      await navigator.clipboard.writeText(json);
+      console.log(`[Export] Copied job "${job.name}" to clipboard`);
+
+      // Dispatch event for UI feedback
+      window.dispatchEvent(new CustomEvent('job-copied', { detail: { jobId } }));
     } catch (err) {
-      console.error('Failed to copy:', err);
+      console.error('[Export] Failed to copy job:', err);
     }
   }
 
   /**
-   * Export processed transcript as JSON file with speaker attribution metadata
+   * Export job transcript as JSON file
+   * @param {string} jobId - Job ID to export
    */
-  exportTranscript() {
-    const segments = this.transcriptMerger.getTranscript();
-    if (segments.length === 0) return;
+  async exportJob(jobId) {
+    if (!this.isViewingRecording || !this.viewedRecordingId) return;
 
-    const exportData = {
-      exportedAt: new Date().toISOString(),
-      segmentCount: segments.length,
-      speakers: this.transcriptMerger.getSpeakers(),
-      segments: segments.map((seg) => ({
-        text: seg.text.trim(),
+    try {
+      const recording = await this.recordingStore.get(this.viewedRecordingId);
+      const job = await this.recordingStore.getJob(this.viewedRecordingId, jobId);
+      if (!job || job.status !== 'processed' || !job.segments) {
+        console.warn('[Export] Job not processed or has no segments');
+        return;
+      }
+
+      const exportData = this._buildJobExportData(job, recording);
+      const json = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      const safeName = (job.name || 'job').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${safeName}-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      console.log(`[Export] Exported job "${job.name}"`);
+    } catch (err) {
+      console.error('[Export] Failed to export job:', err);
+    }
+  }
+
+  /**
+   * Export all jobs for the current recording
+   */
+  async exportAllJobs() {
+    if (!this.isViewingRecording || !this.viewedRecordingId) return;
+
+    try {
+      const recording = await this.recordingStore.get(this.viewedRecordingId);
+      if (!recording || !recording.jobs || recording.jobs.length === 0) {
+        console.warn('[Export] No jobs to export');
+        return;
+      }
+
+      const processedJobs = recording.jobs.filter(j => j.status === 'processed' && j.segments);
+      if (processedJobs.length === 0) {
+        console.warn('[Export] No processed jobs to export');
+        return;
+      }
+
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        recording: {
+          id: recording.id,
+          name: recording.name,
+          duration: recording.duration,
+          createdAt: recording.createdAt,
+        },
+        jobCount: processedJobs.length,
+        jobs: processedJobs.map(job => this._buildJobExportData(job)),
+      };
+
+      const json = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      const safeName = (recording.name || 'recording').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${safeName}-all-jobs-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      // Brief feedback
+      const originalText = this.exportAllJobsBtn.textContent;
+      this.exportAllJobsBtn.innerHTML = '<i class="ti ti-check"></i> Exported!';
+      setTimeout(() => {
+        this.exportAllJobsBtn.innerHTML = originalText;
+      }, 2000);
+
+      console.log(`[Export] Exported ${processedJobs.length} jobs for "${recording.name}"`);
+    } catch (err) {
+      console.error('[Export] Failed to export all jobs:', err);
+    }
+  }
+
+  /**
+   * Build export data structure for a job
+   * @param {Object} job - Job object
+   * @param {Object} [recording] - Optional recording for additional context
+   * @returns {Object} Export data
+   */
+  _buildJobExportData(job, recording = null) {
+    return {
+      job: {
+        id: job.id,
+        name: job.name,
+        notes: job.notes,
+        status: job.status,
+        createdAt: job.createdAt,
+        processedAt: job.processedAt,
+        settings: job.settings,
+      },
+      ...(recording && {
+        recording: {
+          id: recording.id,
+          name: recording.name,
+          duration: recording.duration,
+        },
+      }),
+      segmentCount: job.segments?.length || 0,
+      participants: job.participants || [],
+      segments: (job.segments || []).map((seg) => ({
+        text: seg.text?.trim() || '',
         speaker: seg.speaker,
         speakerLabel: seg.speakerLabel,
         startTime: seg.startTime,
@@ -1788,7 +1903,6 @@ export class App {
               secondBestSpeaker: seg.debug.clustering.secondBestSpeaker,
               isEnrolled: seg.debug.clustering.isEnrolled,
               reason: seg.debug.clustering.reason,
-              allSimilarities: seg.debug.clustering.allSimilarities,
             }
           : null,
         debug: {
@@ -1798,25 +1912,6 @@ export class App {
         },
       })),
     };
-
-    const json = JSON.stringify(exportData, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `transcript-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    // Brief feedback
-    const originalText = this.exportTranscriptBtn.textContent;
-    this.exportTranscriptBtn.textContent = 'Exported!';
-    setTimeout(() => {
-      this.exportTranscriptBtn.textContent = originalText;
-    }, 2000);
   }
 
   /**

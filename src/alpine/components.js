@@ -1194,6 +1194,22 @@ document.addEventListener('alpine:init', () => {
       }));
     },
 
+    // Copy job JSON to clipboard
+    copyJobJson() {
+      if (!this.activeJob || this.activeJob.status !== 'processed') return;
+      window.dispatchEvent(new CustomEvent('job-copy-json', {
+        detail: { jobId: this.activeJobId },
+      }));
+    },
+
+    // Export job transcript
+    exportJob() {
+      if (!this.activeJob || this.activeJob.status !== 'processed') return;
+      window.dispatchEvent(new CustomEvent('job-export', {
+        detail: { jobId: this.activeJobId },
+      }));
+    },
+
     // Dropdown toggle
     toggleDropdown() {
       this.dropdownOpen = !this.dropdownOpen;
