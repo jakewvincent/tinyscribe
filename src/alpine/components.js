@@ -119,6 +119,18 @@ document.addEventListener('alpine:init', () => {
   });
 
   /**
+   * Job UI store
+   * Manages job-related UI state (sidebars, etc.)
+   */
+  Alpine.store('jobUI', {
+    participantsSidebarOpen: Alpine.$persist(false).as('job-participants-sidebar'),
+
+    toggleParticipants() {
+      this.participantsSidebarOpen = !this.participantsSidebarOpen;
+    },
+  });
+
+  /**
    * Collapsible panel component with persistence
    * Usage: x-data="panel('panel-name', true)"
    * @param {string} name - Unique panel identifier for persistence
@@ -165,49 +177,6 @@ document.addEventListener('alpine:init', () => {
   }));
 
   /**
-   * Model Status panel component
-   * Extends panel with model loading state tracking
-   */
-  Alpine.data('modelStatusPanel', () => ({
-    expanded: false, // Always start collapsed (no persistence)
-    status: 'idle', // 'idle' | 'loading' | 'ready' | 'error'
-    panelId: 'model-status',
-
-    toggle() {
-      this.expanded = !this.expanded;
-    },
-
-    // Panel order helpers (delegate to store)
-    get order() {
-      return Alpine.store('sidebarOrder').getOrder(this.panelId);
-    },
-    get canMoveUp() {
-      return Alpine.store('sidebarOrder').canMoveUp(this.panelId);
-    },
-    get canMoveDown() {
-      return Alpine.store('sidebarOrder').canMoveDown(this.panelId);
-    },
-    moveUp() {
-      Alpine.store('sidebarOrder').moveUp(this.panelId);
-    },
-    moveDown() {
-      Alpine.store('sidebarOrder').moveDown(this.panelId);
-    },
-
-    init() {
-      // Listen for model status updates from app.js
-      window.addEventListener('model-status-update', (e) => {
-        this.status = e.detail.status;
-      });
-
-      // Also listen for model-loaded for backwards compatibility
-      window.addEventListener('model-loaded', () => {
-        this.status = 'ready';
-      });
-    },
-  }));
-
-  /**
    * Status bar component
    * Displays app status, metrics, and processing state
    */
@@ -218,6 +187,14 @@ document.addEventListener('alpine:init', () => {
     bufferPercent: 0,
     chunkStatus: 'Idle',
     chunkSlots: [false, false, false, false, false], // slot states
+
+    // Model status (moved from modelStatusPanel)
+    modelStatus: 'idle', // 'idle' | 'loading' | 'ready' | 'error'
+    modelPopoverOpen: false,
+
+    toggleModelPopover() {
+      this.modelPopoverOpen = !this.modelPopoverOpen;
+    },
 
     init() {
       // Listen for status updates from app.js
@@ -238,6 +215,15 @@ document.addEventListener('alpine:init', () => {
       window.addEventListener('chunk-queue-update', (e) => {
         this.chunkStatus = e.detail.status;
         this.chunkSlots = e.detail.slots;
+      });
+
+      // Model status updates
+      window.addEventListener('model-status-update', (e) => {
+        this.modelStatus = e.detail.status;
+      });
+
+      window.addEventListener('model-loaded', () => {
+        this.modelStatus = 'ready';
       });
     },
   }));
@@ -275,55 +261,6 @@ document.addEventListener('alpine:init', () => {
 
     clearTranscript() {
       window.dispatchEvent(new CustomEvent('clear-transcript'));
-    },
-  }));
-
-  /**
-   * Phrase stats component
-   * Displays last phrase details with speaker info
-   */
-  Alpine.data('phraseStats', () => ({
-    phrase: {
-      text: 'No phrases yet',
-      speaker: '-',
-      similarity: '-',
-      runnerUp: '-',
-      margin: '-',
-      marginValue: null,
-      duration: '-',
-      type: '-',
-    },
-
-    get phrasePreview() {
-      const text = this.phrase.text || 'No phrases yet';
-      return text.length > 80 ? text.substring(0, 80) + '...' : text;
-    },
-
-    get marginClass() {
-      const margin = this.phrase.marginValue;
-      if (margin >= 0.15) return 'confidence-high';
-      if (margin >= 0.05) return 'confidence-medium';
-      if (margin > 0) return 'confidence-low';
-      return '';
-    },
-
-    init() {
-      window.addEventListener('phrase-update', (e) => {
-        this.phrase = e.detail;
-      });
-
-      window.addEventListener('phrase-reset', () => {
-        this.phrase = {
-          text: 'No phrases yet',
-          speaker: '-',
-          similarity: '-',
-          runnerUp: '-',
-          margin: '-',
-          marginValue: null,
-          duration: '-',
-          type: '-',
-        };
-      });
     },
   }));
 
@@ -900,6 +837,15 @@ document.addEventListener('alpine:init', () => {
       window.dispatchEvent(new CustomEvent('job-settings-toggle', {
         detail: { open: this.settingsSidebarOpen },
       }));
+    },
+
+    // Participants sidebar (uses store for cross-component access)
+    get participantsSidebarOpen() {
+      return Alpine.store('jobUI').participantsSidebarOpen;
+    },
+
+    toggleParticipants() {
+      Alpine.store('jobUI').toggleParticipants();
     },
 
     // Copy job JSON to clipboard

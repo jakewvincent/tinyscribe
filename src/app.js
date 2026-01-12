@@ -645,7 +645,6 @@ export class App {
 
     // Reset UI
     this.updateChunkQueueViz();
-    this.resetPhraseStats();
 
     // Get selected microphone device ID
     const selectedDeviceId = this.micSelect.value || null;
@@ -1159,10 +1158,6 @@ export class App {
 
         // Update participants panel
         this.updateParticipantsPanel();
-
-        // Update phrase stats with last segment
-        const lastSegment = mergedSegments[mergedSegments.length - 1];
-        this.updatePhraseStats(lastSegment);
       }
     }
 
@@ -1231,6 +1226,32 @@ export class App {
       const inference = segment.inferenceAttribution;
       const displayInfo = inference?.displayInfo;
       const clustering = segment.debug?.clustering;
+
+      // Build tooltip with key metrics
+      const tooltipParts = [];
+      if (clustering && !segment.isEnvironmental) {
+        if (clustering.similarity != null) {
+          tooltipParts.push(`Similarity: ${(clustering.similarity * 100).toFixed(1)}%`);
+        }
+        if (clustering.runnerUp) {
+          tooltipParts.push(`Runner-up: ${clustering.runnerUp}`);
+        }
+        if (clustering.margin != null) {
+          tooltipParts.push(`Margin: ${(clustering.margin * 100).toFixed(1)}%`);
+        }
+      }
+      const duration = segment.endTime - segment.startTime;
+      if (duration > 0) {
+        tooltipParts.push(`Duration: ${duration.toFixed(1)}s`);
+      }
+      if (segment.isEnvironmental) {
+        tooltipParts.push('Type: Environmental');
+      } else if (segment.speaker === -1) {
+        tooltipParts.push('Type: Unknown speaker');
+      } else {
+        tooltipParts.push('Type: Speech');
+      }
+      const tooltipText = tooltipParts.join('\n');
 
       // Build attribution debug elements (only for non-environmental speech)
       let reasonBadgeHtml = '';
@@ -1327,6 +1348,11 @@ export class App {
         } else {
           marginClass = 'margin-low';
         }
+      }
+
+      // Set tooltip on segment
+      if (tooltipText) {
+        segmentEl.title = tooltipText;
       }
 
       if (segment.isEnvironmental || segment.speaker === null) {
@@ -1523,66 +1549,6 @@ export class App {
         detail: { status: chunkStatus, slots },
       })
     );
-  }
-
-  /**
-   * Update phrase stats panel (via Alpine event)
-   */
-  updatePhraseStats(segment) {
-    if (!segment) return;
-
-    const debug = segment.debug;
-    const clustering = debug?.clustering;
-
-    // Build margin display with indicator
-    let margin = '-';
-    let marginValue = null;
-    if (clustering?.margin !== undefined) {
-      marginValue = clustering.margin;
-      let indicator = '';
-      if (marginValue >= 0.15) indicator = ' ✓';
-      else if (marginValue >= 0.05) indicator = ' ~';
-      else if (marginValue > 0) indicator = ' !';
-      margin = marginValue.toFixed(2) + indicator;
-    }
-
-    // Build runner-up display
-    let runnerUp = '-';
-    if (clustering) {
-      const secondBest = clustering.secondBestSimilarity?.toFixed(2) || '-';
-      const secondSpeaker = clustering.secondBestSpeaker || '';
-      runnerUp = secondSpeaker ? `${secondBest} (${secondSpeaker})` : secondBest;
-    }
-
-    // Build duration display
-    let duration = '-';
-    if (debug) {
-      const dur = debug.duration?.toFixed(1) || '-';
-      const frames = debug.frameCount || 0;
-      duration = `${dur}s (${frames} frames)`;
-    }
-
-    window.dispatchEvent(
-      new CustomEvent('phrase-update', {
-        detail: {
-          text: segment.text || '',
-          speaker: segment.isEnvironmental ? 'Environmental' : (segment.speakerLabel || '-'),
-          similarity: clustering?.similarity?.toFixed(2) || '-',
-          runnerUp,
-          margin,
-          marginValue,
-          duration,
-          type: debug?.type || 'speech',
-        },
-      })
-    );
-  }
-
-  /**
-   * Reset phrase stats panel to initial state (via Alpine event)
-   */
-  resetPhraseStats() {
-    window.dispatchEvent(new CustomEvent('phrase-reset'));
   }
 
   /**

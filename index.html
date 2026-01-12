@@ -114,6 +114,13 @@
 
           <!-- Job Navigation Bar (visible when viewing a recording) -->
           <div x-data="jobNavigation" x-show="jobs.length > 0" x-cloak class="job-navigation-bar">
+            <!-- Far left: Participants toggle -->
+            <div class="job-nav-far-left">
+              <button class="btn-icon-sm job-participants-toggle" :class="{ 'active': participantsSidebarOpen }" @click="toggleParticipants()" title="Toggle participants panel">
+                <i class="ti ti-users"></i>
+              </button>
+            </div>
+
             <!-- Left: Navigation arrows and dropdown -->
             <div class="job-nav-left">
               <!-- Prev button -->
@@ -249,8 +256,19 @@
             </div>
           </div>
 
-          <!-- Transcript body with optional settings sidebar -->
+          <!-- Transcript body with optional sidebars -->
           <div class="transcript-body" x-data="jobSettingsPanel">
+            <!-- Participants Sidebar (left) -->
+            <div class="job-participants-sidebar" x-show="$store.jobUI.participantsSidebarOpen" x-cloak x-transition>
+              <div class="sidebar-header">
+                <span class="sidebar-title">Participants</span>
+              </div>
+              <div class="sidebar-content">
+                <div id="participants-list"></div>
+                <div id="participants-status" class="participants-status">No participants yet</div>
+              </div>
+            </div>
+
             <div id="transcript-container">
               <p class="placeholder">Transcript will appear here when you start recording...</p>
             </div>
@@ -515,69 +533,6 @@
 
       <!-- Debug Sidebar (right) -->
       <aside id="sidebar">
-        <!-- Active Participants Panel -->
-        <div class="sidebar-panel" id="panel-participants" x-data="panel('participants', true)" x-cloak :style="'order: ' + order">
-          <div class="panel-header">
-            <div class="panel-header-left" @click="toggle()">
-              <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
-              <h3>Active Participants</h3>
-            </div>
-            <div class="panel-header-right">
-              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveUp" @click.stop="moveUp()" title="Move up"><i class="ti ti-arrow-move-up"></i></button>
-              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveDown" @click.stop="moveDown()" title="Move down"><i class="ti ti-arrow-move-down"></i></button>
-            </div>
-          </div>
-          <div class="panel-content" :class="{ 'collapsed': !expanded }">
-            <div id="participants-list"></div>
-            <div id="participants-status" class="participants-status">Waiting for audio...</div>
-          </div>
-        </div>
-
-        <!-- Phrase Stats Panel -->
-        <div class="sidebar-panel" id="panel-phrase-stats" x-data="panel('phrase-stats', true)" x-cloak :style="'order: ' + order">
-          <div class="panel-header">
-            <div class="panel-header-left" @click="toggle()">
-              <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
-              <h3>Last Phrase</h3>
-            </div>
-            <div class="panel-header-right">
-              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveUp" @click.stop="moveUp()" title="Move up"><i class="ti ti-arrow-move-up"></i></button>
-              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveDown" @click.stop="moveDown()" title="Move down"><i class="ti ti-arrow-move-down"></i></button>
-            </div>
-          </div>
-          <div class="panel-content" :class="{ 'collapsed': !expanded }">
-            <div id="phrase-stats" x-data="phraseStats()">
-              <div class="phrase-text-preview" x-text="phrasePreview">No phrases yet</div>
-              <div class="phrase-details">
-                <div class="detail-row">
-                  <span class="detail-label">Speaker:</span>
-                  <span class="detail-value" x-text="phrase.speaker">-</span>
-                </div>
-                <div class="detail-row indent">
-                  <span class="detail-label">Similarity:</span>
-                  <span class="detail-value" x-text="phrase.similarity">-</span>
-                </div>
-                <div class="detail-row indent">
-                  <span class="detail-label">Runner-up:</span>
-                  <span class="detail-value" x-text="phrase.runnerUp">-</span>
-                </div>
-                <div class="detail-row indent">
-                  <span class="detail-label">Margin:</span>
-                  <span class="detail-value" :class="marginClass" x-text="phrase.margin">-</span>
-                </div>
-                <div class="detail-row">
-                  <span class="detail-label">Duration:</span>
-                  <span class="detail-value" x-text="phrase.duration">-</span>
-                </div>
-                <div class="detail-row">
-                  <span class="detail-label">Type:</span>
-                  <span class="detail-value" x-text="phrase.type">-</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- Speaker Enrollment Panel -->
         <section id="enrollment-section" class="sidebar-panel" x-data="panel('enrollment', true)" x-cloak :style="'order: ' + order">
           <div class="panel-header">
@@ -798,32 +753,6 @@
           </div>
         </div>
 
-        <!-- Model Status Panel -->
-        <div class="sidebar-panel" id="panel-model-status" x-data="modelStatusPanel" x-cloak :style="'order: ' + order">
-          <div class="panel-header">
-            <div class="panel-header-left" @click="toggle()">
-              <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
-              <h3>Model Status</h3>
-              <span class="model-status-indicator" x-show="!expanded" x-cloak>
-                <i x-show="status === 'idle'" class="ti ti-loader-2 status-idle"></i>
-                <svg x-show="status === 'loading'" class="svg-icon status-loading" width="16" height="16"><use href="#icon-loader"/></svg>
-                <i x-show="status === 'ready'" class="ti ti-circle-check status-ready"></i>
-                <i x-show="status === 'error'" class="ti ti-circle-x status-error"></i>
-              </span>
-            </div>
-            <div class="panel-header-right">
-              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveUp" @click.stop="moveUp()" title="Move up"><i class="ti ti-arrow-move-up"></i></button>
-              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveDown" @click.stop="moveDown()" title="Move down"><i class="ti ti-arrow-move-down"></i></button>
-            </div>
-          </div>
-          <div class="panel-content" :class="{ 'collapsed': !expanded }" id="model-status">
-            <div id="loading-message">Models will auto-load...</div>
-            <button id="load-models-btn" class="btn primary small hidden"><i class="ti ti-refresh"></i> Reload Models</button>
-            <div id="progress-container"></div>
-            <div id="device-info"></div>
-          </div>
-        </div>
-
         <!-- Debug Logging Panel -->
         <div class="sidebar-panel" id="panel-debug" x-data="panel('debug', false)" x-cloak :style="'order: ' + order">
           <div class="panel-header">
@@ -860,6 +789,28 @@
 
     <!-- Status Bar -->
     <footer id="status-bar" x-data="statusBar()" x-cloak>
+      <!-- Model Status with Popover -->
+      <div class="model-status-compact" @click="toggleModelPopover()">
+        <i x-show="modelStatus === 'idle'" class="ti ti-cpu status-idle" title="Models idle"></i>
+        <i x-show="modelStatus === 'loading'" class="ti ti-loader-2 spinning status-loading" title="Loading models..."></i>
+        <i x-show="modelStatus === 'ready'" class="ti ti-circle-check status-ready" title="Models ready"></i>
+        <i x-show="modelStatus === 'error'" class="ti ti-circle-x status-error" title="Model error"></i>
+
+        <!-- Model Status Popover -->
+        <div x-show="modelPopoverOpen" x-transition @click.outside="modelPopoverOpen = false" class="model-status-popover">
+          <div class="popover-header">
+            <span class="popover-title">Model Status</span>
+            <button class="btn-icon-sm popover-close" @click.stop="modelPopoverOpen = false"><i class="ti ti-x"></i></button>
+          </div>
+          <div class="popover-body">
+            <div id="loading-message">Models will auto-load...</div>
+            <button id="load-models-btn" class="btn primary small hidden"><i class="ti ti-refresh"></i> Reload Models</button>
+            <div id="progress-container"></div>
+            <div id="device-info"></div>
+          </div>
+        </div>
+      </div>
+
       <div class="status-indicator">
         <span class="status-dot" :class="status"></span>
         <span x-text="statusText">Ready</span>

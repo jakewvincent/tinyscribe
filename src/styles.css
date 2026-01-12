@@ -1840,6 +1840,89 @@ body.resizing * {
   min-width: 100px;
 }
 
+/* Model status compact indicator */
+.model-status-compact {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.model-status-compact:hover {
+  background: var(--border-light);
+}
+
+.model-status-compact i {
+  font-size: 1rem;
+}
+
+.model-status-compact .status-idle {
+  color: var(--text-muted);
+}
+
+.model-status-compact .status-loading {
+  color: var(--speaker-0);
+}
+
+.model-status-compact .status-ready {
+  color: #10b981;
+}
+
+.model-status-compact .status-error {
+  color: #ef4444;
+}
+
+/* Model status popover */
+.model-status-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 280px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 200;
+}
+
+.model-status-popover .popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.model-status-popover .popover-title {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.model-status-popover .popover-body {
+  padding: var(--space-md);
+}
+
+.model-status-popover #loading-message {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  margin-bottom: var(--space-sm);
+}
+
+.model-status-popover #progress-container {
+  margin-top: var(--space-sm);
+}
+
+.model-status-popover #device-info {
+  margin-top: var(--space-sm);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
 /* ==================== BUTTONS ==================== */
 .button-group {
   display: flex;
@@ -3241,6 +3324,11 @@ body.resizing * {
   gap: var(--space-md);
 }
 
+.job-nav-far-left {
+  display: flex;
+  align-items: center;
+}
+
 .job-nav-left,
 .job-nav-right {
   display: flex;
@@ -3447,6 +3535,20 @@ body.resizing * {
   to { transform: rotate(360deg); }
 }
 
+/* Participants toggle */
+.job-participants-toggle {
+  position: relative;
+}
+
+.job-participants-toggle.active {
+  background: var(--speaker-0);
+  color: white;
+}
+
+.job-participants-toggle.active:hover {
+  background: #2563eb;
+}
+
 /* Settings toggle */
 .job-settings-toggle {
   position: relative;
@@ -3614,7 +3716,50 @@ body.resizing * {
   padding: var(--space-md);
 }
 
-/* Job settings sidebar */
+/* Job participants sidebar (left) */
+.job-participants-sidebar {
+  width: 240px;
+  background: var(--panel-bg);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.job-participants-sidebar .sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border-light);
+  background: var(--panel-bg);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.job-participants-sidebar .sidebar-title {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.job-participants-sidebar .sidebar-content {
+  flex: 1;
+  padding: var(--space-md);
+  overflow-y: auto;
+}
+
+.job-participants-sidebar .participants-status {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: var(--space-md);
+}
+
+/* Job settings sidebar (right) */
 .job-settings-sidebar {
   width: 280px;
   background: var(--panel-bg);
