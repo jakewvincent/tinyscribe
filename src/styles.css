@@ -1495,19 +1495,16 @@ body.resizing * {
   position: relative;
 }
 
-/* Reprocess dropdown menu */
+/* Reprocess dropdown menu - uses position: fixed to escape overflow containers */
 .reprocess-menu {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  z-index: 100;
+  position: fixed;
+  z-index: 1000;
   min-width: 180px;
   padding: 0.25rem;
-  background: var(--bg-primary);
+  background: var(--panel-bg);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
-  margin-top: 0.25rem;
 }
 
 .reprocess-option {

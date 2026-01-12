@@ -298,8 +298,8 @@
                     <div class="recording-actions" @click.stop>
                       <button class="btn-icon" @click="startRename(recording.id, recording.name)" title="Rename"><i class="ti ti-pencil"></i></button>
                       <div class="reprocess-container">
-                        <button class="btn-icon" @click="openReprocessMenu(recording.id)" title="Reprocess" :disabled="isReprocessing"><i class="ti ti-refresh"></i></button>
-                        <div class="reprocess-menu" x-show="showReprocessMenu === recording.id" @click.outside="closeReprocessMenu()" x-cloak>
+                        <button class="btn-icon" @click="openReprocessMenu(recording.id, $event)" title="Reprocess" :disabled="isReprocessing"><i class="ti ti-refresh"></i></button>
+                        <div class="reprocess-menu" x-show="showReprocessMenu === recording.id" :style="menuPosition ? `top: ${menuPosition.top}px; right: ${menuPosition.right}px` : ''" @click.outside="closeReprocessMenu()" x-cloak>
                           <button class="reprocess-option" @click="reprocess(recording.id, 'quick')">
                             <i class="ti ti-bolt"></i>
                             <div class="option-text">

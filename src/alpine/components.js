@@ -491,6 +491,7 @@ document.addEventListener('alpine:init', () => {
     renameValue: '',
     // Reprocessing state
     showReprocessMenu: null, // ID of recording with open menu
+    menuPosition: null, // { top, right } for fixed positioning
     isReprocessing: false,
     reprocessProgress: { current: 0, total: 0, mode: null },
 
@@ -653,13 +654,26 @@ document.addEventListener('alpine:init', () => {
     },
 
     // Open reprocess menu for a recording
-    openReprocessMenu(id) {
-      this.showReprocessMenu = this.showReprocessMenu === id ? null : id;
+    openReprocessMenu(id, event) {
+      if (this.showReprocessMenu === id) {
+        this.showReprocessMenu = null;
+        this.menuPosition = null;
+      } else {
+        // Calculate fixed position from button
+        const btn = event.currentTarget;
+        const rect = btn.getBoundingClientRect();
+        this.showReprocessMenu = id;
+        this.menuPosition = {
+          top: rect.bottom + 4,
+          right: window.innerWidth - rect.right,
+        };
+      }
     },
 
     // Close reprocess menu
     closeReprocessMenu() {
       this.showReprocessMenu = null;
+      this.menuPosition = null;
     },
 
     // Trigger reprocessing
