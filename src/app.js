@@ -2450,7 +2450,7 @@ export class App {
       // Reset clusterer and seed with selected enrollments
       clusterer.reset();
       if (enrollments && enrollments.length > 0) {
-        clusterer.seedFromEnrollments(enrollments);
+        clusterer.importEnrolledSpeakers(enrollments);
       }
 
       // Re-assign speakers to segments with embeddings
@@ -2701,7 +2701,7 @@ export class App {
     clusterer.reset();
     const enrollments = EnrollmentManager.loadAll();
     if (enrollments.length > 0) {
-      clusterer.seedFromEnrollments(enrollments);
+      clusterer.importEnrolledSpeakers(enrollments);
     }
 
     // Build new segments with updated embeddings and speaker assignments
@@ -2765,7 +2765,7 @@ export class App {
     clusterer.reset();
     const enrollments = EnrollmentManager.loadAll();
     if (enrollments.length > 0) {
-      clusterer.seedFromEnrollments(enrollments);
+      clusterer.importEnrolledSpeakers(enrollments);
     }
 
     // Track state for overlap merging
