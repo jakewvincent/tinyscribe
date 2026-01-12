@@ -204,8 +204,38 @@ document.addEventListener('alpine:init', () => {
     modelStatus: 'idle', // 'idle' | 'loading' | 'ready' | 'error'
     modelPopoverOpen: false,
 
+    // Debug status
+    debugPopoverOpen: false,
+    debugEnabled: false,
+    debugVerbose: false,
+    debugStatusText: 'Logging disabled',
+
     toggleModelPopover() {
       this.modelPopoverOpen = !this.modelPopoverOpen;
+      if (this.modelPopoverOpen) this.debugPopoverOpen = false;
+    },
+
+    toggleDebugPopover() {
+      this.debugPopoverOpen = !this.debugPopoverOpen;
+      if (this.debugPopoverOpen) this.modelPopoverOpen = false;
+    },
+
+    toggleDebug(enabled) {
+      this.debugEnabled = enabled;
+      window.dispatchEvent(new CustomEvent('debug-toggle', { detail: { enabled } }));
+    },
+
+    toggleVerbose(verbose) {
+      this.debugVerbose = verbose;
+      window.dispatchEvent(new CustomEvent('debug-verbose-toggle', { detail: { verbose } }));
+    },
+
+    exportDebugLog() {
+      window.dispatchEvent(new CustomEvent('debug-export'));
+    },
+
+    clearDebugLog() {
+      window.dispatchEvent(new CustomEvent('debug-clear'));
     },
 
     init() {
@@ -236,6 +266,13 @@ document.addEventListener('alpine:init', () => {
 
       window.addEventListener('model-loaded', () => {
         this.modelStatus = 'ready';
+      });
+
+      // Debug status updates
+      window.addEventListener('debug-status-update', (e) => {
+        this.debugEnabled = e.detail.enabled ?? this.debugEnabled;
+        this.debugVerbose = e.detail.verbose ?? this.debugVerbose;
+        this.debugStatusText = e.detail.statusText ?? this.debugStatusText;
       });
     },
   }));
@@ -277,7 +314,130 @@ document.addEventListener('alpine:init', () => {
   }));
 
   /**
-   * Enrollment content component
+   * Speakers Button component
+   * Shows enrolled count in topbar
+   */
+  Alpine.data('speakersButton', () => ({
+    enrollments: [],
+
+    get buttonText() {
+      const count = this.enrollments.length;
+      return count > 0 ? `Speakers (${count})` : 'Speakers';
+    },
+
+    init() {
+      // Listen for enrollment updates
+      window.addEventListener('enrollments-updated', (e) => {
+        this.enrollments = e.detail.enrollments || [];
+      });
+    },
+
+    openModal() {
+      window.dispatchEvent(new CustomEvent('speakers-modal-open'));
+    },
+  }));
+
+  /**
+   * Speakers Modal component
+   * Manages speaker enrollment through modal interface
+   */
+  Alpine.data('speakersModal', () => ({
+    isOpen: false,
+    enrollments: [],
+    modelLoaded: false,
+    isAdding: false,
+    newSpeakerName: '',
+    statusMessage: '',
+    statusError: false,
+
+    init() {
+      // Listen for open request
+      window.addEventListener('speakers-modal-open', () => {
+        this.isOpen = true;
+        this.isAdding = false;
+        this.newSpeakerName = '';
+        this.statusMessage = '';
+        this.statusError = false;
+        // Notify app.js to update canvas
+        this.$nextTick(() => {
+          window.dispatchEvent(new CustomEvent('speakers-modal-opened'));
+        });
+      });
+
+      // Listen for close request
+      window.addEventListener('speakers-modal-close', () => {
+        this.close();
+      });
+
+      // Listen for model loaded
+      window.addEventListener('model-loaded', () => {
+        this.modelLoaded = true;
+      });
+
+      // Listen for enrollment updates
+      window.addEventListener('enrollments-updated', (e) => {
+        this.enrollments = e.detail.enrollments || [];
+      });
+
+      // Listen for enrollment complete (after recording modal)
+      window.addEventListener('enrollment-complete', () => {
+        // Modal stays open, show updated list
+        this.isAdding = false;
+        this.newSpeakerName = '';
+      });
+
+      // Listen for status updates
+      window.addEventListener('enrollment-status', (e) => {
+        this.statusMessage = e.detail.message;
+        this.statusError = e.detail.isError || false;
+      });
+    },
+
+    close() {
+      this.isOpen = false;
+      this.isAdding = false;
+      this.newSpeakerName = '';
+    },
+
+    startAdd() {
+      this.isAdding = true;
+      this.newSpeakerName = '';
+      this.$nextTick(() => {
+        const input = document.getElementById('new-speaker-name');
+        if (input) input.focus();
+      });
+    },
+
+    cancelAdd() {
+      this.isAdding = false;
+      this.newSpeakerName = '';
+    },
+
+    startEnrollment() {
+      if (!this.newSpeakerName.trim()) return;
+      // Dispatch to app.js which opens the recording modal
+      window.dispatchEvent(new CustomEvent('enrollment-start', {
+        detail: { name: this.newSpeakerName.trim() },
+      }));
+      // Keep speakers modal open but exit adding mode
+      this.isAdding = false;
+    },
+
+    removeEnrollment(id) {
+      window.dispatchEvent(new CustomEvent('enrollment-remove', {
+        detail: { id },
+      }));
+    },
+
+    clearAll() {
+      if (confirm('Remove all enrolled speakers? This cannot be undone.')) {
+        window.dispatchEvent(new CustomEvent('enrollment-clear-all'));
+      }
+    },
+  }));
+
+  /**
+   * Enrollment content component (LEGACY - keeping for sidebar compatibility during migration)
    * Manages enrollment sidebar UI: intro -> complete states
    * (Modal handled separately in app.js)
    */
@@ -422,7 +582,167 @@ document.addEventListener('alpine:init', () => {
   }));
 
   /**
-   * Recordings Panel component
+   * Playback Bar component
+   * Controls for playing back saved recordings
+   */
+  Alpine.data('playbackBar', () => ({
+    isViewingRecording: false,
+    isPlaying: false,
+    playbackTime: 0,
+    playbackDuration: 0,
+    enrollmentSource: 'snapshot',
+    recordingId: null,
+
+    get progressPercent() {
+      if (this.playbackDuration <= 0) return 0;
+      return (this.playbackTime / this.playbackDuration) * 100;
+    },
+
+    init() {
+      // Listen for recording loaded
+      window.addEventListener('recording-loaded', (e) => {
+        this.isViewingRecording = true;
+        this.playbackDuration = e.detail.duration || 0;
+        this.playbackTime = 0;
+        this.isPlaying = false;
+        this.recordingId = e.detail.id;
+      });
+
+      // Listen for recording closed
+      window.addEventListener('recording-closed', () => {
+        this.isViewingRecording = false;
+        this.isPlaying = false;
+        this.playbackTime = 0;
+        this.playbackDuration = 0;
+        this.recordingId = null;
+      });
+
+      // Listen for playback progress
+      window.addEventListener('playback-progress', (e) => {
+        this.playbackTime = e.detail.time;
+        this.isPlaying = e.detail.playing;
+      });
+    },
+
+    togglePlay() {
+      window.dispatchEvent(new CustomEvent('playback-toggle'));
+    },
+
+    seek(event) {
+      const container = event.currentTarget;
+      const rect = container.getBoundingClientRect();
+      const clickX = event.clientX - rect.left;
+      const percent = clickX / rect.width;
+      const seekTime = percent * this.playbackDuration;
+      window.dispatchEvent(new CustomEvent('playback-seek', {
+        detail: { time: seekTime },
+      }));
+    },
+
+    setEnrollmentSource(source) {
+      if (source === this.enrollmentSource) return;
+      this.enrollmentSource = source;
+      window.dispatchEvent(new CustomEvent('enrollment-source-change', {
+        detail: { source },
+      }));
+    },
+
+    downloadRecording() {
+      if (!this.recordingId) return;
+      window.dispatchEvent(new CustomEvent('recording-download', {
+        detail: { id: this.recordingId },
+      }));
+    },
+
+    formatTime(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    },
+  }));
+
+  /**
+   * Recordings Dropdown component (top bar)
+   * Lightweight dropdown for quick access to recordings
+   */
+  Alpine.data('recordingsDropdown', () => ({
+    isOpen: false,
+    recordings: [],
+    selectedId: null,
+    isViewingRecording: false,
+    viewedRecording: null,
+
+    get buttonText() {
+      if (this.isViewingRecording && this.viewedRecording) {
+        return this.viewedRecording.name;
+      }
+      const count = this.recordings.length;
+      return count > 0 ? `Recordings (${count})` : 'Recordings';
+    },
+
+    init() {
+      // Listen for recordings list updates
+      window.addEventListener('recordings-updated', (e) => {
+        this.recordings = e.detail.recordings;
+      });
+
+      // Listen for recording loaded
+      window.addEventListener('recording-loaded', (e) => {
+        this.isViewingRecording = true;
+        this.viewedRecording = e.detail;
+        this.selectedId = e.detail.id;
+        this.isOpen = false; // Close dropdown after loading
+      });
+
+      // Listen for recording closed
+      window.addEventListener('recording-closed', () => {
+        this.isViewingRecording = false;
+        this.viewedRecording = null;
+        this.selectedId = null;
+      });
+    },
+
+    toggle() {
+      this.isOpen = !this.isOpen;
+    },
+
+    close() {
+      this.isOpen = false;
+    },
+
+    loadRecording(id) {
+      window.dispatchEvent(new CustomEvent('recording-load', { detail: { id } }));
+    },
+
+    returnToLive() {
+      window.dispatchEvent(new CustomEvent('recording-return-to-live'));
+      this.isOpen = false;
+    },
+
+    deleteRecording(id) {
+      if (confirm('Delete this recording? This cannot be undone.')) {
+        window.dispatchEvent(new CustomEvent('recording-delete', { detail: { id } }));
+      }
+    },
+
+    formatDuration(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    },
+
+    formatDate(timestamp) {
+      return new Date(timestamp).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    },
+  }));
+
+  /**
+   * Recordings Panel component (LEGACY - sidebar panel)
    * Manages list of saved recordings, playback controls, and viewing state
    */
   Alpine.data('recordingsPanel', () => ({

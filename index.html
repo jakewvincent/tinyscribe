@@ -35,6 +35,11 @@
     <header id="topbar">
       <div class="topbar-left">
         <h1>Transcription Studio</h1>
+        <!-- Speakers Button -->
+        <button x-data="speakersButton" class="btn secondary speakers-btn" @click="openModal()">
+          <i class="ti ti-users"></i>
+          <span x-text="buttonText">Speakers</span>
+        </button>
       </div>
       <div class="topbar-center" x-data="recordingControls()" x-cloak>
         <div class="button-group">
@@ -74,6 +79,59 @@
             <option value="5">5</option>
             <option value="6">6</option>
           </select>
+        </div>
+        <!-- Recordings Dropdown -->
+        <div x-data="recordingsDropdown" class="recordings-dropdown-container">
+          <button class="btn secondary recordings-dropdown-btn" @click="toggle()" :class="{ 'active': isOpen, 'viewing': isViewingRecording }">
+            <i class="ti ti-folder"></i>
+            <span x-text="buttonText">Recordings</span>
+            <i class="ti ti-chevron-down recordings-chevron" :class="{ 'rotated': isOpen }"></i>
+          </button>
+
+          <!-- Dropdown Menu -->
+          <div x-show="isOpen" x-transition @click.outside="close()" class="recordings-dropdown-menu">
+            <!-- Current session indicator -->
+            <div class="recordings-dropdown-header">
+              <template x-if="!isViewingRecording">
+                <span class="session-indicator live"><i class="ti ti-point-filled"></i> Live Session</span>
+              </template>
+              <template x-if="isViewingRecording">
+                <div class="session-indicator viewing">
+                  <span class="viewing-name" x-text="viewedRecording?.name"></span>
+                  <button class="btn-icon-sm return-btn" @click="returnToLive()" title="Return to live">
+                    <i class="ti ti-arrow-back"></i>
+                  </button>
+                </div>
+              </template>
+            </div>
+
+            <!-- Recordings list -->
+            <div class="recordings-dropdown-list" x-show="recordings.length > 0">
+              <template x-for="recording in recordings" :key="recording.id">
+                <div class="recordings-dropdown-item" :class="{ 'selected': selectedId === recording.id }" @click="loadRecording(recording.id)">
+                  <div class="recording-item-main">
+                    <span class="recording-item-name" x-text="recording.name"></span>
+                    <span class="recording-item-duration" x-text="formatDuration(recording.duration)"></span>
+                  </div>
+                  <div class="recording-item-meta">
+                    <span x-text="recording.speakerCount + ' speaker' + (recording.speakerCount !== 1 ? 's' : '')"></span>
+                    <span class="meta-sep">|</span>
+                    <span x-text="formatDate(recording.createdAt)"></span>
+                  </div>
+                  <div class="recording-item-actions" @click.stop>
+                    <button class="btn-icon-sm" @click="deleteRecording(recording.id)" title="Delete">
+                      <i class="ti ti-trash"></i>
+                    </button>
+                  </div>
+                </div>
+              </template>
+            </div>
+
+            <!-- Empty state -->
+            <div class="recordings-dropdown-empty" x-show="recordings.length === 0">
+              <p>No saved recordings yet.</p>
+            </div>
+          </div>
         </div>
       </div>
     </header>
@@ -252,6 +310,38 @@
               <!-- Settings toggle -->
               <button class="btn-icon-sm job-settings-toggle" :class="{ 'active': settingsSidebarOpen }" @click="toggleSettings()" title="Toggle job settings">
                 <i class="ti ti-settings"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Playback Bar (visible when viewing a recording) -->
+          <div x-data="playbackBar" x-show="isViewingRecording" x-cloak class="playback-bar">
+            <button class="btn-icon playback-main-btn" @click="togglePlay()">
+              <i x-show="!isPlaying" class="ti ti-player-play"></i>
+              <i x-show="isPlaying" class="ti ti-player-pause"></i>
+            </button>
+
+            <div class="playback-progress-container" @click="seek($event)">
+              <div class="playback-progress-bar">
+                <div class="playback-progress-fill" :style="`width: ${progressPercent}%`"></div>
+              </div>
+            </div>
+
+            <span class="playback-time" x-text="formatTime(playbackTime) + ' / ' + formatTime(playbackDuration)">0:00 / 0:00</span>
+
+            <div class="playback-actions">
+              <!-- Enrollment source toggle -->
+              <div class="enrollment-source-toggle">
+                <button class="toggle-option" :class="{ 'active': enrollmentSource === 'snapshot' }" @click="setEnrollmentSource('snapshot')" title="Use enrollments from when recording was made">
+                  <i class="ti ti-camera"></i> Snapshot
+                </button>
+                <button class="toggle-option" :class="{ 'active': enrollmentSource === 'current' }" @click="setEnrollmentSource('current')" title="Re-identify with current enrollments">
+                  <i class="ti ti-refresh"></i> Current
+                </button>
+              </div>
+
+              <button class="btn-icon" @click="downloadRecording()" title="Download as WAV">
+                <i class="ti ti-download"></i>
               </button>
             </div>
           </div>
@@ -528,263 +618,6 @@
         </div>
       </section>
 
-      <!-- Sidebar resize divider -->
-      <div class="sidebar-divider" id="sidebar-divider"></div>
-
-      <!-- Debug Sidebar (right) -->
-      <aside id="sidebar">
-        <!-- Speaker Enrollment Panel -->
-        <section id="enrollment-section" class="sidebar-panel" x-data="panel('enrollment', true)" x-cloak :style="'order: ' + order">
-          <div class="panel-header">
-            <div class="panel-header-left" @click="toggle()">
-              <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
-              <h3>Speaker Enrollment <span class="optional-badge">Optional</span></h3>
-            </div>
-            <div class="panel-header-right">
-              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveUp" @click.stop="moveUp()" title="Move up"><i class="ti ti-arrow-move-up"></i></button>
-              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveDown" @click.stop="moveDown()" title="Move down"><i class="ti ti-arrow-move-down"></i></button>
-            </div>
-          </div>
-          <div class="panel-content" :class="{ 'collapsed': !expanded }" x-data="enrollmentContent()">
-            <!-- Intro state (before enrollment starts) -->
-            <div x-show="state === 'intro'">
-              <p>Record your voice to help identify you in conversations.</p>
-              <div class="enroll-input-row">
-                <label for="enroll-name">Name:</label>
-                <input type="text" id="enroll-name" x-model="speakerName"
-                       placeholder="e.g., Jake" maxlength="20">
-                <button id="enroll-start-btn" class="btn primary small"
-                        :disabled="!modelLoaded || !speakerName.trim()"
-                        @click="startEnrollment()"><i class="ti ti-user-plus"></i> Enroll</button>
-                <button class="btn secondary small" @click="skip()"><i class="ti ti-x"></i> Skip</button>
-              </div>
-            </div>
-
-            <!-- Complete state (after enrollment) -->
-            <div x-show="state === 'complete'">
-              <div class="enrolled-header">
-                <span class="enrolled-count" x-text="enrolledCountText">0 speakers enrolled</span>
-                <div class="enrolled-actions">
-                  <button class="btn danger-text small" @click="clearAll()" title="Remove all enrolled speakers"><i class="ti ti-trash"></i> Clear All</button>
-                  <button id="add-speaker-btn" class="btn primary small"
-                          :disabled="!modelLoaded || enrollments.length >= 6"
-                          @click="addNewSpeaker()"><i class="ti ti-plus"></i> Add</button>
-                </div>
-              </div>
-              <div id="enrolled-items">
-                <template x-for="enrollment in enrollments" :key="enrollment.id">
-                  <div class="enrolled-item" :data-id="enrollment.id">
-                    <span class="speaker-dot" :style="`background: var(--speaker-${enrollment.colorIndex})`"></span>
-                    <span class="enrolled-name" x-text="enrollment.name"></span>
-                    <button class="btn-icon remove-enrollment"
-                            @click="removeEnrollment(enrollment.id)" title="Remove"><i class="ti ti-x"></i></button>
-                  </div>
-                </template>
-              </div>
-            </div>
-
-            <div id="enroll-status" :class="{ 'error': statusError }" x-text="statusMessage"></div>
-
-            <!-- Speaker Embedding Visualization -->
-            <div class="enrollment-viz-section">
-              <div class="viz-divider"></div>
-              <div class="viz-header">Speaker Embedding Space</div>
-              <div class="viz-info">Dots closer together = more similar voices</div>
-              <canvas id="speaker-canvas"></canvas>
-            </div>
-          </div>
-        </section>
-
-        <!-- Recordings Panel -->
-        <div class="sidebar-panel" id="panel-recordings" x-data="recordingsPanel" x-cloak :style="'order: ' + order">
-          <div class="panel-header">
-            <div class="panel-header-left" @click="toggle()">
-              <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
-              <h3>Recordings <span x-show="recordings.length > 0" class="recording-count" x-text="'(' + recordings.length + ')'"></span></h3>
-            </div>
-            <div class="panel-header-right">
-              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveUp" @click.stop="moveUp()" title="Move up"><i class="ti ti-arrow-move-up"></i></button>
-              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveDown" @click.stop="moveDown()" title="Move down"><i class="ti ti-arrow-move-down"></i></button>
-            </div>
-          </div>
-          <div class="panel-content" :class="{ 'collapsed': !expanded }">
-            <!-- Current session indicator -->
-            <div class="recording-session-indicator" :class="{ 'viewing': isViewingRecording }">
-              <template x-if="!isViewingRecording">
-                <span class="session-live">Live Session</span>
-              </template>
-              <template x-if="isViewingRecording">
-                <div class="session-viewing">
-                  <span class="viewing-label">Viewing:</span>
-                  <span class="viewing-name" x-text="viewedRecording?.name"></span>
-                  <button class="btn-icon return-btn" @click="returnToLive()" title="Return to live"><i class="ti ti-arrow-back"></i></button>
-                </div>
-              </template>
-            </div>
-
-            <!-- Recordings list -->
-            <div class="recordings-list" x-show="recordings.length > 0">
-              <template x-for="recording in recordings" :key="recording.id">
-                <div class="recording-item"
-                     :class="{ 'selected': selectedId === recording.id }"
-                     @click="loadRecording(recording.id)">
-                  <!-- Name (editable) -->
-                  <div class="recording-name-row">
-                    <template x-if="isRenaming !== recording.id">
-                      <span class="recording-name" x-text="recording.name"></span>
-                    </template>
-                    <template x-if="isRenaming === recording.id">
-                      <input type="text"
-                             class="rename-input"
-                             x-model="renameValue"
-                             @click.stop
-                             @keydown.enter="confirmRename()"
-                             @keydown.escape="cancelRename()"
-                             @blur="confirmRename()">
-                    </template>
-                    <div class="recording-actions" @click.stop>
-                      <button class="btn-icon" @click="startRename(recording.id, recording.name)" title="Rename"><i class="ti ti-pencil"></i></button>
-                      <div class="reprocess-container">
-                        <button class="btn-icon" @click="openReprocessMenu(recording.id, $event)" title="Reprocess" :disabled="isReprocessing"><i class="ti ti-refresh"></i></button>
-                        <div class="reprocess-menu" x-show="showReprocessMenu === recording.id" :style="menuPosition ? `top: ${menuPosition.top}px; right: ${menuPosition.right}px` : ''" @click.outside="closeReprocessMenu()" x-cloak>
-                          <button class="reprocess-option" @click="reprocess(recording.id, 'quick')">
-                            <i class="ti ti-bolt"></i>
-                            <div class="option-text">
-                              <span class="option-title">Quick (re-embed)</span>
-                              <span class="option-desc">Keep text, new embeddings</span>
-                            </div>
-                          </button>
-                          <button class="reprocess-option" @click="reprocess(recording.id, 'full')">
-                            <i class="ti ti-refresh"></i>
-                            <div class="option-text">
-                              <span class="option-title">Full reprocess</span>
-                              <span class="option-desc">Re-run entire pipeline</span>
-                            </div>
-                          </button>
-                        </div>
-                      </div>
-                      <button class="btn-icon delete" @click="deleteRecording(recording.id)" title="Delete"><i class="ti ti-trash"></i></button>
-                    </div>
-                  </div>
-                  <!-- Metadata -->
-                  <div class="recording-meta">
-                    <span class="meta-item" x-text="formatDuration(recording.duration)"></span>
-                    <span class="meta-sep">|</span>
-                    <span class="meta-item" x-text="recording.speakerCount + ' speaker' + (recording.speakerCount !== 1 ? 's' : '')"></span>
-                    <span class="meta-sep">|</span>
-                    <span class="meta-item" x-text="formatSize(recording.sizeBytes)"></span>
-                  </div>
-                  <!-- Model badges -->
-                  <div class="recording-models" x-show="recording.processingInfo">
-                    <span class="model-badge" x-text="getModelBadge(recording.processingInfo, 'embedding')" x-show="getModelBadge(recording.processingInfo, 'embedding')"></span>
-                    <span class="model-badge" x-text="getModelBadge(recording.processingInfo, 'segmentation')" x-show="getModelBadge(recording.processingInfo, 'segmentation')"></span>
-                    <span class="model-badge reprocessed" x-show="recording.processingInfo?.reprocessMode" x-text="recording.processingInfo?.reprocessMode"></span>
-                  </div>
-                  <div class="recording-date" x-text="formatDate(recording.createdAt)"></div>
-                </div>
-              </template>
-            </div>
-
-            <!-- Empty state -->
-            <div class="recordings-empty" x-show="recordings.length === 0">
-              <p>No saved recordings yet.</p>
-              <p class="hint">Recordings are saved automatically when you stop recording.</p>
-            </div>
-
-            <!-- Reprocessing progress indicator -->
-            <div class="reprocess-progress" x-show="isReprocessing" x-cloak>
-              <div class="progress-info">
-                <i class="ti ti-loader-2 spinning"></i>
-                <span x-text="reprocessProgress.mode === 'quick' ? 'Re-embedding' : 'Reprocessing'"></span>
-                <span x-text="reprocessProgress.current + '/' + reprocessProgress.total"></span>
-              </div>
-              <div class="progress-bar">
-                <div class="progress-fill" :style="'width: ' + (reprocessProgress.total > 0 ? (reprocessProgress.current / reprocessProgress.total * 100) : 0) + '%'"></div>
-              </div>
-            </div>
-
-            <!-- Playback controls (when viewing) -->
-            <div class="playback-controls" x-show="isViewingRecording" x-cloak>
-              <div class="playback-row">
-                <button class="btn-icon play-btn" @click="togglePlay()">
-                  <i x-show="!isPlaying" class="ti ti-player-play"></i>
-                  <i x-show="isPlaying" class="ti ti-player-pause"></i>
-                </button>
-                <div class="playback-progress">
-                  <div class="progress-bar">
-                    <div class="progress-fill" :style="'width: ' + (playbackDuration > 0 ? (playbackTime / playbackDuration * 100) : 0) + '%'"></div>
-                  </div>
-                </div>
-                <span class="playback-time" x-text="formatDuration(playbackTime) + ' / ' + formatDuration(playbackDuration)"></span>
-                <button class="btn-icon download-btn" @click="downloadRecording()" title="Download as WAV">
-                  <i class="ti ti-download"></i>
-                </button>
-              </div>
-
-              <!-- Enrollment source toggle -->
-              <div class="enrollment-toggle">
-                <span class="toggle-label">Enrollments:</span>
-                <button class="toggle-btn"
-                        :class="{ 'active': enrollmentSource === 'snapshot' }"
-                        @click="setEnrollmentSource('snapshot')"
-                        title="Use enrollments from when recording was made">Snapshot</button>
-                <button class="toggle-btn"
-                        :class="{ 'active': enrollmentSource === 'current' }"
-                        @click="setEnrollmentSource('current')"
-                        title="Re-identify speakers with current enrollments">Current</button>
-              </div>
-
-              <!-- Processing info for viewed recording -->
-              <div class="processing-info" x-show="viewedRecording?.processingInfo">
-                <div class="info-row">
-                  <span class="info-label">Embedding:</span>
-                  <span class="info-value" x-text="viewedRecording?.processingInfo?.embeddingModel?.name || 'Unknown'"></span>
-                </div>
-                <div class="info-row">
-                  <span class="info-label">Segmentation:</span>
-                  <span class="info-value" x-text="viewedRecording?.processingInfo?.segmentationModel?.name || 'Unknown'"></span>
-                </div>
-                <div class="info-row" x-show="viewedRecording?.processingInfo?.sourceRecordingId">
-                  <span class="info-label">Mode:</span>
-                  <span class="info-value reprocessed" x-text="viewedRecording?.processingInfo?.reprocessMode === 'quick' ? 'Quick reprocess' : 'Full reprocess'"></span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Debug Logging Panel -->
-        <div class="sidebar-panel" id="panel-debug" x-data="panel('debug', false)" x-cloak :style="'order: ' + order">
-          <div class="panel-header">
-            <div class="panel-header-left" @click="toggle()">
-              <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
-              <h3>Debug Logging</h3>
-            </div>
-            <div class="panel-header-right">
-              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveUp" @click.stop="moveUp()" title="Move up"><i class="ti ti-arrow-move-up"></i></button>
-              <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveDown" @click.stop="moveDown()" title="Move down"><i class="ti ti-arrow-move-down"></i></button>
-            </div>
-          </div>
-          <div class="panel-content" :class="{ 'collapsed': !expanded }">
-            <div class="debug-toggles">
-              <label class="toggle-row">
-                <input type="checkbox" id="debug-enabled">
-                <span>Enable debug logging</span>
-              </label>
-              <label class="toggle-row" id="verbose-row">
-                <input type="checkbox" id="debug-verbose" disabled>
-                <span>Verbose mode</span>
-              </label>
-            </div>
-            <div class="debug-actions">
-              <button id="debug-export" class="btn secondary small" disabled><i class="ti ti-download"></i> Export</button>
-              <button id="debug-clear" class="btn secondary small" disabled><i class="ti ti-trash"></i> Clear</button>
-            </div>
-            <div id="debug-status" class="debug-status">Logging disabled</div>
-          </div>
-        </div>
-
-      </aside>
     </main>
 
     <!-- Status Bar -->
@@ -844,6 +677,36 @@
         </div>
         <span class="metric-value" x-text="`${bufferPercent}%`">0%</span>
       </div>
+
+      <!-- Debug Status with Popover -->
+      <div class="debug-status-compact" @click="toggleDebugPopover()">
+        <i class="ti ti-bug" :class="{ 'debug-active': debugEnabled }" :title="debugEnabled ? 'Debug logging enabled' : 'Debug logging disabled'"></i>
+
+        <!-- Debug Popover -->
+        <div x-show="debugPopoverOpen" x-transition @click.outside="debugPopoverOpen = false" class="debug-status-popover">
+          <div class="popover-header">
+            <span class="popover-title">Debug Logging</span>
+            <button class="btn-icon-sm popover-close" @click.stop="debugPopoverOpen = false"><i class="ti ti-x"></i></button>
+          </div>
+          <div class="popover-body">
+            <div class="debug-toggles">
+              <label class="toggle-row">
+                <input type="checkbox" id="debug-enabled-popover" :checked="debugEnabled" @change="toggleDebug($event.target.checked)">
+                <span>Enable debug logging</span>
+              </label>
+              <label class="toggle-row" :class="{ 'disabled': !debugEnabled }">
+                <input type="checkbox" id="debug-verbose-popover" :checked="debugVerbose" :disabled="!debugEnabled" @change="toggleVerbose($event.target.checked)">
+                <span>Verbose mode</span>
+              </label>
+            </div>
+            <div class="debug-actions">
+              <button class="btn secondary small" :disabled="!debugEnabled" @click="exportDebugLog()"><i class="ti ti-download"></i> Export</button>
+              <button class="btn secondary small" :disabled="!debugEnabled" @click="clearDebugLog()"><i class="ti ti-trash"></i> Clear</button>
+            </div>
+            <div class="debug-status-text" x-text="debugStatusText">Logging disabled</div>
+          </div>
+        </div>
+      </div>
     </footer>
 
     <!-- Enrollment Modal -->
@@ -900,6 +763,78 @@
           </div>
           <button id="modal-finish-btn" class="btn" disabled><i class="ti ti-check"></i> Finish</button>
           <button id="modal-cancel-btn" class="btn secondary"><i class="ti ti-x"></i> Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Speakers Management Modal -->
+    <div x-data="speakersModal" x-show="isOpen" x-cloak class="modal-overlay speakers-modal-overlay" @keydown.escape.window="close()">
+      <div class="modal-content speakers-modal" @click.outside="close()">
+        <!-- Header -->
+        <div class="modal-header">
+          <h2>Speaker Enrollment</h2>
+          <button class="btn-icon-sm modal-close" @click="close()"><i class="ti ti-x"></i></button>
+        </div>
+
+        <!-- Body -->
+        <div class="modal-body">
+          <!-- Enrollment Intro Section -->
+          <div class="speakers-intro" x-show="enrollments.length === 0 && !isAdding">
+            <p class="speakers-intro-text">Enroll speakers to improve identification accuracy. Record voice samples using the phonetically balanced Rainbow Passage.</p>
+          </div>
+
+          <!-- Enrolled Speakers List -->
+          <div class="speakers-list" x-show="enrollments.length > 0">
+            <template x-for="enrollment in enrollments" :key="enrollment.id">
+              <div class="speaker-item">
+                <span class="speaker-dot" :style="`background: var(--speaker-${enrollment.colorIndex})`"></span>
+                <span class="speaker-name" x-text="enrollment.name"></span>
+                <span class="speaker-samples" x-text="enrollment.recordings?.length + ' sample' + (enrollment.recordings?.length !== 1 ? 's' : '')"></span>
+                <button class="btn-icon-sm remove-speaker" @click="removeEnrollment(enrollment.id)" title="Remove speaker">
+                  <i class="ti ti-trash"></i>
+                </button>
+              </div>
+            </template>
+          </div>
+
+          <!-- Add Speaker Form -->
+          <div class="speaker-add-form" x-show="isAdding">
+            <label for="new-speaker-name">Speaker Name</label>
+            <input type="text" id="new-speaker-name" x-model="newSpeakerName" placeholder="e.g., Jake" maxlength="20" @keydown.enter="startEnrollment()" @keydown.escape="cancelAdd()">
+          </div>
+
+          <!-- Speaker Canvas Visualization -->
+          <div class="speakers-viz" x-show="enrollments.length > 0">
+            <div class="viz-label">Embedding Space</div>
+            <canvas id="speakers-modal-canvas"></canvas>
+          </div>
+
+          <!-- Status Message -->
+          <div class="speakers-status" x-show="statusMessage" :class="{ 'error': statusError }" x-text="statusMessage"></div>
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="modal-footer">
+          <template x-if="!isAdding">
+            <div class="footer-actions">
+              <button class="btn danger-text" x-show="enrollments.length > 0" @click="clearAll()">
+                <i class="ti ti-trash"></i> Clear All
+              </button>
+              <div class="footer-right">
+                <button class="btn primary" :disabled="!modelLoaded || enrollments.length >= 6" @click="startAdd()">
+                  <i class="ti ti-plus"></i> Add Speaker
+                </button>
+              </div>
+            </div>
+          </template>
+          <template x-if="isAdding">
+            <div class="footer-actions">
+              <button class="btn secondary" @click="cancelAdd()">Cancel</button>
+              <button class="btn primary" :disabled="!newSpeakerName.trim()" @click="startEnrollment()">
+                <i class="ti ti-microphone"></i> Start Recording
+              </button>
+            </div>
+          </template>
         </div>
       </div>
     </div>

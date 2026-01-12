@@ -110,6 +110,7 @@ export class App {
     this.transcriptMerger = new TranscriptMerger(this.numSpeakers);
     this.enrollmentManager = new EnrollmentManager();
     this.speakerVisualizer = null;
+    this.modalSpeakerVisualizer = null; // Visualizer for speakers modal
     this.conversationInference = new ConversationInference();
     this.participantsPanel = null;
     this.debugLogger = new DebugLogger();
@@ -301,6 +302,9 @@ export class App {
     window.addEventListener('enrollment-clear-all', () => {
       this.clearAllEnrollments();
     });
+    window.addEventListener('speakers-modal-opened', () => {
+      this.updateModalVisualization();
+    });
 
     // Enrollment modal controls
     this.modalRecordBtn.addEventListener('click', () => this.toggleModalRecording());
@@ -358,6 +362,26 @@ export class App {
     window.addEventListener('segmentation-params-reset', (e) => {
       const { params } = e.detail;
       this.updateSegmentationParams(params);
+    });
+
+    // Debug logging events (from status bar popover)
+    window.addEventListener('debug-toggle', (e) => {
+      this.debugLogger.setEnabled(e.detail.enabled);
+      this.dispatchDebugStatusUpdate();
+    });
+    window.addEventListener('debug-verbose-toggle', (e) => {
+      this.debugLogger.setVerbose(e.detail.verbose);
+      this.dispatchDebugStatusUpdate();
+    });
+    window.addEventListener('debug-export', () => {
+      this.debugLogger.exportCurrentSession();
+    });
+    window.addEventListener('debug-clear', async () => {
+      const confirmed = confirm('Clear all debug logs? This cannot be undone.');
+      if (confirmed) {
+        await this.debugLogger.clearAllLogs();
+        this.dispatchDebugStatusUpdate();
+      }
     });
 
     // Recording reprocessing
@@ -3637,6 +3661,22 @@ export class App {
   }
 
   /**
+   * Update the speaker visualization in the speakers modal
+   */
+  updateModalVisualization() {
+    const canvas = document.getElementById('speakers-modal-canvas');
+    if (!canvas) return;
+
+    // Create or reuse the modal visualizer
+    if (!this.modalSpeakerVisualizer) {
+      this.modalSpeakerVisualizer = new SpeakerVisualizer('speakers-modal-canvas');
+    }
+
+    const speakers = this.transcriptMerger.speakerClusterer.getAllSpeakersForVisualization();
+    this.modalSpeakerVisualizer.render(speakers);
+  }
+
+  /**
    * Load saved enrollments from storage
    * Uses model-specific embeddings when available
    */
@@ -3786,12 +3826,49 @@ export class App {
             id: e.id,
             name: e.name,
             colorIndex: i % 6,
+            recordings: e.audioSamples || [],
           })),
         },
       })
     );
-    // Update visualization
+    // Update visualizations (sidebar and modal)
     this.updateVisualization();
+    this.updateModalVisualization();
+  }
+
+  /**
+   * Dispatch debug status update to Alpine status bar
+   */
+  async dispatchDebugStatusUpdate() {
+    const settings = this.debugLogger.getSettings();
+    const status = await this.debugLogger.getStatus();
+
+    let statusText = 'Logging disabled';
+    if (settings.enabled) {
+      const parts = [];
+      if (status.hasActiveSession) {
+        parts.push(`${status.currentSessionLogs} logs`);
+      } else {
+        parts.push('Ready');
+      }
+      if (status.sessionCount > 0) {
+        parts.push(`${status.sessionCount} session${status.sessionCount !== 1 ? 's' : ''}`);
+      }
+      if (settings.verbose) {
+        parts.push('(verbose)');
+      }
+      statusText = parts.join(' • ');
+    }
+
+    window.dispatchEvent(
+      new CustomEvent('debug-status-update', {
+        detail: {
+          enabled: settings.enabled,
+          verbose: settings.verbose,
+          statusText,
+        },
+      })
+    );
   }
 
   /**
@@ -4379,6 +4456,9 @@ export class App {
 
     // Update Alpine sidebar UI
     this.dispatchEnrollmentsUpdated(EnrollmentManager.loadAll());
+
+    // Notify speakers modal that enrollment is complete
+    window.dispatchEvent(new CustomEvent('enrollment-complete'));
 
     // Build status message
     const statusParts = [];
