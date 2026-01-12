@@ -13,6 +13,7 @@ export {
   calculateStorageSize,
   generateRecordingName,
   generateRecordingId,
+  generateReprocessedName,
   formatDuration,
   formatFileSize,
 } from './recordingSerializer.js';

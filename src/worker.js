@@ -272,6 +272,9 @@ self.addEventListener('message', async (event) => {
     case 'extract-embedding':
       await handleExtractEmbedding(data, requestId);
       break;
+    case 'batch-extract-embeddings':
+      await handleBatchExtractEmbeddings(data, requestId);
+      break;
     case 'transcribe-for-validation':
       await handleTranscribeForValidation(data, requestId);
       break;
@@ -727,6 +730,50 @@ async function handleExtractEmbedding({ audio, sampleId }, requestId) {
       },
     });
   }
+}
+
+/**
+ * Extract embeddings for multiple audio segments in batch
+ * Used for reprocessing recordings with a different embedding model
+ */
+async function handleBatchExtractEmbeddings({ segments }, requestId) {
+  const results = [];
+  const total = segments.length;
+
+  for (let i = 0; i < total; i++) {
+    const seg = segments[i];
+    try {
+      const audioData = seg.audio instanceof Float32Array ? seg.audio : new Float32Array(seg.audio);
+
+      // Minimum 0.5s of audio required (8000 samples at 16kHz)
+      if (audioData.length < 8000) {
+        results.push({ index: seg.index, embedding: null, error: 'Audio too short' });
+      } else {
+        const embedding = await ModelManager.extractEmbedding(audioData);
+        results.push({
+          index: seg.index,
+          embedding: embedding ? Array.from(embedding) : null,
+          error: embedding ? null : 'Extraction failed',
+        });
+      }
+
+      // Emit progress
+      self.postMessage({
+        type: 'batch-embedding-progress',
+        requestId,
+        current: i + 1,
+        total,
+      });
+    } catch (error) {
+      results.push({ index: seg.index, embedding: null, error: error.message });
+    }
+  }
+
+  self.postMessage({
+    type: 'batch-embedding-result',
+    requestId,
+    results,
+  });
 }
 
 /**

@@ -182,3 +182,23 @@ export function formatFileSize(bytes) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+/**
+ * Generate a name for a reprocessed recording
+ * @param {string} originalName - Original recording name
+ * @param {string} mode - Reprocessing mode ('quick' or 'full')
+ * @returns {string}
+ */
+export function generateReprocessedName(originalName, mode) {
+  // Check if already a reprocessed recording
+  const reprocessMatch = originalName.match(/^(.+?) \(reprocessed(?: (\d+))?\)$/);
+  if (reprocessMatch) {
+    const baseName = reprocessMatch[1];
+    const count = reprocessMatch[2] ? parseInt(reprocessMatch[2], 10) + 1 : 2;
+    return `${baseName} (reprocessed ${count})`;
+  }
+
+  // First reprocess - add suffix
+  const suffix = mode === 'quick' ? 'reprocessed' : 'reprocessed';
+  return `${originalName} (${suffix})`;
+}

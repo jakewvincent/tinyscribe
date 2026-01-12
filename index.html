@@ -297,6 +297,25 @@
                     </template>
                     <div class="recording-actions" @click.stop>
                       <button class="btn-icon" @click="startRename(recording.id, recording.name)" title="Rename"><i class="ti ti-pencil"></i></button>
+                      <div class="reprocess-container">
+                        <button class="btn-icon" @click="openReprocessMenu(recording.id)" title="Reprocess" :disabled="isReprocessing"><i class="ti ti-refresh"></i></button>
+                        <div class="reprocess-menu" x-show="showReprocessMenu === recording.id" @click.outside="closeReprocessMenu()" x-cloak>
+                          <button class="reprocess-option" @click="reprocess(recording.id, 'quick')">
+                            <i class="ti ti-bolt"></i>
+                            <div class="option-text">
+                              <span class="option-title">Quick (re-embed)</span>
+                              <span class="option-desc">Keep text, new embeddings</span>
+                            </div>
+                          </button>
+                          <button class="reprocess-option" @click="reprocess(recording.id, 'full')">
+                            <i class="ti ti-refresh"></i>
+                            <div class="option-text">
+                              <span class="option-title">Full reprocess</span>
+                              <span class="option-desc">Re-run entire pipeline</span>
+                            </div>
+                          </button>
+                        </div>
+                      </div>
                       <button class="btn-icon delete" @click="deleteRecording(recording.id)" title="Delete"><i class="ti ti-trash"></i></button>
                     </div>
                   </div>
@@ -308,6 +327,12 @@
                     <span class="meta-sep">|</span>
                     <span class="meta-item" x-text="formatSize(recording.sizeBytes)"></span>
                   </div>
+                  <!-- Model badges -->
+                  <div class="recording-models" x-show="recording.processingInfo">
+                    <span class="model-badge" x-text="getModelBadge(recording.processingInfo, 'embedding')" x-show="getModelBadge(recording.processingInfo, 'embedding')"></span>
+                    <span class="model-badge" x-text="getModelBadge(recording.processingInfo, 'segmentation')" x-show="getModelBadge(recording.processingInfo, 'segmentation')"></span>
+                    <span class="model-badge reprocessed" x-show="recording.processingInfo?.reprocessMode" x-text="recording.processingInfo?.reprocessMode"></span>
+                  </div>
                   <div class="recording-date" x-text="formatDate(recording.createdAt)"></div>
                 </div>
               </template>
@@ -317,6 +342,18 @@
             <div class="recordings-empty" x-show="recordings.length === 0">
               <p>No saved recordings yet.</p>
               <p class="hint">Recordings are saved automatically when you stop recording.</p>
+            </div>
+
+            <!-- Reprocessing progress indicator -->
+            <div class="reprocess-progress" x-show="isReprocessing" x-cloak>
+              <div class="progress-info">
+                <i class="ti ti-loader-2 spinning"></i>
+                <span x-text="reprocessProgress.mode === 'quick' ? 'Re-embedding' : 'Reprocessing'"></span>
+                <span x-text="reprocessProgress.current + '/' + reprocessProgress.total"></span>
+              </div>
+              <div class="progress-bar">
+                <div class="progress-fill" :style="'width: ' + (reprocessProgress.total > 0 ? (reprocessProgress.current / reprocessProgress.total * 100) : 0) + '%'"></div>
+              </div>
             </div>
 
             <!-- Playback controls (when viewing) -->
@@ -348,6 +385,22 @@
                         :class="{ 'active': enrollmentSource === 'current' }"
                         @click="setEnrollmentSource('current')"
                         title="Re-identify speakers with current enrollments">Current</button>
+              </div>
+
+              <!-- Processing info for viewed recording -->
+              <div class="processing-info" x-show="viewedRecording?.processingInfo">
+                <div class="info-row">
+                  <span class="info-label">Embedding:</span>
+                  <span class="info-value" x-text="viewedRecording?.processingInfo?.embeddingModel?.name || 'Unknown'"></span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Segmentation:</span>
+                  <span class="info-value" x-text="viewedRecording?.processingInfo?.segmentationModel?.name || 'Unknown'"></span>
+                </div>
+                <div class="info-row" x-show="viewedRecording?.processingInfo?.sourceRecordingId">
+                  <span class="info-label">Mode:</span>
+                  <span class="info-value reprocessed" x-text="viewedRecording?.processingInfo?.reprocessMode === 'quick' ? 'Quick reprocess' : 'Full reprocess'"></span>
+                </div>
               </div>
             </div>
           </div>

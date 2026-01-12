@@ -36,6 +36,7 @@ import {
   calculateStorageSize,
   generateRecordingName,
   generateRecordingId,
+  generateReprocessedName,
   formatDuration,
   formatFileSize,
   encodeWav,
@@ -340,6 +341,11 @@ export class App {
       const { params } = e.detail;
       this.updateSegmentationParams(params);
     });
+
+    // Recording reprocessing
+    window.addEventListener('recording-reprocess', (e) => {
+      this.reprocessRecording(e.detail.id, e.detail.mode);
+    });
   }
 
   /**
@@ -412,6 +418,20 @@ export class App {
 
       case 'debug-log':
         this.debugLogger.log(event.data.logType, event.data.data);
+        break;
+
+      case 'batch-embedding-progress':
+        window.dispatchEvent(new CustomEvent('reprocess-progress', {
+          detail: { current: event.data.current, total: event.data.total, mode: 'quick' },
+        }));
+        break;
+
+      case 'batch-embedding-result':
+        // Handled via promise resolver set in batchExtractEmbeddings
+        if (this._batchEmbeddingResolver) {
+          this._batchEmbeddingResolver(event.data.results);
+          this._batchEmbeddingResolver = null;
+        }
         break;
     }
   }
@@ -2127,6 +2147,13 @@ export class App {
       // Calculate storage size (includes transcription data)
       const sizeBytes = calculateStorageSize(segments, this.sessionAudioChunks, this.sessionTranscriptionData);
 
+      // Get current model configuration for processingInfo
+      const embeddingModelId = ModelSelectionStore.getEmbeddingModel();
+      const embeddingModelConfig = getEmbeddingModelConfig(embeddingModelId);
+      const segmentationModelId = SegmentationModelStore.getSegmentationModel();
+      const segmentationModelConfig = getSegmentationModelConfig(segmentationModelId);
+      const segmentationParams = SegmentationModelStore.getParams(segmentationModelId);
+
       // Create recording object
       const recording = {
         id: generateRecordingId(),
@@ -2137,6 +2164,22 @@ export class App {
         participants,
         enrollmentsSnapshot,
         numSpeakersConfig: this.numSpeakers,
+        processingInfo: {
+          embeddingModel: {
+            id: embeddingModelId,
+            name: embeddingModelConfig?.name || embeddingModelId,
+            dimensions: embeddingModelConfig?.dimensions || null,
+          },
+          segmentationModel: {
+            id: segmentationModelId,
+            name: segmentationModelConfig?.name || segmentationModelId,
+          },
+          segmentationParams: segmentationParams || {},
+          asrModel: { id: 'whisper-tiny.en', name: 'Whisper Tiny (English)' },
+          processedAt: Date.now(),
+          sourceRecordingId: null,
+          reprocessMode: null,
+        },
         metadata: {
           chunkCount: this.sessionAudioChunks.length,
           segmentCount: segments.length,
@@ -2544,6 +2587,376 @@ export class App {
       console.error('[Recording] Failed to download:', error);
       this.recordingStatus.textContent = 'Failed to download recording';
     }
+  }
+
+  // ==================== Reprocessing Methods ====================
+
+  /**
+   * Reprocess a saved recording with current model settings
+   * @param {string} recordingId - Recording to reprocess
+   * @param {string} mode - 'quick' (re-embed only) or 'full' (full pipeline)
+   */
+  async reprocessRecording(recordingId, mode) {
+    if (this.isRecording) {
+      this.recordingStatus.textContent = 'Stop recording before reprocessing';
+      return;
+    }
+
+    if (!this.isModelLoaded) {
+      this.recordingStatus.textContent = 'Wait for models to load before reprocessing';
+      return;
+    }
+
+    try {
+      this.recordingStatus.textContent = 'Loading recording for reprocessing...';
+      this.updateStatusBar('processing');
+
+      // Load recording with chunks
+      const data = await this.recordingStore.getWithChunks(recordingId);
+      if (!data) {
+        this.recordingStatus.textContent = 'Recording not found';
+        this.updateStatusBar('ready');
+        return;
+      }
+
+      const { recording, chunks, transcriptionData } = data;
+
+      // Dispatch to appropriate mode
+      let newSegments;
+      if (mode === 'quick') {
+        newSegments = await this.reprocessQuickMode(recording, chunks);
+      } else {
+        newSegments = await this.reprocessFullMode(recording, chunks, transcriptionData);
+      }
+
+      // Save as new recording
+      await this.saveReprocessedRecording(recording, newSegments, mode, chunks, transcriptionData);
+
+      // Emit completion event
+      window.dispatchEvent(new CustomEvent('reprocess-complete', { detail: { mode } }));
+
+      this.updateStatusBar('ready');
+    } catch (error) {
+      console.error('[Recording] Reprocessing failed:', error);
+      this.recordingStatus.textContent = 'Reprocessing failed: ' + error.message;
+      this.updateStatusBar('ready');
+      window.dispatchEvent(new CustomEvent('reprocess-complete', { detail: { mode, error: error.message } }));
+    }
+  }
+
+  /**
+   * Quick reprocessing: keep ASR, re-extract embeddings, re-cluster
+   * @param {Object} recording - Recording metadata with segments
+   * @param {Object[]} chunks - Serialized audio chunks
+   * @returns {Object[]} New segments with updated embeddings and speaker assignments
+   */
+  async reprocessQuickMode(recording, chunks) {
+    this.recordingStatus.textContent = 'Reprocessing (quick): preparing audio...';
+
+    // Deserialize and combine audio chunks
+    const audioChunks = deserializeChunks(chunks);
+    const combinedAudio = combineChunks(audioChunks);
+
+    // Build segment audio slices from original segment timings
+    // Only process speech segments with valid timing
+    const segmentsToProcess = [];
+    const segmentIndices = [];
+
+    for (let i = 0; i < recording.segments.length; i++) {
+      const seg = recording.segments[i];
+      if (seg.startTime != null && seg.endTime != null && !seg.isEnvironmental) {
+        const startSample = Math.floor(seg.startTime * 16000);
+        const endSample = Math.ceil(seg.endTime * 16000);
+        if (endSample > startSample && endSample <= combinedAudio.length) {
+          segmentsToProcess.push({
+            index: i,
+            audio: Array.from(combinedAudio.slice(startSample, endSample)),
+          });
+          segmentIndices.push(i);
+        }
+      }
+    }
+
+    if (segmentsToProcess.length === 0) {
+      throw new Error('No segments to reprocess');
+    }
+
+    this.recordingStatus.textContent = `Reprocessing (quick): extracting embeddings 0/${segmentsToProcess.length}...`;
+
+    // Request batch embedding extraction from worker
+    const embeddings = await this.batchExtractEmbeddings(segmentsToProcess);
+
+    // Create a map of new embeddings by segment index
+    const embeddingMap = new Map();
+    for (const result of embeddings) {
+      if (result.embedding) {
+        embeddingMap.set(result.index, new Float32Array(result.embedding));
+      }
+    }
+
+    this.recordingStatus.textContent = 'Reprocessing (quick): clustering speakers...';
+
+    // Reset clusterer and seed with current enrollments
+    const clusterer = this.transcriptMerger.speakerClusterer;
+    clusterer.reset();
+    const enrollments = EnrollmentManager.loadAll();
+    if (enrollments.length > 0) {
+      clusterer.seedFromEnrollments(enrollments);
+    }
+
+    // Build new segments with updated embeddings and speaker assignments
+    const newSegments = recording.segments.map((seg, i) => {
+      const newSeg = { ...seg };
+
+      if (seg.isEnvironmental) {
+        return newSeg;
+      }
+
+      const newEmbedding = embeddingMap.get(i);
+      if (newEmbedding) {
+        newSeg.embedding = Array.from(newEmbedding);
+        const result = clusterer.assignSpeaker(newEmbedding, true);
+        newSeg.speaker = result.speakerId;
+        newSeg.speakerLabel = clusterer.getSpeakerLabel(result.speakerId);
+        newSeg.isEnrolledSpeaker = result.debug?.isEnrolled || false;
+        newSeg.speakerName = clusterer.speakers[result.speakerId]?.name || null;
+        newSeg.debug = { ...newSeg.debug, clustering: result.debug };
+      }
+
+      return newSeg;
+    });
+
+    return newSegments;
+  }
+
+  /**
+   * Send batch embedding extraction request to worker
+   * @param {Object[]} segments - Array of { index, audio } objects
+   * @returns {Promise<Object[]>} Array of { index, embedding, error } results
+   */
+  batchExtractEmbeddings(segments) {
+    return new Promise((resolve) => {
+      this._batchEmbeddingResolver = resolve;
+      this.worker.postMessage({
+        type: 'batch-extract-embeddings',
+        data: { segments },
+      });
+    });
+  }
+
+  /**
+   * Full reprocessing: re-run ASR, segmentation, and embeddings
+   * @param {Object} recording - Recording metadata
+   * @param {Object[]} chunks - Serialized audio chunks
+   * @param {Object[]} transcriptionData - Original transcription data (for reference)
+   * @returns {Object[]} New segments from full pipeline
+   */
+  async reprocessFullMode(recording, chunks, transcriptionData) {
+    this.recordingStatus.textContent = 'Reprocessing (full): initializing...';
+
+    // Deserialize audio chunks
+    const audioChunks = deserializeChunks(chunks);
+
+    // Reset transcript merger state
+    this.transcriptMerger.reset();
+
+    // Reset clusterer and seed with current enrollments
+    const clusterer = this.transcriptMerger.speakerClusterer;
+    clusterer.reset();
+    const enrollments = EnrollmentManager.loadAll();
+    if (enrollments.length > 0) {
+      clusterer.seedFromEnrollments(enrollments);
+    }
+
+    // Track state for overlap merging
+    let lastChunkResult = null;
+    let globalTimeOffset = 0;
+    const allSegments = [];
+
+    // Process each chunk through worker
+    for (let i = 0; i < audioChunks.length; i++) {
+      const chunk = audioChunks[i];
+
+      // Emit progress
+      window.dispatchEvent(new CustomEvent('reprocess-progress', {
+        detail: { current: i + 1, total: audioChunks.length, mode: 'full' },
+      }));
+
+      this.recordingStatus.textContent = `Reprocessing (full): chunk ${i + 1}/${audioChunks.length}...`;
+
+      // Send to worker and await result
+      const result = await this.workerTranscribePromise(chunk.audio, i, chunk.overlapDuration, chunk.isFinal);
+
+      if (!result || !result.data) continue;
+
+      const { data } = result;
+      const transcript = data.transcript;
+      let phrases = data.phrases || [];
+
+      // Handle overlap merging similar to handleTranscriptionResult
+      let wordsToUse = transcript?.chunks || [];
+      let chunkStartTime = globalTimeOffset;
+
+      if (lastChunkResult && chunk.overlapDuration > 0) {
+        const prevWords = lastChunkResult.transcript?.chunks || [];
+        const mergeResult = this.overlapMerger.findMergePoint(prevWords, wordsToUse, chunk.overlapDuration);
+
+        if (mergeResult.mergeIndex > 0) {
+          const mergeTimestamp = wordsToUse[mergeResult.mergeIndex]?.timestamp?.[0] || 0;
+          wordsToUse = wordsToUse.slice(mergeResult.mergeIndex);
+          phrases = phrases.filter(p => p.end > mergeTimestamp);
+          chunkStartTime = globalTimeOffset;
+          wordsToUse = this.overlapMerger.adjustTimestamps(wordsToUse, chunk.overlapDuration);
+          phrases = phrases.map(p => ({
+            ...p,
+            start: p.start - chunk.overlapDuration,
+            end: p.end - chunk.overlapDuration,
+          }));
+        }
+      }
+
+      // Build filtered transcript
+      const filteredTranscript = {
+        ...transcript,
+        chunks: wordsToUse,
+      };
+
+      // Merge phrases into segments
+      const mergedSegments = this.transcriptMerger.merge(filteredTranscript, phrases, chunkStartTime);
+      allSegments.push(...mergedSegments);
+
+      // Update time offset for next chunk
+      if (wordsToUse.length > 0) {
+        const lastWord = wordsToUse[wordsToUse.length - 1];
+        const lastWordEnd = lastWord.timestamp?.[1] || lastWord.timestamp?.[0] || 0;
+        globalTimeOffset = chunkStartTime + lastWordEnd;
+      }
+
+      lastChunkResult = { transcript: filteredTranscript, phrases };
+    }
+
+    return allSegments;
+  }
+
+  /**
+   * Send transcribe request to worker and await result
+   * @param {Float32Array} audio - Audio data
+   * @param {number} chunkIndex - Chunk index
+   * @param {number} overlapDuration - Overlap duration in seconds
+   * @param {boolean} isFinal - Is this the final chunk
+   * @returns {Promise<Object>} Worker result
+   */
+  workerTranscribePromise(audio, chunkIndex, overlapDuration, isFinal) {
+    return new Promise((resolve) => {
+      const handler = (event) => {
+        if (event.data.type === 'result' && event.data.data?.chunkIndex === chunkIndex) {
+          this.worker.removeEventListener('message', handler);
+          resolve(event.data);
+        }
+      };
+      this.worker.addEventListener('message', handler);
+
+      this.worker.postMessage({
+        type: 'transcribe',
+        data: {
+          audio: Array.from(audio),
+          language: 'en',
+          chunkIndex,
+          overlapDuration,
+          isFinal,
+        },
+      });
+    });
+  }
+
+  /**
+   * Save reprocessed recording as a new entry
+   * @param {Object} original - Original recording
+   * @param {Object[]} newSegments - Reprocessed segments
+   * @param {string} mode - 'quick' or 'full'
+   * @param {Object[]} chunks - Serialized audio chunks
+   * @param {Object[]} transcriptionData - Transcription data
+   */
+  async saveReprocessedRecording(original, newSegments, mode, chunks, transcriptionData) {
+    this.recordingStatus.textContent = 'Saving reprocessed recording...';
+
+    // Get current model configuration
+    const embeddingModelId = ModelSelectionStore.getEmbeddingModel();
+    const embeddingModelConfig = getEmbeddingModelConfig(embeddingModelId);
+    const segmentationModelId = SegmentationModelStore.getSegmentationModel();
+    const segmentationModelConfig = getSegmentationModelConfig(segmentationModelId);
+    const segmentationParams = SegmentationModelStore.getParams(segmentationModelId);
+
+    // Calculate duration from segments
+    const lastSegment = newSegments[newSegments.length - 1];
+    const duration = lastSegment?.endTime || original.duration;
+
+    // Extract participants from new segments
+    const speakerSet = new Map();
+    for (const seg of newSegments) {
+      if (seg.speaker != null && !seg.isEnvironmental) {
+        if (!speakerSet.has(seg.speaker)) {
+          speakerSet.set(seg.speaker, {
+            speakerId: seg.speaker,
+            label: seg.speakerLabel,
+            name: seg.speakerName || null,
+            segmentCount: 0,
+            isEnrolled: seg.isEnrolledSpeaker || false,
+          });
+        }
+        speakerSet.get(seg.speaker).segmentCount++;
+      }
+    }
+    const participants = Array.from(speakerSet.values());
+
+    // Get current enrollments
+    const enrollmentsSnapshot = EnrollmentManager.loadAll();
+
+    // Calculate storage size
+    const sizeBytes = calculateStorageSize(newSegments, deserializeChunks(chunks), transcriptionData);
+
+    // Create new recording
+    const newRecording = {
+      id: generateRecordingId(),
+      name: generateReprocessedName(original.name, mode),
+      createdAt: Date.now(),
+      duration,
+      segments: newSegments,
+      participants,
+      enrollmentsSnapshot,
+      numSpeakersConfig: this.numSpeakers,
+      processingInfo: {
+        embeddingModel: {
+          id: embeddingModelId,
+          name: embeddingModelConfig?.name || embeddingModelId,
+          dimensions: embeddingModelConfig?.dimensions || null,
+        },
+        segmentationModel: {
+          id: segmentationModelId,
+          name: segmentationModelConfig?.name || segmentationModelId,
+        },
+        segmentationParams: segmentationParams || {},
+        asrModel: { id: 'whisper-tiny.en', name: 'Whisper Tiny (English)' },
+        processedAt: Date.now(),
+        sourceRecordingId: original.id,
+        reprocessMode: mode,
+      },
+      metadata: {
+        chunkCount: chunks.length,
+        segmentCount: newSegments.length,
+        sizeBytes,
+      },
+    };
+
+    // Save to IndexedDB (reuse original audio chunks)
+    await this.recordingStore.save(newRecording, chunks, transcriptionData);
+
+    // Update recordings list
+    await this.loadRecordingsList();
+
+    const modeLabel = mode === 'quick' ? 'quick' : 'full';
+    console.log(`[Recording] Reprocessed "${original.name}" (${modeLabel}) → "${newRecording.name}"`);
+    this.recordingStatus.textContent = `Saved: ${newRecording.name}`;
   }
 
   // ==================== Enrollment Methods ====================
