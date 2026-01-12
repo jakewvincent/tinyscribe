@@ -64,22 +64,25 @@ App.js handles audio capture, modal dialogs, and worker communication.
 
 Models are cached in IndexedDB after first download.
 
-### Future Direction: Swappable Models
+### Swappable Models
 
-To support the experimental nature of this project, we're working toward making model choices **configurable and swappable** at runtime. This allows A/B testing different models and observing their behavior differences - perfect for gaining insight into how different architectures perform.
+To support the experimental nature of this project, model choices are **configurable and swappable** at runtime. This allows A/B testing different models and observing their behavior differences - perfect for gaining insight into how different architectures perform.
 
-#### Model Categories to Make Swappable
+#### Current Implementation Status
 
-1. **Speaker Embedding Models** (first priority)
-   - Extract voice identity vectors for clustering/matching
-   - Different models produce different embedding dimensions
+1. **Speaker Segmentation Models** ✅ Implemented
+   - Swappable via UI dropdown in the Segmentation Tuning panel
+   - Available backends: Phrase-gap heuristic (text-based) and Pyannote 3.0 (acoustic)
+   - Each backend exposes tunable parameters in the UI
 
-2. **Speaker Segmentation Models** (second priority)
-   - Detect speaker boundaries at the audio level
-   - Current approach uses text-gap heuristics; proper segmentation models work acoustically
+2. **Speaker Embedding Models** 🔧 Infrastructure exists
+   - Backend abstraction layer in `worker/backends/`
+   - Multiple backends: Transformers.js WavLM, Sherpa-ONNX 3D-Speaker, direct ONNX
+   - Not yet exposed in UI for runtime switching
 
 3. **ASR Models** (lower priority)
    - Speech-to-text; currently Whisper Tiny
+   - No swapping infrastructure yet
 
 #### Suggested Model Combinations for Experimentation
 
@@ -103,27 +106,31 @@ To support the experimental nature of this project, we're working toward making 
 
 **Segmentation Model Options:**
 
-| Model | Size | Notes |
-|-------|------|-------|
-| Phrase-gap heuristic (current) | 0MB | Text-based, uses Whisper word timing |
-| pyannote-segmentation-3.0 | ~6MB | Acoustic, handles overlapping speech |
-| sherpa-onnx-reverb-diarization-v1 | TBD | Alternative acoustic segmentation |
+| Model | Size | Status | Notes |
+|-------|------|--------|-------|
+| Phrase-gap heuristic | 0MB | ✅ Implemented | Text-based, uses Whisper word timing |
+| pyannote-segmentation-3.0 | ~6MB | ✅ Implemented | Acoustic, handles overlapping speech |
+| sherpa-onnx-reverb-diarization-v1 | TBD | Not implemented | Alternative acoustic segmentation |
 
-#### Architecture Goal
+#### Backend Architecture
+
+The backend abstraction layer enables swappable models:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     Model Registry                          │
-│  ┌─────────────────┐  ┌─────────────────┐                  │
-│  │ Embedding Models│  │Segmentation Models│                 │
-│  └────────┬────────┘  └────────┬────────┘                  │
+│                   worker/backends/                          │
+│  ┌─────────────────┐  ┌─────────────────────┐              │
+│  │ Embedding       │  │ Segmentation        │              │
+│  │ Backends        │  │ Backends            │              │
+│  │ (3 options)     │  │ (2 implemented)     │              │
+│  └────────┬────────┘  └────────┬────────────┘              │
 │           │                    │                            │
 │           ▼                    ▼                            │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │              Unified Interfaces                      │   │
-│  │  SpeakerEmbedder { extractEmbedding(audio) }        │   │
-│  │  SpeakerSegmenter { segment(audio) }                │   │
-│  └─────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │              Unified Interfaces                         ││
+│  │  EmbeddingBackend { extractEmbedding(audio) }          ││
+│  │  SegmentationBackend { segment(audio, words) }         ││
+│  └─────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -159,7 +166,8 @@ src/
 │   ├── inference/
 │   │   └── conversationInference.js # Hypothesis-based speaker boosting and stats
 │   ├── recording/
-│   │   └── recordingSerializer.js   # Float32Array serialization for IndexedDB
+│   │   ├── recordingSerializer.js   # Float32Array serialization for IndexedDB
+│   │   └── wavEncoder.js            # WAV encoding and audio download
 │   ├── sound/
 │   │   └── soundClassifier.js  # Classifies bracketed markers (speech vs environmental)
 │   └── validation/
@@ -179,7 +187,16 @@ src/
 │           └── recordingStore.js   # Saved recordings with audio chunks
 │
 ├── worker/                 # Worker abstraction
-│   └── workerClient.js     # Promise-based API for worker communication
+│   ├── workerClient.js     # Promise-based API for worker communication
+│   └── backends/           # Swappable model backends
+│       ├── embeddingBackend.js      # Base embedding interface
+│       ├── transformersBackend.js   # Transformers.js WavLM backend
+│       ├── sherpaBackend.js         # Sherpa-ONNX 3D-Speaker backend
+│       ├── onnxBackend.js           # Direct ONNX runtime backend
+│       └── segmentation/
+│           ├── segmentationBackend.js   # Base segmentation interface
+│           ├── phraseGapBackend.js      # Text-based phrase gap heuristic
+│           └── pyannoteSegBackend.js    # Pyannote acoustic segmentation
 │
 ├── ui/                     # UI components
 │   └── components/
@@ -265,6 +282,15 @@ Sessions are automatically saved when recording stops:
 - **Enrollments**: Each recording snapshots the active enrollments; when viewing, can toggle between snapshot and current enrollments to re-cluster with different speaker identities
 - **Max recordings**: Oldest auto-deleted when exceeding limit (configurable, default 20)
 
+Export options:
+- **Download audio**: Export recording as WAV file (16-bit PCM, 16kHz)
+- **Export transcript**: Download processed transcript as JSON (includes segments, speaker info, similarity scores)
+- **Export raw chunks**: Download raw Whisper output per chunk as JSON
+
+Management:
+- **Rename**: Click recording name to edit
+- **Delete**: Remove individual recordings from storage
+
 ### Hypothesis-Based Speaker Boosting
 
 The ConversationInference module tracks conversational patterns to improve attribution:
@@ -291,6 +317,7 @@ The ConversationInference module tracks conversational patterns to improve attri
 - **Alpine.js**: CDN-loaded (v3 + persist plugin), no build step. Components communicate with app.js via CustomEvents. Panel states persisted to localStorage.
 - **IndexedDB**: Used for ML model cache (~400MB) and saved recordings. Two-store pattern for recordings separates metadata from audio chunks.
 - **Audio cloning**: In `handleAudioChunk()`, audio is cloned before queuing since pipeline never mutates Float32Arrays. This captures audio for recording without interference.
+- **WAV export**: Recordings downloadable as 16-bit PCM WAV at 16kHz sample rate.
 
 ## Configuration
 
