@@ -49,10 +49,18 @@ export default defineConfig({
     },
     // Proxy for ONNX model downloads (bypasses CORS during development)
     proxy: {
+      // Embedding models from sherpa-onnx
       '/models/sherpa-onnx': {
         target: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/models\/sherpa-onnx/, ''),
+        followRedirects: true,
+      },
+      // Segmentation models from sherpa-onnx
+      '/models/segmentation': {
+        target: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/models\/segmentation/, ''),
         followRedirects: true,
       },
     },

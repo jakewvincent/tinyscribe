@@ -3,11 +3,12 @@
  *
  * Defines available speaker segmentation models with their backend requirements.
  * This enables experimentation with different segmentation approaches to compare
- * text-based (phrase gap) vs acoustic (pyannote) speaker boundary detection.
+ * text-based (phrase gap) vs acoustic (pyannote/reverb) speaker boundary detection.
  *
  * Backends:
  * - text-gap: Uses Whisper word timestamps and gap detection (no model required)
- * - transformers-js: Uses @huggingface/transformers for acoustic models
+ * - transformers-js: Uses @huggingface/transformers for HuggingFace ONNX models
+ * - onnx: Uses onnxruntime-web directly for raw ONNX files (sherpa-onnx models)
  */
 
 /**
@@ -26,8 +27,8 @@
  * @typedef {Object} SegmentationModelConfig
  * @property {string} id - Unique identifier for the model
  * @property {string} name - Human-readable display name
- * @property {'text-gap'|'transformers-js'} backend - Inference backend to use
- * @property {string} [source] - Model source (HuggingFace ID)
+ * @property {'text-gap'|'transformers-js'|'onnx'} backend - Inference backend to use
+ * @property {string} [source] - Model source (HuggingFace ID or ONNX URL/path)
  * @property {string} size - Approximate model size for display
  * @property {string} description - Brief description for UI
  * @property {number} [maxSpeakers] - Max speakers model can detect per chunk (null = unlimited)
@@ -75,6 +76,56 @@ export const SEGMENTATION_MODELS = {
     source: 'onnx-community/pyannote-segmentation-3.0',
     size: '~6 MB',
     description: 'Acoustic segmentation. Detects speaker boundaries from audio.',
+    maxSpeakers: 3,
+    params: {
+      minSegmentDuration: {
+        default: 0.0,
+        min: 0.0,
+        max: 2.0,
+        step: 0.1,
+        label: 'Min Segment Duration',
+        description: 'Remove speaker segments shorter than this (seconds). Higher = fewer short segments.',
+        unit: 's',
+      },
+      segmentPadding: {
+        default: 0.0,
+        min: 0.0,
+        max: 1.0,
+        step: 0.05,
+        label: 'Segment Padding',
+        description: 'Extend segment boundaries by this amount (seconds). Helps merge nearby segments.',
+        unit: 's',
+      },
+      mergeGapThreshold: {
+        default: 0.5,
+        min: 0.0,
+        max: 2.0,
+        step: 0.1,
+        label: 'Merge Gap Threshold',
+        description: 'Merge same-speaker segments if gap is smaller than this (seconds)',
+        unit: 's',
+      },
+      minConfidence: {
+        default: 0.0,
+        min: 0.0,
+        max: 0.9,
+        step: 0.05,
+        label: 'Min Confidence',
+        description: 'Filter out segments with confidence below this threshold',
+        unit: '',
+      },
+    },
+  },
+  'reverb-diarization-v1': {
+    id: 'reverb-diarization-v1',
+    name: 'Reverb Diarization v1',
+    backend: 'onnx',
+    // Model file extracted from sherpa-onnx-reverb-diarization-v1.tar.bz2
+    // Download: https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-segmentation-models
+    // Place extracted model.onnx in public/models/segmentation/reverb-diarization-v1/
+    source: '/models/segmentation/reverb-diarization-v1/model.onnx',
+    size: '~9 MB',
+    description: 'Fine-tuned pyannote. 16.5% better WDER than baseline.',
     maxSpeakers: 3,
     params: {
       minSegmentDuration: {

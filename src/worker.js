@@ -7,7 +7,7 @@
 import { pipeline } from '@huggingface/transformers';
 
 import { TransformersBackend, OnnxBackend } from './worker/backends/index.js';
-import { PhraseGapBackend, PyannoteSegBackend } from './worker/backends/segmentation/index.js';
+import { PhraseGapBackend, PyannoteSegBackend, OnnxSegBackend } from './worker/backends/segmentation/index.js';
 import { mapWordsToSegments } from './core/transcription/wordSegmentMapper.js';
 import { getEmbeddingModelConfig, DEFAULT_EMBEDDING_MODEL } from './config/models.js';
 import { getSegmentationModelConfig, DEFAULT_SEGMENTATION_MODEL } from './config/segmentation.js';
@@ -194,6 +194,9 @@ class SegmentationManager {
         break;
       case 'transformers-js':
         this.backend = new PyannoteSegBackend();
+        break;
+      case 'onnx':
+        this.backend = new OnnxSegBackend();
         break;
       default:
         throw new Error(`Unknown segmentation backend: ${this.modelConfig.backend}`);
