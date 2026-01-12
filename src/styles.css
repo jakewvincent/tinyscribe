@@ -796,6 +796,21 @@ body.resizing * {
   opacity: 1;
 }
 
+/* Model name badge in panel headers */
+.panel-badge {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: 400;
+}
+
+.panel-badge i {
+  font-size: 0.8rem;
+}
+
 /* Small icon button for panel controls */
 .btn-icon-sm {
   display: flex;

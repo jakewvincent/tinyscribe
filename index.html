@@ -497,7 +497,7 @@
             <div class="panel-header-left" @click="toggle()">
               <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
               <h3>Embedding Model</h3>
-              <span class="panel-badge" x-text="currentModelInfo?.name || 'Loading...'"></span>
+              <span class="panel-badge"><i class="ti ti-cpu"></i> <span x-text="currentModelInfo?.name || 'Loading...'"></span></span>
             </div>
             <div class="panel-header-right">
               <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveUp" @click.stop="moveUp()" title="Move up"><i class="ti ti-arrow-move-up"></i></button>
@@ -548,7 +548,7 @@
             <div class="panel-header-left" @click="toggle()">
               <i class="ti ti-chevron-down panel-chevron" :class="{ 'rotated': !expanded }"></i>
               <h3>Segmentation</h3>
-              <span class="panel-badge" x-text="currentModelInfo?.name || 'Loading...'"></span>
+              <span class="panel-badge"><i class="ti ti-cpu"></i> <span x-text="currentModelInfo?.name || 'Loading...'"></span></span>
             </div>
             <div class="panel-header-right">
               <button class="btn-icon-sm panel-move-btn" :disabled="!canMoveUp" @click.stop="moveUp()" title="Move up"><i class="ti ti-arrow-move-up"></i></button>
