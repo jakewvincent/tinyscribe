@@ -22,6 +22,8 @@ class ModelManager {
   static embeddingModelConfig = null;
   static isLoaded = false;
   static device = 'wasm';
+  // Cache for multiple embedding backends (for visualization)
+  static embeddingBackendCache = new Map();
 
   /**
    * Load all models
@@ -80,6 +82,9 @@ class ModelManager {
     }
 
     await this.embeddingBackend.load(this.embeddingModelConfig, progressCallback);
+
+    // Cache the primary backend
+    this.embeddingBackendCache.set(this.embeddingModelConfig.id, this.embeddingBackend);
 
     this.isLoaded = true;
 
@@ -166,6 +171,65 @@ class ModelManager {
       }
     }
     return embeddings;
+  }
+
+  /**
+   * Get or load an embedding backend for a specific model
+   * Used for visualization with different models
+   * @param {string} modelId - Model ID to get/load
+   * @returns {Promise<import('./worker/backends/embeddingBackend.js').EmbeddingBackend>}
+   */
+  static async getOrLoadBackend(modelId) {
+    // Check cache first
+    if (this.embeddingBackendCache.has(modelId)) {
+      return this.embeddingBackendCache.get(modelId);
+    }
+
+    // Load the model
+    const modelConfig = getEmbeddingModelConfig(modelId);
+    if (!modelConfig) {
+      throw new Error(`Unknown embedding model: ${modelId}`);
+    }
+
+    console.log(`[ModelManager] Loading embedding model for visualization: ${modelConfig.name}`);
+
+    let backend;
+    if (modelConfig.backend === 'onnx') {
+      backend = new OnnxBackend();
+    } else {
+      backend = new TransformersBackend();
+    }
+
+    // Load without progress callback (visualization is background operation)
+    await backend.load(modelConfig, () => {});
+
+    // Cache the backend
+    this.embeddingBackendCache.set(modelId, backend);
+
+    console.log(`[ModelManager] Cached embedding backend: ${modelConfig.name}`);
+    return backend;
+  }
+
+  /**
+   * Extract embedding using a specific model (for visualization)
+   * @param {Float32Array} audioSegment - Audio data
+   * @param {string} modelId - Model ID to use
+   * @returns {Promise<Float32Array|null>}
+   */
+  static async extractEmbeddingWithModel(audioSegment, modelId) {
+    try {
+      const backend = await this.getOrLoadBackend(modelId);
+      if (!backend || !backend.isReady()) {
+        console.error(`[ModelManager] Backend not ready for model: ${modelId}`);
+        return null;
+      }
+
+      const normalizedAudio = this.normalizeAudio(audioSegment);
+      return await backend.extractEmbedding(normalizedAudio);
+    } catch (error) {
+      console.error(`[ModelManager] Embedding extraction error for ${modelId}:`, error);
+      return null;
+    }
   }
 }
 
@@ -690,7 +754,7 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, overlapDur
 /**
  * Extract embedding for enrollment
  */
-async function handleExtractEmbedding({ audio, sampleId }, requestId) {
+async function handleExtractEmbedding({ audio, sampleId, modelId }, requestId) {
   try {
     const audioData = audio instanceof Float32Array ? audio : new Float32Array(audio);
 
@@ -699,7 +763,13 @@ async function handleExtractEmbedding({ audio, sampleId }, requestId) {
       throw new Error('Audio too short (minimum 0.5 seconds)');
     }
 
-    const embedding = await ModelManager.extractEmbedding(audioData);
+    // Use specific model if requested (for visualization), otherwise use default
+    let embedding;
+    if (modelId) {
+      embedding = await ModelManager.extractEmbeddingWithModel(audioData, modelId);
+    } else {
+      embedding = await ModelManager.extractEmbedding(audioData);
+    }
 
     if (!embedding) {
       throw new Error('Failed to extract embedding');
