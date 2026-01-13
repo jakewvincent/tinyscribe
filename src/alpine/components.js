@@ -1601,7 +1601,6 @@ document.addEventListener('alpine:init', () => {
           const model = this.embeddingModels.find(m => m.id === value);
           if (model) {
             this.activeJob.settings.embeddingModel = { id: model.id, name: model.name };
-            this.maybeAutoGenerateName();
           }
         }
         // Segmentation model change
@@ -1609,7 +1608,6 @@ document.addEventListener('alpine:init', () => {
           const model = this.segmentationModels.find(m => m.id === value);
           if (model) {
             this.activeJob.settings.segmentationModel = { id: model.id, name: model.name };
-            this.maybeAutoGenerateName();
           }
         }
         // Clustering settings
@@ -1638,22 +1636,6 @@ document.addEventListener('alpine:init', () => {
         // Persist settings to storage (deep clone to avoid IndexedDB serialization issues)
         window.dispatchEvent(new CustomEvent('job-update-settings', {
           detail: { jobId: this.activeJob.id, settings: JSON.parse(JSON.stringify(this.activeJob.settings)) },
-        }));
-      }
-    },
-
-    // Auto-generate job name from models if name hasn't been customized
-    maybeAutoGenerateName() {
-      if (!this.activeJob || this.activeJob.nameCustomized) return;
-
-      const embedName = this.activeJob.settings.embeddingModel?.name?.replace(' SV', '') || 'Unknown';
-      const segName = this.activeJob.settings.segmentationModel?.name?.replace('Text-based ', '') || 'Unknown';
-      const newName = `${embedName} + ${segName}`;
-
-      if (newName !== this.activeJob.name) {
-        this.activeJob.name = newName;
-        window.dispatchEvent(new CustomEvent('job-update-name', {
-          detail: { jobId: this.activeJob.id, name: newName, customized: false },
         }));
       }
     },
