@@ -2719,7 +2719,13 @@ body.resizing * {
   letter-spacing: 0.05em;
 }
 
-.speakers-viz .viz-model-select select {
+.speakers-viz .viz-model-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.speakers-viz .viz-model-controls select {
   font-size: 0.75rem;
   padding: 2px 6px;
   border: 1px solid var(--border-color);
@@ -2729,8 +2735,18 @@ body.resizing * {
   cursor: pointer;
 }
 
-.speakers-viz .viz-model-select select:hover {
+.speakers-viz .viz-model-controls select:hover {
   border-color: var(--border-focus);
+}
+
+.speakers-viz .viz-recalc-btn {
+  padding: 2px 4px;
+  min-width: unset;
+  font-size: 0.75rem;
+}
+
+.speakers-viz .viz-recalc-btn:disabled {
+  opacity: 0.4;
 }
 
 .speakers-viz .viz-model-info {
@@ -2779,7 +2795,7 @@ body.resizing * {
   to { transform: rotate(360deg); }
 }
 
-.speakers-viz .viz-model-select select:disabled {
+.speakers-viz .viz-model-controls select:disabled {
   opacity: 0.6;
   cursor: wait;
 }

@@ -441,6 +441,13 @@ document.addEventListener('alpine:init', () => {
       }));
     },
 
+    recalculateEmbeddings() {
+      if (!this.selectedVisualizationModel) return;
+      window.dispatchEvent(new CustomEvent('visualization-recalculate', {
+        detail: { modelId: this.selectedVisualizationModel }
+      }));
+    },
+
     close() {
       this.isOpen = false;
       this.isAdding = false;

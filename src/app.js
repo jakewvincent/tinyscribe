@@ -352,6 +352,25 @@ export class App {
       await this.updateModalVisualization(modelId);
     });
 
+    // Handle recalculate embeddings request
+    window.addEventListener('visualization-recalculate', async (e) => {
+      const modelId = e.detail.modelId;
+      window.dispatchEvent(new CustomEvent('visualization-loading', { detail: { loading: true, modelId } }));
+
+      try {
+        const metrics = await this.recalculateEmbeddingsForModel(modelId);
+        const models = await this.getVisualizationModels();
+        window.dispatchEvent(new CustomEvent('visualization-models-updated', { detail: { models } }));
+        window.dispatchEvent(new CustomEvent('visualization-metrics-updated', { detail: { metrics, modelId } }));
+      } catch (err) {
+        console.error('[App] Failed to recalculate embeddings:', err);
+      } finally {
+        window.dispatchEvent(new CustomEvent('visualization-loading', { detail: { loading: false } }));
+      }
+
+      await this.updateModalVisualization(modelId);
+    });
+
     // Enrollment modal controls
     this.modalRecordBtn.addEventListener('click', () => this.toggleModalRecording());
     this.modalFinishBtn.addEventListener('click', () => this.finishModalEnrollment());
@@ -3534,6 +3553,67 @@ export class App {
     // Compute discriminability metrics
     const metrics = computeDiscriminabilityMetrics(speakersWithSamples);
     return metrics;
+  }
+
+  /**
+   * Force recalculation of embeddings for all enrollments using a specific model
+   * Unlike computeEmbeddingsForModel, this always recomputes even if embeddings exist
+   * @param {string} modelId - Model ID to compute embeddings for
+   * @returns {Promise<{meanSimilarity: number|null, minSimilarity: object|null, silhouetteScore: number|null}>}
+   */
+  async recalculateEmbeddingsForModel(modelId) {
+    const enrollments = await EnrollmentManager.loadAll();
+    const speakersWithSamples = [];
+
+    for (const enrollment of enrollments) {
+      // Get audio samples
+      const audioSamples = await enrollmentStore.getAudioSamples(enrollment.id);
+      if (!audioSamples || audioSamples.length === 0) {
+        console.warn(`[App] No audio samples for enrollment "${enrollment.name}", skipping`);
+        continue;
+      }
+
+      // Compute embedding for each sample
+      const sampleEmbeddings = [];
+      for (const audio of audioSamples) {
+        const embedding = await this.extractEmbeddingFromWorkerWithModel(audio, modelId);
+        if (embedding) {
+          sampleEmbeddings.push(embedding);
+        }
+      }
+
+      if (sampleEmbeddings.length === 0) {
+        console.warn(`[App] Failed to compute embeddings for "${enrollment.name}" with model ${modelId}`);
+        continue;
+      }
+
+      // Average the embeddings to create centroid
+      const dim = sampleEmbeddings[0].length;
+      const avgEmbedding = new Float32Array(dim);
+      for (const emb of sampleEmbeddings) {
+        for (let i = 0; i < dim; i++) {
+          avgEmbedding[i] += emb[i];
+        }
+      }
+      for (let i = 0; i < dim; i++) {
+        avgEmbedding[i] /= sampleEmbeddings.length;
+      }
+
+      // Store the computed centroid and sample embeddings
+      await enrollmentStore.setEmbeddingForModel(enrollment.id, modelId, avgEmbedding, sampleEmbeddings);
+      console.log(`[App] Recalculated ${modelId} embedding for "${enrollment.name}" (${sampleEmbeddings.length} samples)`);
+
+      // Collect for metrics
+      speakersWithSamples.push({
+        id: enrollment.id,
+        name: enrollment.name,
+        centroid: avgEmbedding,
+        samples: sampleEmbeddings,
+      });
+    }
+
+    // Compute discriminability metrics
+    return computeDiscriminabilityMetrics(speakersWithSamples);
   }
 
   /**

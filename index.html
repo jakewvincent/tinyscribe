@@ -796,12 +796,20 @@
           <div class="speakers-viz" x-show="enrollments.length > 0">
             <div class="viz-header">
               <span class="viz-label">Embedding Space</span>
-              <div class="viz-model-select" x-show="visualizationModels.length > 0">
+              <div class="viz-model-controls" x-show="visualizationModels.length > 0">
                 <select @change="changeVisualizationModel($event.target.value)" :value="selectedVisualizationModel" :disabled="visualizationLoading">
                   <template x-for="model in visualizationModels" :key="model.id">
                     <option :value="model.id" x-text="model.name + ' (' + model.dimensions + 'd)' + (model.hasEmbeddings ? '' : ' *')"></option>
                   </template>
                 </select>
+                <button
+                  class="btn icon-only viz-recalc-btn"
+                  title="Recalculate embeddings for this model"
+                  @click="recalculateEmbeddings()"
+                  :disabled="visualizationLoading || !selectedVisualizationModel"
+                >
+                  <i class="ti ti-refresh"></i>
+                </button>
               </div>
             </div>
             <div class="viz-canvas-container">
