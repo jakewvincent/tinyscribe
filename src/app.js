@@ -1343,20 +1343,22 @@ export class App {
           // Build candidate bar rows
           const buildCandidateRow = (c, i, isVisible) => {
             const pct = (c.similarity * 100).toFixed(0);
+            const pctNum = parseFloat(pct);
             // Use actual speaker index if available, fall back to position for old recordings
             const colorIdx = c.speakerIdx ?? i;
             const enrolledClass = c.enrolled ? 'enrolled' : 'discovered';
             const boostedInfo = boostedMatches.find(m => m.speakerName === c.speaker);
             const boostTag = boostedInfo?.wasBoosted ? '<span class="boost-tag">+BOOST</span>' : '';
             const visibilityClass = isVisible ? '' : 'hidden-candidate';
+            // For low percentages, position text outside the bar
+            const pctOutsideClass = pctNum < 45 ? 'pct-outside' : '';
 
             return `
-              <div class="candidate-bar-row ${enrolledClass} ${visibilityClass}" data-speaker-idx="${colorIdx % 6}">
+              <div class="candidate-bar-row ${enrolledClass} ${visibilityClass} ${pctOutsideClass}" data-speaker-idx="${colorIdx % 6}">
                 <span class="candidate-boost-area">${boostTag}</span>
                 <div class="candidate-bar-container">
-                  <span class="candidate-bar" style="width: ${pct}%">
-                    <span class="candidate-pct">${pct}%</span>
-                  </span>
+                  <span class="candidate-pct">${pct}%</span>
+                  <span class="candidate-bar" style="width: ${pct}%"></span>
                 </div>
                 <span class="candidate-name">${c.speaker}</span>
               </div>
