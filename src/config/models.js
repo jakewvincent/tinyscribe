@@ -57,6 +57,16 @@ export const EMBEDDING_MODELS = {
     description: 'Lightweight, same dimensions as WavLM.',
     modelUrl: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_CAM++.onnx',
   },
+  'wespeaker-ecapa-tdnn': {
+    id: 'wespeaker-ecapa-tdnn',
+    name: 'WeSpeaker ECAPA-TDNN',
+    source: 'voxceleb_ECAPA512_LM.onnx',
+    dimensions: 192,
+    size: '~25MB',
+    backend: 'onnx',
+    description: 'ECAPA-TDNN with large-margin finetuning. Best for speaker discrimination.',
+    modelUrl: 'https://huggingface.co/Wespeaker/wespeaker-ecapa-tdnn512-LM/resolve/main/voxceleb_ECAPA512_LM.onnx',
+  },
 };
 
 /**
