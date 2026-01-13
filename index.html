@@ -611,12 +611,14 @@
 
     <!-- Status Bar -->
     <footer id="status-bar" x-data="statusBar()" x-cloak>
+      <div class="status-indicator">
+        <span class="status-dot" :class="status"></span>
+        <span x-text="statusText">Ready</span>
+      </div>
+
       <!-- Model Status with Popover -->
-      <div class="model-status-compact" @click="toggleModelPopover()">
-        <i x-show="modelStatus === 'idle'" class="ti ti-cpu status-idle" title="Models idle"></i>
-        <i x-show="modelStatus === 'loading'" class="ti ti-loader-2 spinning status-loading" title="Loading models..."></i>
-        <i x-show="modelStatus === 'ready'" class="ti ti-circle-check status-ready" title="Models ready"></i>
-        <i x-show="modelStatus === 'error'" class="ti ti-circle-x status-error" title="Model error"></i>
+      <div class="model-status-compact" @click="toggleModelPopover()" title="View loaded models">
+        <i class="ti ti-cpu"></i>
 
         <!-- Model Status Popover -->
         <div x-show="modelPopoverOpen" x-transition @click.outside="modelPopoverOpen = false" class="model-status-popover">
@@ -631,11 +633,6 @@
             <div id="device-info"></div>
           </div>
         </div>
-      </div>
-
-      <div class="status-indicator">
-        <span class="status-dot" :class="status"></span>
-        <span x-text="statusText">Ready</span>
       </div>
       <div class="status-metrics">
         <div class="metric">

@@ -1912,22 +1912,11 @@ body.resizing * {
 
 .model-status-compact i {
   font-size: 1rem;
-}
-
-.model-status-compact .status-idle {
   color: var(--text-muted);
 }
 
-.model-status-compact .status-loading {
-  color: var(--speaker-0);
-}
-
-.model-status-compact .status-ready {
-  color: #10b981;
-}
-
-.model-status-compact .status-error {
-  color: #ef4444;
+.model-status-compact:hover i {
+  color: var(--text-secondary);
 }
 
 /* Model status popover */

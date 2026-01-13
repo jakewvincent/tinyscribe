@@ -1707,7 +1707,7 @@ export class App {
    * Update status bar metrics with timing data (via Alpine event)
    */
   updateStatusBarMetrics(debug, totalTime) {
-    const embedTime = debug.featureTime + (debug.embeddingTime || 0);
+    const embedTime = debug.embeddingTime || 0;
     window.dispatchEvent(
       new CustomEvent('metrics-update', {
         detail: {
