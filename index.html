@@ -103,8 +103,6 @@
                     <span class="recording-item-duration" x-text="formatDuration(recording.duration)"></span>
                   </div>
                   <div class="recording-item-meta">
-                    <span x-text="recording.speakerCount + ' speaker' + (recording.speakerCount !== 1 ? 's' : '')"></span>
-                    <span class="meta-sep">|</span>
                     <span x-text="formatDate(recording.createdAt)"></span>
                   </div>
                   <div class="recording-item-actions" @click.stop>
