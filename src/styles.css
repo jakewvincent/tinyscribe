@@ -2729,11 +2729,50 @@ body.resizing * {
   color: var(--text-muted);
 }
 
+.speakers-viz .viz-canvas-container {
+  position: relative;
+}
+
 .speakers-viz canvas {
   width: 100%;
   height: 120px;
   border-radius: var(--radius-md);
   background: var(--bg-secondary);
+}
+
+.speakers-viz .viz-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: var(--radius-md);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.speakers-viz .viz-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: viz-spin 0.8s linear infinite;
+}
+
+@keyframes viz-spin {
+  to { transform: rotate(360deg); }
+}
+
+.speakers-viz .viz-model-select select:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 .speakers-status {

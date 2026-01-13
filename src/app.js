@@ -313,7 +313,29 @@ export class App {
       await this.updateModalVisualization(defaultModel);
     });
     window.addEventListener('visualization-model-change', async (e) => {
-      await this.updateModalVisualization(e.detail.modelId);
+      const modelId = e.detail.modelId;
+
+      // Check if we need to compute embeddings for this model
+      const enrollments = await enrollmentStore.getEnrollmentsForVisualization(modelId);
+      const totalEnrollments = await enrollmentStore.count();
+
+      if (enrollments.length < totalEnrollments && totalEnrollments > 0) {
+        // Need to compute embeddings - show loading state
+        window.dispatchEvent(new CustomEvent('visualization-loading', { detail: { loading: true, modelId } }));
+
+        try {
+          await this.computeEmbeddingsForModel(modelId);
+          // Update models list to reflect new status
+          const models = await this.getVisualizationModels();
+          window.dispatchEvent(new CustomEvent('visualization-models-updated', { detail: { models } }));
+        } catch (err) {
+          console.error('[App] Failed to compute embeddings:', err);
+        } finally {
+          window.dispatchEvent(new CustomEvent('visualization-loading', { detail: { loading: false } }));
+        }
+      }
+
+      await this.updateModalVisualization(modelId);
     });
 
     // Enrollment modal controls
@@ -3372,31 +3394,113 @@ export class App {
   }
 
   /**
-   * Get available models for visualization dropdown
-   * Returns models that have embeddings stored for enrolled speakers
-   * @returns {Promise<Array<{id: string, name: string, count: number}>>}
+   * Get all embedding models for visualization dropdown
+   * Includes flag indicating if embeddings need to be computed
+   * @returns {Promise<Array<{id: string, name: string, dimensions: number, hasEmbeddings: boolean, count: number, total: number}>>}
    */
   async getVisualizationModels() {
-    const storedModelIds = await enrollmentStore.getAvailableEmbeddingModels();
     const allModels = getAvailableEmbeddingModels();
     const enrollmentCount = await enrollmentStore.count();
 
-    // Build list with model metadata and count of enrollments that have embeddings
+    // Build list with all models and their embedding status
     const results = [];
-    for (const modelId of storedModelIds) {
-      const config = allModels.find(m => m.id === modelId);
-      const enrollments = await enrollmentStore.getEnrollmentsForVisualization(modelId);
+    for (const config of allModels) {
+      const enrollments = await enrollmentStore.getEnrollmentsForVisualization(config.id);
+      const hasEmbeddings = enrollments.length > 0;
 
       results.push({
-        id: modelId,
-        name: config?.name || modelId,
+        id: config.id,
+        name: config.name,
+        dimensions: config.dimensions,
+        hasEmbeddings,
         count: enrollments.length,
         total: enrollmentCount,
-        dimensions: config?.dimensions || null,
       });
     }
 
     return results;
+  }
+
+  /**
+   * Compute embeddings for all enrollments using a specific model
+   * @param {string} modelId - Model ID to compute embeddings for
+   * @returns {Promise<void>}
+   */
+  async computeEmbeddingsForModel(modelId) {
+    const enrollments = await EnrollmentManager.loadAll();
+
+    for (const enrollment of enrollments) {
+      // Skip if already has embedding for this model
+      const existing = await enrollmentStore.getEmbeddingForModel(enrollment.id, modelId);
+      if (existing) continue;
+
+      // Get audio samples
+      const audioSamples = await enrollmentStore.getAudioSamples(enrollment.id);
+      if (!audioSamples || audioSamples.length === 0) {
+        console.warn(`[App] No audio samples for enrollment "${enrollment.name}", skipping`);
+        continue;
+      }
+
+      // Compute embedding for each sample
+      const embeddings = [];
+      for (const audio of audioSamples) {
+        const embedding = await this.extractEmbeddingFromWorkerWithModel(audio, modelId);
+        if (embedding) {
+          embeddings.push(embedding);
+        }
+      }
+
+      if (embeddings.length === 0) {
+        console.warn(`[App] Failed to compute embeddings for "${enrollment.name}" with model ${modelId}`);
+        continue;
+      }
+
+      // Average the embeddings
+      const dim = embeddings[0].length;
+      const avgEmbedding = new Float32Array(dim);
+      for (const emb of embeddings) {
+        for (let i = 0; i < dim; i++) {
+          avgEmbedding[i] += emb[i];
+        }
+      }
+      for (let i = 0; i < dim; i++) {
+        avgEmbedding[i] /= embeddings.length;
+      }
+
+      // Store the computed embedding
+      await enrollmentStore.setEmbeddingForModel(enrollment.id, modelId, avgEmbedding);
+      console.log(`[App] Computed ${modelId} embedding for "${enrollment.name}"`);
+    }
+  }
+
+  /**
+   * Extract embedding using a specific model
+   * @param {Float32Array} audio - Audio samples
+   * @param {string} modelId - Model ID to use
+   * @returns {Promise<Float32Array|null>}
+   */
+  extractEmbeddingFromWorkerWithModel(audio, modelId) {
+    return new Promise((resolve) => {
+      const requestId = `viz-embed-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      const handler = (event) => {
+        const { type, requestId: respId, data } = event.data;
+        if (type === 'embedding-result' && respId === requestId) {
+          this.worker.removeEventListener('message', handler);
+          resolve(data?.embedding ? new Float32Array(data.embedding) : null);
+        } else if (type === 'error' && respId === requestId) {
+          this.worker.removeEventListener('message', handler);
+          resolve(null);
+        }
+      };
+
+      this.worker.addEventListener('message', handler);
+      this.worker.postMessage({
+        type: 'extract-embedding',
+        requestId,
+        data: { audio, modelId },
+      });
+    });
   }
 
   /**

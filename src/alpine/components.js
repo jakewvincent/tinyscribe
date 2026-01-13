@@ -352,6 +352,7 @@ document.addEventListener('alpine:init', () => {
     // Visualization model selection
     visualizationModels: [],
     selectedVisualizationModel: null,
+    visualizationLoading: false,
 
     get currentModelName() {
       if (!this.selectedVisualizationModel) return null;
@@ -400,6 +401,11 @@ document.addEventListener('alpine:init', () => {
         if (this.visualizationModels.length > 0 && !this.selectedVisualizationModel) {
           this.selectedVisualizationModel = this.visualizationModels[0].id;
         }
+      });
+
+      // Listen for visualization loading state
+      window.addEventListener('visualization-loading', (e) => {
+        this.visualizationLoading = e.detail.loading;
       });
 
       // Listen for enrollment complete (after recording modal)
