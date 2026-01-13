@@ -381,6 +381,7 @@ export class App {
     window.addEventListener('job-delete', (e) => this.deleteJob(e.detail.jobId));
     window.addEventListener('job-update-name', (e) => this.updateJobName(e.detail.jobId, e.detail.name, e.detail.customized !== false));
     window.addEventListener('job-update-notes', (e) => this.updateJobNotes(e.detail.jobId, e.detail.notes));
+    window.addEventListener('job-update-settings', (e) => this.updateJobSettings(e.detail.jobId, e.detail.settings));
     window.addEventListener('job-process', (e) => this.processJob(e.detail.jobId, e.detail.mode || 'quick'));
 
     // Playback control events
@@ -2721,6 +2722,22 @@ export class App {
       console.log(`[Job] Updated notes`);
     } catch (error) {
       console.error('[Job] Failed to update notes:', error);
+    }
+  }
+
+  /**
+   * Update a job's settings (for unprocessed jobs)
+   * @param {string} jobId - Job ID
+   * @param {Object} settings - Updated settings object
+   */
+  async updateJobSettings(jobId, settings) {
+    if (!this.isViewingRecording || !this.viewedRecordingId) return;
+
+    try {
+      await this.recordingStore.updateJob(this.viewedRecordingId, jobId, { settings });
+      console.log(`[Job] Updated settings:`, settings.embeddingModel?.name, settings.segmentationModel?.name);
+    } catch (error) {
+      console.error('[Job] Failed to update settings:', error);
     }
   }
 

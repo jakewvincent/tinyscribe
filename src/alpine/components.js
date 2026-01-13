@@ -1501,6 +1501,11 @@ document.addEventListener('alpine:init', () => {
           if (!this.activeJob.settings.boosting) this.activeJob.settings.boosting = {};
           this.activeJob.settings.boosting[key] = value;
         }
+
+        // Persist settings to storage (deep clone to avoid IndexedDB serialization issues)
+        window.dispatchEvent(new CustomEvent('job-update-settings', {
+          detail: { jobId: this.activeJob.id, settings: JSON.parse(JSON.stringify(this.activeJob.settings)) },
+        }));
       }
     },
 
