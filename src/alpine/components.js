@@ -143,6 +143,36 @@ document.addEventListener('alpine:init', () => {
   });
 
   /**
+   * Live Mode store
+   * Tracks whether we're in live recording mode vs viewing a saved recording.
+   * Also holds the live job when in live mode.
+   */
+  Alpine.store('liveMode', {
+    isLiveMode: true,
+    liveJob: null,
+    isRecording: false,
+
+    init() {
+      // Listen for live job updates from app.js
+      window.addEventListener('live-job-updated', (e) => {
+        this.liveJob = e.detail.job;
+        this.isLiveMode = e.detail.isLiveMode;
+        this.isRecording = e.detail.isRecording;
+      });
+
+      // When a recording is loaded, we're no longer in live mode
+      window.addEventListener('recording-loaded', () => {
+        this.isLiveMode = false;
+      });
+
+      // When recording is closed, we're back in live mode
+      window.addEventListener('recording-closed', () => {
+        this.isLiveMode = true;
+      });
+    },
+  });
+
+  /**
    * Collapsible panel component with persistence
    * Usage: x-data="panel('panel-name', true)"
    * @param {string} name - Unique panel identifier for persistence
@@ -1011,14 +1041,33 @@ document.addEventListener('alpine:init', () => {
         }));
       });
 
-      // Listen for recording closed
+      // Listen for recording closed - restore live job if available
       window.addEventListener('recording-closed', () => {
-        this.jobs = [];
-        this.activeJobId = null;
-        this.activeJob = null;
+        const store = Alpine.store('liveMode');
+        if (store.liveJob) {
+          // Restore live job as active
+          this.jobs = [store.liveJob];
+          this.activeJobId = store.liveJob.id;
+          this.activeJob = store.liveJob;
+        } else {
+          this.jobs = [];
+          this.activeJobId = null;
+          this.activeJob = null;
+        }
         this.dropdownOpen = false;
         this.editPopoverOpen = false;
         this.deleteConfirmOpen = false;
+      });
+
+      // Listen for live job updates (live mode only)
+      window.addEventListener('live-job-updated', (e) => {
+        if (e.detail.isLiveMode) {
+          this.jobs = [e.detail.job];
+          this.activeJobId = e.detail.job.id;
+          this.activeJob = e.detail.job;
+          this.editName = e.detail.job?.name || '';
+          this.editNotes = e.detail.job?.notes || '';
+        }
       });
 
       // Listen for job creation (auto-open settings)
@@ -1209,13 +1258,27 @@ document.addEventListener('alpine:init', () => {
       this.dropdownOpen = !this.dropdownOpen;
     },
 
+    // Live mode helpers
+    get isLiveMode() {
+      return Alpine.store('liveMode').isLiveMode;
+    },
+
+    get isLiveJob() {
+      return this.isLiveMode && this.activeJob?.status === 'live';
+    },
+
+    get isRecordingActive() {
+      return Alpine.store('liveMode').isRecording;
+    },
+
     // Helper methods
     get jobCount() {
       return this.jobs.length;
     },
 
     get canDelete() {
-      return this.jobs.length > 1 && !this.isProcessing;
+      // Can't delete live job, can't delete when only 1 job, can't delete during processing
+      return !this.isLiveJob && this.jobs.length > 1 && !this.isProcessing;
     },
 
     get isActiveJobProcessed() {
@@ -1230,8 +1293,13 @@ document.addEventListener('alpine:init', () => {
       return this.activeJob?.status === 'processing' || this.isProcessing;
     },
 
+    get isActiveJobLive() {
+      return this.activeJob?.status === 'live';
+    },
+
     // Format job status for display
     formatStatus(status) {
+      if (status === 'live') return 'Live';
       if (status === 'processed') return 'Processed';
       if (status === 'processing') return 'Processing...';
       return 'Unprocessed';
@@ -1239,6 +1307,7 @@ document.addEventListener('alpine:init', () => {
 
     // Get status class for badge
     getStatusClass(status) {
+      if (status === 'live') return 'status-live';
       if (status === 'processed') return 'status-processed';
       if (status === 'processing') return 'status-processing';
       return 'status-unprocessed';
@@ -1342,10 +1411,27 @@ document.addEventListener('alpine:init', () => {
         }
       });
 
-      // Listen for recording closed
+      // Listen for recording closed - restore live job if available
       window.addEventListener('recording-closed', () => {
-        this.activeJob = null;
-        this.isVisible = false;
+        const store = Alpine.store('liveMode');
+        if (store.liveJob) {
+          this.activeJob = store.liveJob;
+          this.syncSettingsFromJob();
+          this.isVisible = true;
+        } else {
+          this.activeJob = null;
+          this.isVisible = false;
+        }
+      });
+
+      // Listen for live job updates
+      window.addEventListener('live-job-updated', (e) => {
+        if (e.detail.isLiveMode) {
+          this.activeJob = e.detail.job;
+          this.syncSettingsFromJob();
+          // Show settings sidebar in live mode
+          this.isVisible = true;
+        }
       });
 
       // Listen for job switched
@@ -1423,9 +1509,24 @@ document.addEventListener('alpine:init', () => {
       this.settings.minSimilarityAfterBoost = s.boosting?.minSimilarityAfterBoost ?? 0.75;
     },
 
-    // Check if job is editable
+    // Live mode helpers
+    get isLiveMode() {
+      return Alpine.store('liveMode').isLiveMode;
+    },
+
+    get isRecordingActive() {
+      return Alpine.store('liveMode').isRecording;
+    },
+
+    // Embedding model can only be changed when NOT recording
+    get isEmbeddingModelDisabled() {
+      return this.isRecordingActive || this.isReadOnly || this.isLocked;
+    },
+
+    // Check if job is editable (live jobs and unprocessed jobs are editable)
     get isEditable() {
-      return this.activeJob?.status === 'unprocessed' && !this.isProcessing;
+      const status = this.activeJob?.status;
+      return (status === 'live' || status === 'unprocessed') && !this.isProcessing;
     },
 
     get isReadOnly() {
@@ -1462,7 +1563,15 @@ document.addEventListener('alpine:init', () => {
 
       this.settings.segmentationParams[key] = value;
 
-      // Update job settings
+      // For live jobs, dispatch to app.js for immediate application
+      if (this.isLiveMode) {
+        window.dispatchEvent(new CustomEvent('live-job-setting-change', {
+          detail: { key: 'segmentationParams', value: { [key]: value } },
+        }));
+        return;
+      }
+
+      // For saved jobs, update job settings in memory
       if (this.activeJob?.settings) {
         if (!this.activeJob.settings.segmentationParams) {
           this.activeJob.settings.segmentationParams = {};
@@ -1471,13 +1580,21 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
-    // Update job settings (for unprocessed jobs)
+    // Update job settings (for live jobs and unprocessed jobs)
     updateSetting(key, value) {
       if (!this.isEditable || !this.activeJob) return;
 
       this.settings[key] = value;
 
-      // Update the job's settings in memory
+      // For live jobs, dispatch to app.js for immediate application
+      if (this.isLiveMode) {
+        window.dispatchEvent(new CustomEvent('live-job-setting-change', {
+          detail: { key, value },
+        }));
+        return;
+      }
+
+      // For saved jobs (unprocessed), update settings in memory and persist
       if (this.activeJob.settings) {
         // Embedding model change
         if (key === 'embeddingModelId') {

@@ -52,6 +52,7 @@ export const JOB_SETTINGS_DEFAULTS = {
  * @enum {string}
  */
 export const JOB_STATUS = {
+  LIVE: 'live', // Active live recording session
   UNPROCESSED: 'unprocessed',
   PROCESSING: 'processing',
   PROCESSED: 'processed',
@@ -160,6 +161,21 @@ export function createJob(options = {}) {
 }
 
 /**
+ * Create a live job for the current recording session.
+ * Live jobs have editable settings and represent the in-progress session.
+ *
+ * @param {Object} options - Same options as buildJobSettings
+ * @returns {Object} New live job object
+ */
+export function createLiveJob(options = {}) {
+  return createJob({
+    name: 'Live Session',
+    status: JOB_STATUS.LIVE,
+    settings: buildJobSettings(options),
+  });
+}
+
+/**
  * Generate a job name from its settings (embedding + segmentation model names)
  * @param {Object} settings - Job settings object
  * @returns {string} Auto-generated job name
@@ -263,6 +279,7 @@ export default {
   generateJobId,
   buildJobSettings,
   createJob,
+  createLiveJob,
   generateJobName,
   cloneJobSettings,
   getJobSettingsSummary,

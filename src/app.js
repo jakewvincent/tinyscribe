@@ -49,6 +49,7 @@ import { REASON_BADGES, ATTRIBUTION_UI_DEFAULTS } from './config/defaults.js';
 import {
   buildJobSettings,
   createJob,
+  createLiveJob,
   JOB_STATUS,
   ENROLLMENT_SOURCE,
 } from './config/jobDefaults.js';
@@ -103,6 +104,7 @@ export class App {
     this.viewedRecordingId = null; // ID of currently viewed recording
     this.viewedJobId = null; // ID of currently viewed job within the recording
     this.audioPlayback = null; // AudioPlayback instance for replay
+    this.liveJob = null; // Virtual job for live recording session (settings, state)
 
     // Components
     this.worker = null;
@@ -403,6 +405,11 @@ export class App {
     window.addEventListener('job-update-settings', (e) => this.updateJobSettings(e.detail.jobId, e.detail.settings));
     window.addEventListener('job-process', (e) => this.processJob(e.detail.jobId, e.detail.mode || 'quick'));
 
+    // Live job settings changes (applies to live processing in real-time)
+    window.addEventListener('live-job-setting-change', (e) => {
+      this._handleLiveJobSettingChange(e.detail.key, e.detail.value);
+    });
+
     // Playback control events
     window.addEventListener('playback-toggle', () => this.togglePlayback());
     window.addEventListener('playback-seek', (e) => this.seekPlayback(e.detail.time));
@@ -554,6 +561,10 @@ export class App {
       // Notify Alpine components that model is loaded (enables enrollment buttons)
       window.dispatchEvent(new CustomEvent('model-loaded'));
 
+      // Create live job with current settings (now that models are loaded)
+      this.liveJob = this._createFreshLiveJob();
+      this._dispatchLiveJobState();
+
       // Update status bar
       this.updateStatusBar('ready');
 
@@ -654,6 +665,111 @@ export class App {
     fill.style.width = '100%';
     fill.style.background = '#10b981';
     percentLabel.textContent = 'Cached';
+  }
+
+  // ==========================================
+  // Live Job Management
+  // ==========================================
+
+  /**
+   * Create a fresh live job from current settings.
+   * Called at startup and when returning to live mode.
+   */
+  _createFreshLiveJob() {
+    const embeddingModelId = ModelSelectionStore.getEmbeddingModel();
+    const segmentationModelId = SegmentationModelStore.getSegmentationModel();
+    const segmentationParams = SegmentationModelStore.getParams(segmentationModelId);
+
+    return createLiveJob({
+      embeddingModelId,
+      segmentationModelId,
+      segmentationParams,
+      clustering: {
+        numSpeakers: this.numSpeakers,
+        similarityThreshold: this.transcriptMerger.speakerClusterer.similarityThreshold,
+        confidenceMargin: this.transcriptMerger.speakerClusterer.confidenceMargin,
+      },
+      boosting: {
+        boostFactor: this.conversationInference.config.boostFactor,
+        boostEligibilityRank: this.conversationInference.config.boostEligibilityRank,
+        ambiguityMarginThreshold: this.conversationInference.config.ambiguityMarginThreshold,
+        skipBoostIfConfident: this.conversationInference.config.skipBoostIfConfident,
+        minSimilarityForBoosting: this.conversationInference.config.minSimilarityForBoosting,
+        minSimilarityAfterBoost: this.conversationInference.config.minSimilarityAfterBoost,
+      },
+    });
+  }
+
+  /**
+   * Dispatch live job state to Alpine components.
+   * Called when live job is created, updated, or mode changes.
+   */
+  _dispatchLiveJobState() {
+    window.dispatchEvent(new CustomEvent('live-job-updated', {
+      detail: {
+        job: this.liveJob,
+        isLiveMode: !this.isViewingRecording,
+        isRecording: this.isRecording,
+      },
+    }));
+  }
+
+  /**
+   * Handle live job setting changes from the settings panel.
+   * Updates both the liveJob object and applies to live processing.
+   * @param {string} key - Setting key (e.g., 'similarityThreshold', 'boostFactor')
+   * @param {*} value - New value for the setting
+   */
+  _handleLiveJobSettingChange(key, value) {
+    if (!this.liveJob) return;
+
+    // Clustering settings - apply to transcriptMerger's clusterer
+    if (key === 'similarityThreshold') {
+      this.liveJob.settings.clustering.similarityThreshold = value;
+      this.transcriptMerger.speakerClusterer.similarityThreshold = value;
+    } else if (key === 'confidenceMargin') {
+      this.liveJob.settings.clustering.confidenceMargin = value;
+      this.transcriptMerger.speakerClusterer.confidenceMargin = value;
+    } else if (key === 'numSpeakers') {
+      this.liveJob.settings.clustering.numSpeakers = value;
+      this.handleNumSpeakersChange(value);
+    }
+    // Boosting settings - apply to conversationInference
+    else if ([
+      'boostFactor',
+      'boostEligibilityRank',
+      'ambiguityMarginThreshold',
+      'skipBoostIfConfident',
+      'minSimilarityForBoosting',
+      'minSimilarityAfterBoost',
+    ].includes(key)) {
+      this.liveJob.settings.boosting[key] = value;
+      this.conversationInference.updateConfig({ [key]: value });
+      // Re-process boosting for existing segments
+      this.reprocessBoostingForCurrentSegments();
+    }
+    // Segmentation params - update liveJob and forward to worker
+    else if (key === 'segmentationParams') {
+      Object.assign(this.liveJob.settings.segmentationParams, value);
+      this.updateSegmentationParams(value);
+    }
+    // Model changes - update liveJob (actual model reload handled separately)
+    else if (key === 'embeddingModelId') {
+      const config = getEmbeddingModelConfig(value);
+      this.liveJob.settings.embeddingModel = {
+        id: config.id,
+        name: config.name,
+        dimensions: config.dimensions,
+      };
+      ModelSelectionStore.setEmbeddingModel(value);
+    } else if (key === 'segmentationModelId') {
+      const config = getSegmentationModelConfig(value);
+      this.liveJob.settings.segmentationModel = {
+        id: config.id,
+        name: config.name,
+      };
+      SegmentationModelStore.setSegmentationModel(value);
+    }
   }
 
   /**
@@ -764,6 +880,9 @@ export class App {
       window.dispatchEvent(
         new CustomEvent('recording-state', { detail: { recording: true } })
       );
+
+      // Update live job state (isRecording changed)
+      this._dispatchLiveJobState();
     } catch (error) {
       this.recordingStatus.textContent =
         'Failed to access microphone. Please check permissions and try again.';
@@ -805,6 +924,9 @@ export class App {
     window.dispatchEvent(
       new CustomEvent('recording-state', { detail: { recording: false } })
     );
+
+    // Update live job state (isRecording changed)
+    this._dispatchLiveJobState();
 
     if (this.pendingChunks.size > 0 || this.chunkQueue.length > 0) {
       this.recordingStatus.textContent = `Processing ${this.pendingChunks.size + this.chunkQueue.length} remaining chunk(s)...`;
@@ -2296,21 +2418,24 @@ export class App {
       // Calculate storage size (includes transcription data)
       const sizeBytes = calculateStorageSize(segments, this.sessionAudioChunks, this.sessionTranscriptionData);
 
-      // Get current model configuration
-      const embeddingModelId = ModelSelectionStore.getEmbeddingModel();
-      const segmentationModelId = SegmentationModelStore.getSegmentationModel();
-      const segmentationParams = SegmentationModelStore.getParams(segmentationModelId);
-
-      // Build job settings from current global state
-      const jobSettings = buildJobSettings({
-        embeddingModelId,
-        segmentationModelId,
-        segmentationParams,
-        clustering: {
-          numSpeakers: this.numSpeakers,
-        },
-        enrollmentSource: ENROLLMENT_SOURCE.SNAPSHOT,
-      });
+      // Use liveJob settings if available, otherwise build fresh from global state
+      let jobSettings;
+      if (this.liveJob?.settings) {
+        // Clone settings from live job (what user configured)
+        jobSettings = JSON.parse(JSON.stringify(this.liveJob.settings));
+      } else {
+        // Fallback: build from global state
+        const embeddingModelId = ModelSelectionStore.getEmbeddingModel();
+        const segmentationModelId = SegmentationModelStore.getSegmentationModel();
+        const segmentationParams = SegmentationModelStore.getParams(segmentationModelId);
+        jobSettings = buildJobSettings({
+          embeddingModelId,
+          segmentationModelId,
+          segmentationParams,
+          clustering: { numSpeakers: this.numSpeakers },
+          enrollmentSource: ENROLLMENT_SOURCE.SNAPSHOT,
+        });
+      }
 
       // Create the first job with processed results
       const job = createJob({
@@ -2356,8 +2481,10 @@ export class App {
 
       console.log(`[Recording] Saved "${recording.name}" (${formatDuration(duration)}, ${formatFileSize(sizeBytes)})`);
 
-      // Update status
-      this.recordingStatus.textContent = `Recording saved: ${recording.name}`;
+      // Auto-load the saved recording for immediate playback
+      await this.loadRecording(recording.id, job.id);
+
+      console.log(`[Recording] Saved and loaded "${recording.name}"`);
     } catch (error) {
       console.error('[Recording] Failed to save:', error);
       this.recordingStatus.textContent = 'Failed to save recording';
@@ -2545,6 +2672,10 @@ export class App {
 
     // Notify Alpine
     window.dispatchEvent(new CustomEvent('recording-closed'));
+
+    // Create fresh live job for new session
+    this.liveJob = this._createFreshLiveJob();
+    this._dispatchLiveJobState();
 
     this.recordingStatus.textContent = 'Ready';
     this.updateStatusBar('ready');

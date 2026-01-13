@@ -159,8 +159,8 @@
             <button id="export-all-jobs-btn" class="btn secondary small" disabled><i class="ti ti-package-export"></i> Export All</button>
           </div>
 
-          <!-- Job Navigation Bar (visible when viewing a recording) -->
-          <div x-data="jobNavigation" x-show="jobs.length > 0" x-cloak class="job-navigation-bar">
+          <!-- Job Navigation Bar (visible in live mode and when viewing a recording) -->
+          <div x-data="jobNavigation" x-show="jobs.length > 0 || $store.liveMode.isLiveMode" x-cloak class="job-navigation-bar">
             <!-- Far left: Participants toggle -->
             <div class="job-nav-far-left">
               <button class="btn-icon-sm job-participants-toggle" :class="{ 'active': participantsSidebarOpen }" @click="toggleParticipants()" title="Toggle participants panel">
@@ -232,23 +232,23 @@
 
             <!-- Right: Actions -->
             <div class="job-nav-right">
-              <!-- Copy JSON button -->
-              <button class="btn secondary small" @click="copyJobJson()" :disabled="!activeJob || activeJob.status !== 'processed'" title="Copy job transcript as JSON">
+              <!-- Copy JSON button (disabled for live jobs) -->
+              <button class="btn secondary small" @click="copyJobJson()" :disabled="isLiveJob || !activeJob || activeJob.status !== 'processed'" title="Copy job transcript as JSON">
                 <i class="ti ti-clipboard"></i> Copy JSON
               </button>
 
-              <!-- Export button -->
-              <button class="btn secondary small" @click="exportJob()" :disabled="!activeJob || activeJob.status !== 'processed'" title="Export job transcript">
+              <!-- Export button (disabled for live jobs) -->
+              <button class="btn secondary small" @click="exportJob()" :disabled="isLiveJob || !activeJob || activeJob.status !== 'processed'" title="Export job transcript">
                 <i class="ti ti-download"></i> Export
               </button>
 
-              <!-- New Job button -->
-              <button class="btn secondary small" @click="createNewJob()" :disabled="isProcessing" title="Create new job with current settings">
+              <!-- New Job button (disabled in live mode) -->
+              <button class="btn secondary small" @click="createNewJob()" :disabled="isLiveMode || isProcessing" title="Create new job with current settings">
                 <i class="ti ti-plus"></i> New Job
               </button>
 
-              <!-- Clone button -->
-              <button class="btn secondary small" @click="cloneJob()" :disabled="isProcessing" title="Clone this job's settings">
+              <!-- Clone button (disabled in live mode) -->
+              <button class="btn secondary small" @click="cloneJob()" :disabled="isLiveMode || isProcessing" title="Clone this job's settings">
                 <i class="ti ti-copy"></i> Clone
               </button>
 
@@ -384,7 +384,7 @@
                     <div class="settings-group-content">
                       <div class="settings-section">
                         <label class="settings-label">Embedding Model</label>
-                        <select class="settings-select" x-model="settings.embeddingModelId" @change="updateSetting('embeddingModelId', $event.target.value)">
+                        <select class="settings-select" x-model="settings.embeddingModelId" @change="updateSetting('embeddingModelId', $event.target.value)" :disabled="isEmbeddingModelDisabled">
                           <template x-for="model in embeddingModels" :key="model.id">
                             <option :value="model.id" x-text="model.name"></option>
                           </template>
@@ -594,8 +594,8 @@
                 </div>
               </div>
 
-              <!-- Process button (for unprocessed jobs) -->
-              <template x-if="isEditable">
+              <!-- Process button (for unprocessed saved jobs only, not live mode) -->
+              <template x-if="isEditable && !isLiveMode">
                 <div class="settings-footer">
                   <button class="btn primary" @click="processJob('quick')">
                     <i class="ti ti-player-play"></i> Process

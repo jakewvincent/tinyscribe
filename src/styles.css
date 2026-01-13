@@ -3957,6 +3957,12 @@ body.resizing * {
   color: #3b82f6;
 }
 
+.status-live,
+.job-item-status.status-live {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
 /* Processing status in nav */
 .job-unprocessed-notice,
 .job-processing-notice {
