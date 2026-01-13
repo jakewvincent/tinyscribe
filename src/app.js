@@ -3004,15 +3004,21 @@ export class App {
       enrollments = this._currentViewedEnrollments || [];
     }
 
+    // CRITICAL: Prepare enrollments for the job's embedding model
+    // Each enrollment stores per-model embeddings, and we need to use the
+    // centroids that match the model being used for embedding extraction
+    const modelId = settings.embeddingModel?.id || ModelSelectionStore.getEmbeddingModel();
+    const preparedEnrollments = await this.prepareEnrollmentsForModel(enrollments, modelId);
+
     // Configure clusterer
     const clusterer = this.transcriptMerger.speakerClusterer;
     clusterer.reset();
     clusterer.similarityThreshold = settings.clustering?.similarityThreshold ?? 0.75;
     clusterer.confidenceMargin = settings.clustering?.confidenceMargin ?? 0.15;
 
-    // Seed with enrollments
-    if (enrollments.length > 0) {
-      clusterer.importEnrolledSpeakers(enrollments);
+    // Seed with model-prepared enrollments
+    if (preparedEnrollments.length > 0) {
+      clusterer.importEnrolledSpeakers(preparedEnrollments);
     }
 
     // Configure inference
@@ -3026,7 +3032,7 @@ export class App {
     }
 
     this.conversationInference.reset();
-    this.conversationInference.setEnrolledSpeakers(enrollments);
+    this.conversationInference.setEnrolledSpeakers(preparedEnrollments);
     this.conversationInference.setExpectedSpeakers(settings.clustering?.numSpeakers || this.numSpeakers);
   }
 
