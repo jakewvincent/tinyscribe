@@ -1405,8 +1405,12 @@ export class App {
 
   /**
    * Render transcript segments to the display
+   * @param {Object[]} segments - Segments to render
+   * @param {Object} [options] - Render options
+   * @param {boolean} [options.autoScroll=true] - Whether to auto-scroll to bottom after rendering
    */
-  renderSegments(segments) {
+  renderSegments(segments, options = {}) {
+    const { autoScroll = true } = options;
     // Remove placeholder if present
     const placeholder = this.transcriptContainer.querySelector('.placeholder');
     if (placeholder) {
@@ -1626,8 +1630,10 @@ export class App {
       this.transcriptContainer.appendChild(segmentEl);
     }
 
-    // Auto-scroll to bottom
-    this.transcriptContainer.scrollTop = this.transcriptContainer.scrollHeight;
+    // Auto-scroll to bottom (only during live recording, not when loading saved recordings)
+    if (autoScroll) {
+      this.transcriptContainer.scrollTop = this.transcriptContainer.scrollHeight;
+    }
 
     // Enable export all button when viewing recording with jobs
     if (segments.length > 0 && this.isViewingRecording) {
@@ -1766,6 +1772,7 @@ export class App {
   clearTranscriptDisplay() {
     this.transcriptContainer.innerHTML =
       '<p class="placeholder">Transcript will appear here when you start recording...</p>';
+    this.transcriptContainer.scrollTop = 0;
   }
 
   /**
@@ -2587,7 +2594,7 @@ export class App {
 
       // Render saved segments using the same renderer as live recording
       // This ensures colors, similarity bars, reason badges, and boost indicators display correctly
-      this.renderSegments(segments);
+      this.renderSegments(segments, { autoScroll: false });
 
       // Render raw chunk data if available (for recordings saved with transcription data)
       // Uses the same renderRawChunk() as live recording for identical display
@@ -3253,7 +3260,7 @@ export class App {
 
     // Re-render transcript with new attributions
     this.clearTranscriptDisplay();
-    this.renderSegments(segments);
+    this.renderSegments(segments, { autoScroll: false });
 
     // Update participants panel
     this.updateParticipantsPanel();
@@ -3330,7 +3337,7 @@ export class App {
 
       // Clear and re-render transcript using the same renderer as live recording
       this.clearTranscriptDisplay();
-      this.renderSegments(recording.segments)
+      this.renderSegments(recording.segments, { autoScroll: false });
 
       // Update participants panel
       this.updateParticipantsPanel();
