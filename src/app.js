@@ -22,7 +22,7 @@ import { EnrollmentManager } from './utils/enrollmentManager.js';
 import { PreferencesStore, RecordingStore, ModelSelectionStore, SegmentationModelStore, enrollmentStore } from './storage/index.js';
 
 // Model configuration
-import { getEmbeddingModelConfig } from './config/models.js';
+import { getEmbeddingModelConfig, getAvailableEmbeddingModels } from './config/models.js';
 import { getSegmentationModelConfig } from './config/segmentation.js';
 
 // Core modules (pure logic, no browser dependencies)
@@ -302,8 +302,18 @@ export class App {
     window.addEventListener('enrollment-clear-all', () => {
       this.clearAllEnrollments();
     });
-    window.addEventListener('speakers-modal-opened', () => {
-      this.updateModalVisualization();
+    window.addEventListener('speakers-modal-opened', async () => {
+      // Send available visualization models to Alpine
+      const models = await this.getVisualizationModels();
+      window.dispatchEvent(new CustomEvent('visualization-models-updated', {
+        detail: { models }
+      }));
+      // Render with default (first available model or null)
+      const defaultModel = models.length > 0 ? models[0].id : null;
+      await this.updateModalVisualization(defaultModel);
+    });
+    window.addEventListener('visualization-model-change', async (e) => {
+      await this.updateModalVisualization(e.detail.modelId);
     });
 
     // Enrollment modal controls
@@ -3335,8 +3345,9 @@ export class App {
 
   /**
    * Update the speaker visualization in the speakers modal
+   * @param {string} [modelId] - Optional model ID to visualize embeddings for
    */
-  updateModalVisualization() {
+  async updateModalVisualization(modelId = null) {
     const canvas = document.getElementById('speakers-modal-canvas');
     if (!canvas) return;
 
@@ -3348,8 +3359,44 @@ export class App {
     // Resize canvas in case modal was hidden when visualizer was created
     this.modalSpeakerVisualizer.resize();
 
-    const speakers = this.transcriptMerger.speakerClusterer.getAllSpeakersForVisualization();
+    let speakers;
+    if (modelId) {
+      // Fetch embeddings for specific model from enrollment store
+      speakers = await enrollmentStore.getEnrollmentsForVisualization(modelId);
+    } else {
+      // Use current clusterer state (includes discovered speakers)
+      speakers = this.transcriptMerger.speakerClusterer.getAllSpeakersForVisualization();
+    }
+
     this.modalSpeakerVisualizer.render(speakers);
+  }
+
+  /**
+   * Get available models for visualization dropdown
+   * Returns models that have embeddings stored for enrolled speakers
+   * @returns {Promise<Array<{id: string, name: string, count: number}>>}
+   */
+  async getVisualizationModels() {
+    const storedModelIds = await enrollmentStore.getAvailableEmbeddingModels();
+    const allModels = getAvailableEmbeddingModels();
+    const enrollmentCount = await enrollmentStore.count();
+
+    // Build list with model metadata and count of enrollments that have embeddings
+    const results = [];
+    for (const modelId of storedModelIds) {
+      const config = allModels.find(m => m.id === modelId);
+      const enrollments = await enrollmentStore.getEnrollmentsForVisualization(modelId);
+
+      results.push({
+        id: modelId,
+        name: config?.name || modelId,
+        count: enrollments.length,
+        total: enrollmentCount,
+        dimensions: config?.dimensions || null,
+      });
+    }
+
+    return results;
   }
 
   /**

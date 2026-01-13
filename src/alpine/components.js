@@ -349,6 +349,20 @@ document.addEventListener('alpine:init', () => {
     newSpeakerName: '',
     statusMessage: '',
     statusError: false,
+    // Visualization model selection
+    visualizationModels: [],
+    selectedVisualizationModel: null,
+
+    get currentModelName() {
+      if (!this.selectedVisualizationModel) return null;
+      const model = this.visualizationModels.find(m => m.id === this.selectedVisualizationModel);
+      return model?.name || this.selectedVisualizationModel;
+    },
+
+    get currentModelInfo() {
+      if (!this.selectedVisualizationModel) return null;
+      return this.visualizationModels.find(m => m.id === this.selectedVisualizationModel);
+    },
 
     init() {
       // Listen for open request
@@ -379,6 +393,15 @@ document.addEventListener('alpine:init', () => {
         this.enrollments = e.detail.enrollments || [];
       });
 
+      // Listen for visualization models update
+      window.addEventListener('visualization-models-updated', (e) => {
+        this.visualizationModels = e.detail.models || [];
+        // Select first model if none selected
+        if (this.visualizationModels.length > 0 && !this.selectedVisualizationModel) {
+          this.selectedVisualizationModel = this.visualizationModels[0].id;
+        }
+      });
+
       // Listen for enrollment complete (after recording modal)
       window.addEventListener('enrollment-complete', () => {
         // Re-open speakers modal to show updated list
@@ -396,6 +419,13 @@ document.addEventListener('alpine:init', () => {
         this.statusMessage = e.detail.message;
         this.statusError = e.detail.isError || false;
       });
+    },
+
+    changeVisualizationModel(modelId) {
+      this.selectedVisualizationModel = modelId;
+      window.dispatchEvent(new CustomEvent('visualization-model-change', {
+        detail: { modelId }
+      }));
     },
 
     close() {

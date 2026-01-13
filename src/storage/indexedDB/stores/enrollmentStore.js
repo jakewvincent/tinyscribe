@@ -399,6 +399,59 @@ export class EnrollmentStore {
 
     return null;
   }
+
+  // ==================== Visualization Operations ====================
+
+  /**
+   * Get all embedding model IDs that have stored embeddings across all enrollments
+   * @returns {Promise<string[]>} Array of model IDs
+   */
+  async getAvailableEmbeddingModels() {
+    const all = await this.getAll();
+    const modelIds = new Set();
+
+    for (const enrollment of all) {
+      // Add models from the embeddings object
+      if (enrollment.embeddings) {
+        for (const modelId of Object.keys(enrollment.embeddings)) {
+          modelIds.add(modelId);
+        }
+      }
+      // Also check legacy centroid (implies DEFAULT_EMBEDDING_MODEL)
+      if (enrollment.centroid && !enrollment.embeddings?.[DEFAULT_EMBEDDING_MODEL]) {
+        modelIds.add(DEFAULT_EMBEDDING_MODEL);
+      }
+    }
+
+    return Array.from(modelIds);
+  }
+
+  /**
+   * Get enrollment data formatted for visualization with a specific model's embeddings
+   * @param {string} modelId - Model ID to get embeddings for
+   * @returns {Promise<Array<{id: string, name: string, centroid: Float32Array, colorIndex: number}>>}
+   */
+  async getEnrollmentsForVisualization(modelId) {
+    const all = await this.getAll();
+    const results = [];
+
+    for (let i = 0; i < all.length; i++) {
+      const enrollment = all[i];
+      const embedding = await this.getEmbeddingForModel(enrollment.id, modelId);
+
+      if (embedding) {
+        results.push({
+          id: enrollment.id,
+          name: enrollment.name,
+          centroid: embedding,
+          colorIndex: enrollment.colorIndex ?? i,
+          enrolled: true,
+        });
+      }
+    }
+
+    return results;
+  }
 }
 
 // Singleton instance
