@@ -381,9 +381,14 @@ document.addEventListener('alpine:init', () => {
 
       // Listen for enrollment complete (after recording modal)
       window.addEventListener('enrollment-complete', () => {
-        // Modal stays open, show updated list
+        // Re-open speakers modal to show updated list
+        this.isOpen = true;
         this.isAdding = false;
         this.newSpeakerName = '';
+        // Update visualization
+        this.$nextTick(() => {
+          window.dispatchEvent(new CustomEvent('speakers-modal-opened'));
+        });
       });
 
       // Listen for status updates
@@ -415,12 +420,13 @@ document.addEventListener('alpine:init', () => {
 
     startEnrollment() {
       if (!this.newSpeakerName.trim()) return;
+      // Close speakers modal before opening recording modal
+      this.isOpen = false;
+      this.isAdding = false;
       // Dispatch to app.js which opens the recording modal
       window.dispatchEvent(new CustomEvent('enrollment-start', {
         detail: { name: this.newSpeakerName.trim() },
       }));
-      // Keep speakers modal open but exit adding mode
-      this.isAdding = false;
     },
 
     removeEnrollment(id) {
