@@ -14,3 +14,10 @@ export {
 } from './speakerClusterer.js';
 
 export { PCAProjector } from './pcaProjector.js';
+
+export {
+  computeMeanPairwiseSimilarity,
+  computeMinPairwiseSimilarity,
+  computeSilhouetteScore,
+  computeDiscriminabilityMetrics,
+} from './discriminabilityMetrics.js';

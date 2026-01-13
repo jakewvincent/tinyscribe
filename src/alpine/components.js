@@ -353,6 +353,8 @@ document.addEventListener('alpine:init', () => {
     visualizationModels: [],
     selectedVisualizationModel: null,
     visualizationLoading: false,
+    // Discriminability metrics
+    visualizationMetrics: null,
 
     get currentModelName() {
       if (!this.selectedVisualizationModel) return null;
@@ -406,6 +408,11 @@ document.addEventListener('alpine:init', () => {
       // Listen for visualization loading state
       window.addEventListener('visualization-loading', (e) => {
         this.visualizationLoading = e.detail.loading;
+      });
+
+      // Listen for metrics updates
+      window.addEventListener('visualization-metrics-updated', (e) => {
+        this.visualizationMetrics = e.detail.metrics;
       });
 
       // Listen for enrollment complete (after recording modal)

@@ -2775,6 +2775,38 @@ body.resizing * {
   cursor: wait;
 }
 
+.speakers-viz .viz-metrics {
+  margin-top: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.speakers-viz .viz-metrics-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.speakers-viz .viz-metrics-row .metric-label {
+  cursor: help;
+  border-bottom: 1px dotted var(--text-muted);
+}
+
+.speakers-viz .viz-metrics-row .metric-value {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.speakers-viz .viz-metrics-row .metric-pair {
+  font-size: 0.625rem;
+  color: var(--text-muted);
+  margin-left: var(--space-xs);
+}
+
 .speakers-status {
   margin-top: var(--space-md);
   padding: var(--space-sm) var(--space-md);

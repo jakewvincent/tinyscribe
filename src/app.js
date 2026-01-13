@@ -28,7 +28,7 @@ import { getSegmentationModelConfig } from './config/segmentation.js';
 // Core modules (pure logic, no browser dependencies)
 import { OverlapMerger, TranscriptMerger } from './core/transcription/index.js';
 import { AudioValidator } from './core/validation/index.js';
-import { cosineSimilarity, l2Normalize } from './core/embedding/embeddingUtils.js';
+import { cosineSimilarity, l2Normalize, computeDiscriminabilityMetrics } from './core/embedding/index.js';
 import {
   serializeChunks,
   deserializeChunks,
@@ -311,9 +311,16 @@ export class App {
       // Render with default (first available model or null)
       const defaultModel = models.length > 0 ? models[0].id : null;
       await this.updateModalVisualization(defaultModel);
+
+      // Compute and dispatch metrics for default model
+      if (defaultModel) {
+        const metrics = await this.computeMetricsForModel(defaultModel);
+        window.dispatchEvent(new CustomEvent('visualization-metrics-updated', { detail: { metrics, modelId: defaultModel } }));
+      }
     });
     window.addEventListener('visualization-model-change', async (e) => {
       const modelId = e.detail.modelId;
+      let metrics = null;
 
       // Check if we need to compute embeddings for this model
       const enrollments = await enrollmentStore.getEnrollmentsForVisualization(modelId);
@@ -324,7 +331,7 @@ export class App {
         window.dispatchEvent(new CustomEvent('visualization-loading', { detail: { loading: true, modelId } }));
 
         try {
-          await this.computeEmbeddingsForModel(modelId);
+          metrics = await this.computeEmbeddingsForModel(modelId);
           // Update models list to reflect new status
           const models = await this.getVisualizationModels();
           window.dispatchEvent(new CustomEvent('visualization-models-updated', { detail: { models } }));
@@ -333,7 +340,13 @@ export class App {
         } finally {
           window.dispatchEvent(new CustomEvent('visualization-loading', { detail: { loading: false } }));
         }
+      } else {
+        // Model already has embeddings, compute metrics from stored data
+        metrics = await this.computeMetricsForModel(modelId);
       }
+
+      // Dispatch metrics update
+      window.dispatchEvent(new CustomEvent('visualization-metrics-updated', { detail: { metrics, modelId } }));
 
       await this.updateModalVisualization(modelId);
     });
@@ -3423,16 +3436,29 @@ export class App {
 
   /**
    * Compute embeddings for all enrollments using a specific model
+   * Also computes discriminability metrics from the individual sample embeddings
    * @param {string} modelId - Model ID to compute embeddings for
-   * @returns {Promise<void>}
+   * @returns {Promise<{meanSimilarity: number|null, minSimilarity: object|null, silhouetteScore: number|null}>}
    */
   async computeEmbeddingsForModel(modelId) {
     const enrollments = await EnrollmentManager.loadAll();
 
+    // Collect data for metrics computation
+    const speakersWithSamples = [];
+
     for (const enrollment of enrollments) {
       // Skip if already has embedding for this model
       const existing = await enrollmentStore.getEmbeddingForModel(enrollment.id, modelId);
-      if (existing) continue;
+      if (existing) {
+        // Still collect for metrics (using centroid as single sample)
+        speakersWithSamples.push({
+          id: enrollment.id,
+          name: enrollment.name,
+          centroid: existing,
+          samples: [existing],
+        });
+        continue;
+      }
 
       // Get audio samples
       const audioSamples = await enrollmentStore.getAudioSamples(enrollment.id);
@@ -3442,35 +3468,71 @@ export class App {
       }
 
       // Compute embedding for each sample
-      const embeddings = [];
+      const sampleEmbeddings = [];
       for (const audio of audioSamples) {
         const embedding = await this.extractEmbeddingFromWorkerWithModel(audio, modelId);
         if (embedding) {
-          embeddings.push(embedding);
+          sampleEmbeddings.push(embedding);
         }
       }
 
-      if (embeddings.length === 0) {
+      if (sampleEmbeddings.length === 0) {
         console.warn(`[App] Failed to compute embeddings for "${enrollment.name}" with model ${modelId}`);
         continue;
       }
 
-      // Average the embeddings
-      const dim = embeddings[0].length;
+      // Average the embeddings to create centroid
+      const dim = sampleEmbeddings[0].length;
       const avgEmbedding = new Float32Array(dim);
-      for (const emb of embeddings) {
+      for (const emb of sampleEmbeddings) {
         for (let i = 0; i < dim; i++) {
           avgEmbedding[i] += emb[i];
         }
       }
       for (let i = 0; i < dim; i++) {
-        avgEmbedding[i] /= embeddings.length;
+        avgEmbedding[i] /= sampleEmbeddings.length;
       }
 
-      // Store the computed embedding
+      // Store the computed centroid
       await enrollmentStore.setEmbeddingForModel(enrollment.id, modelId, avgEmbedding);
       console.log(`[App] Computed ${modelId} embedding for "${enrollment.name}"`);
+
+      // Collect for metrics
+      speakersWithSamples.push({
+        id: enrollment.id,
+        name: enrollment.name,
+        centroid: avgEmbedding,
+        samples: sampleEmbeddings,
+      });
     }
+
+    // Compute discriminability metrics
+    const metrics = computeDiscriminabilityMetrics(speakersWithSamples);
+    return metrics;
+  }
+
+  /**
+   * Compute discriminability metrics for a model from stored centroids
+   * Used when model already has embeddings (no need to recompute)
+   * @param {string} modelId - Model ID
+   * @returns {Promise<{meanSimilarity: number|null, minSimilarity: object|null, silhouetteScore: number|null}>}
+   */
+  async computeMetricsForModel(modelId) {
+    const speakers = await enrollmentStore.getEnrollmentsForVisualization(modelId);
+
+    if (speakers.length < 2) {
+      return { meanSimilarity: null, minSimilarity: null, silhouetteScore: null };
+    }
+
+    // Format for metrics computation (centroids only, no individual samples)
+    const speakersForMetrics = speakers.map(s => ({
+      id: s.id,
+      name: s.name,
+      centroid: s.centroid,
+      samples: [s.centroid], // Use centroid as single sample for simplified silhouette
+    }));
+
+    return computeDiscriminabilityMetrics(speakersForMetrics);
   }
 
   /**

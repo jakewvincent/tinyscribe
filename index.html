@@ -822,6 +822,24 @@
                 <span>Computing embeddings...</span>
               </div>
             </div>
+            <!-- Discriminability Metrics -->
+            <div class="viz-metrics" x-show="visualizationMetrics && enrollments.length >= 2">
+              <div class="viz-metrics-row">
+                <span class="metric-label" title="Average cosine similarity between all speaker pairs. Lower = better separation.">Mean Sim:</span>
+                <span class="metric-value" x-text="visualizationMetrics?.meanSimilarity != null ? visualizationMetrics.meanSimilarity.toFixed(3) : '—'"></span>
+              </div>
+              <div class="viz-metrics-row">
+                <span class="metric-label" title="Most similar (confusable) speaker pair. Lower = better separation.">Max Sim:</span>
+                <span class="metric-value">
+                  <span x-text="visualizationMetrics?.minSimilarity?.similarity != null ? visualizationMetrics.minSimilarity.similarity.toFixed(3) : '—'"></span>
+                  <span class="metric-pair" x-show="visualizationMetrics?.minSimilarity?.pair" x-text="visualizationMetrics?.minSimilarity?.pair ? '(' + visualizationMetrics.minSimilarity.pair.join(' / ') + ')' : ''"></span>
+                </span>
+              </div>
+              <div class="viz-metrics-row">
+                <span class="metric-label" title="Silhouette score: how well-separated clusters are. Range [-1, 1], higher = better.">Silhouette:</span>
+                <span class="metric-value" x-text="visualizationMetrics?.silhouetteScore != null ? visualizationMetrics.silhouetteScore.toFixed(3) : '—'"></span>
+              </div>
+            </div>
           </div>
 
           <!-- Status Message -->
