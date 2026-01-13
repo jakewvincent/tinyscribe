@@ -3345,6 +3345,9 @@ export class App {
       this.modalSpeakerVisualizer = new SpeakerVisualizer('speakers-modal-canvas');
     }
 
+    // Resize canvas in case modal was hidden when visualizer was created
+    this.modalSpeakerVisualizer.resize();
+
     const speakers = this.transcriptMerger.speakerClusterer.getAllSpeakersForVisualization();
     this.modalSpeakerVisualizer.render(speakers);
   }
