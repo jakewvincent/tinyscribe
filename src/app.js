@@ -22,7 +22,7 @@ import { EnrollmentManager } from './utils/enrollmentManager.js';
 import { PreferencesStore, RecordingStore, ModelSelectionStore, SegmentationModelStore, enrollmentStore } from './storage/index.js';
 
 // Model configuration
-import { getEmbeddingModelConfig, getAvailableEmbeddingModels } from './config/models.js';
+import { getEmbeddingModelConfig, getAvailableEmbeddingModels, DEFAULT_EMBEDDING_MODEL } from './config/models.js';
 import { getSegmentationModelConfig } from './config/segmentation.js';
 
 // Core modules (pure logic, no browser dependencies)
@@ -2740,6 +2740,7 @@ export class App {
       const segmentationParams = SegmentationModelStore.getParams(segmentationModelId);
 
       // Build job settings from current global state
+      // Use CURRENT enrollments for new jobs since user is re-processing with new settings
       const jobSettings = buildJobSettings({
         embeddingModelId,
         segmentationModelId,
@@ -2747,7 +2748,7 @@ export class App {
         clustering: {
           numSpeakers: this.numSpeakers,
         },
-        enrollmentSource: ENROLLMENT_SOURCE.SNAPSHOT,
+        enrollmentSource: ENROLLMENT_SOURCE.CURRENT,
       });
 
       // Create new unprocessed job
@@ -3833,28 +3834,40 @@ export class App {
   }
 
   /**
-   * Prepare enrollments for the current model by using model-specific embeddings
-   * @param {Array} enrollments - Raw enrollments from storage
-   * @param {string} modelId - Current model ID
+   * Prepare enrollments for the current model by using model-specific embeddings.
+   * For snapshot enrollments (from saved recordings), uses embedded data directly.
+   * For current enrollments, can also look up fresh data from IndexedDB.
+   *
+   * @param {Array} enrollments - Enrollments (from snapshot or current)
+   * @param {string} modelId - Model ID to get embeddings for
    * @returns {Promise<Array>} Enrollments with centroid set to model-specific embedding
    */
   async prepareEnrollmentsForModel(enrollments, modelId) {
     const results = [];
     for (const e of enrollments) {
-      // Try to get model-specific embedding
-      const modelEmbedding = await enrollmentStore.getEmbeddingForModel(e.id, modelId);
+      let embedding = null;
 
-      if (modelEmbedding) {
-        // Use model-specific embedding
-        results.push({ ...e, centroid: Array.from(modelEmbedding) });
-      } else if (e.centroid) {
-        // Fall back to legacy centroid (may be wrong dimensions for different model)
-        console.warn(`[App] Enrollment "${e.name}" has no embedding for model ${modelId}, using legacy centroid`);
-        results.push(e);
+      // 1. First check if enrollment object has per-model embedding directly
+      //    This works for both snapshot enrollments and fresh enrollments
+      if (e.embeddings?.[modelId]) {
+        embedding = new Float32Array(e.embeddings[modelId]);
+      }
+
+      // 2. If not found on object, try IndexedDB lookup (for fresh enrollments that might have been updated)
+      if (!embedding) {
+        embedding = await enrollmentStore.getEmbeddingForModel(e.id, modelId);
+      }
+
+      // 3. Fall back to legacy centroid if this is the default model
+      if (!embedding && modelId === DEFAULT_EMBEDDING_MODEL && e.centroid) {
+        embedding = new Float32Array(e.centroid);
+      }
+
+      if (embedding) {
+        results.push({ ...e, centroid: Array.from(embedding) });
       } else {
-        // No embedding at all - skip this enrollment
-        console.warn(`[App] Enrollment "${e.name}" has no usable embedding, skipping`);
-        // Skip by not adding to results
+        // No usable embedding for this model - skip this enrollment
+        console.warn(`[App] Enrollment "${e.name}" has no embedding for model ${modelId}, skipping`);
       }
     }
     return results;
