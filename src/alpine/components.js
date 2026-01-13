@@ -996,6 +996,12 @@ document.addEventListener('alpine:init', () => {
         if (this.activeJob?.status === 'unprocessed') {
           this.settingsSidebarOpen = true;
         }
+
+        // Sync settings sidebar state with jobSettingsPanel
+        // (settingsSidebarOpen may be restored from localStorage)
+        window.dispatchEvent(new CustomEvent('job-settings-toggle', {
+          detail: { open: this.settingsSidebarOpen },
+        }));
       });
 
       // Listen for recording closed
@@ -1012,6 +1018,9 @@ document.addEventListener('alpine:init', () => {
       window.addEventListener('job-created', (e) => {
         if (e.detail.isUnprocessed) {
           this.settingsSidebarOpen = true;
+          window.dispatchEvent(new CustomEvent('job-settings-toggle', {
+            detail: { open: true },
+          }));
         }
       });
 
