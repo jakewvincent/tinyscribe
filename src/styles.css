@@ -803,6 +803,10 @@ body.resizing * {
   height: 100%;
   border-radius: 3px;
   min-width: 2px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Speaker colors via data attribute */
@@ -814,30 +818,24 @@ body.resizing * {
 .candidate-bar-row[data-speaker-idx="5"] .candidate-bar { background: var(--speaker-5); }
 .candidate-bar-row.discovered .candidate-bar { background: #9ca3af; }
 
-/* Percentage text - positioned over the bar by default */
+/* Percentage text - centered inside the bar by default */
 .candidate-pct {
-  position: absolute;
-  right: 0;
-  width: 100%;
-  text-align: center;
   color: white;
   font-family: 'SF Mono', Monaco, 'Consolas', monospace;
   font-size: 0.55rem;
   font-weight: 600;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
-  z-index: 1;
+  white-space: nowrap;
   pointer-events: none;
 }
 
-/* For low percentages, position text to the left of the bar */
+/* For low percentages, position text outside to the left of the bar */
 .candidate-bar-row.pct-outside .candidate-pct {
-  right: auto;
-  left: 0;
-  width: auto;
-  text-align: left;
+  position: absolute;
+  right: 100%;
+  padding-right: 4px;
   color: var(--text-secondary);
   text-shadow: none;
-  padding-right: 4px;
 }
 
 /* Speaker name - no truncation */

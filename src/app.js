@@ -1498,8 +1498,7 @@ export class App {
               <div class="candidate-bar-row ${enrolledClass} ${visibilityClass} ${pctOutsideClass}" data-speaker-idx="${colorIdx % 6}">
                 <span class="candidate-boost-area">${boostTag}</span>
                 <div class="candidate-bar-container">
-                  <span class="candidate-pct">${pct}%</span>
-                  <span class="candidate-bar" style="width: ${pct}%"></span>
+                  <span class="candidate-bar" style="width: ${pct}%"><span class="candidate-pct">${pct}%</span></span>
                 </div>
                 <span class="candidate-name">${c.speaker}</span>
               </div>
