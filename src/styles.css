@@ -3954,7 +3954,6 @@ body.resizing * {
 }
 
 /* Processing status in nav */
-.job-unprocessed-notice,
 .job-processing-notice {
   display: flex;
   align-items: center;

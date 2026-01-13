@@ -209,22 +209,18 @@
               </button>
             </div>
 
-            <!-- Center: Status badge (for unprocessed jobs) -->
+            <!-- Center: Process button (unprocessed/processing states only) -->
             <div class="job-nav-center">
-              <template x-if="isActiveJobUnprocessed">
-                <div class="job-unprocessed-notice">
-                  <span class="status-badge status-unprocessed">Unprocessed</span>
-                  <button class="btn primary small" @click="processJob('quick')" :disabled="isProcessing">
-                    <i class="ti ti-player-play"></i> Process
-                  </button>
-                </div>
+              <template x-if="isActiveJobUnprocessed && !isProcessing">
+                <button class="btn primary small" @click="processJob('quick')">
+                  <i class="ti ti-player-play"></i> Process
+                </button>
               </template>
-              <template x-if="isActiveJobProcessing">
+              <template x-if="isActiveJobProcessing || isProcessing">
                 <div class="job-processing-notice">
-                  <span class="status-badge status-processing">
-                    <i class="ti ti-loader-2 spinning"></i>
-                    Processing...
-                  </span>
+                  <button class="btn primary small" disabled>
+                    <i class="ti ti-loader-2 spinning"></i> Processing...
+                  </button>
                   <span x-show="processingProgress.total > 0" class="processing-progress" x-text="processingProgress.current + '/' + processingProgress.total"></span>
                 </div>
               </template>
