@@ -126,7 +126,6 @@ export class App {
     this.exportAllJobsBtn = document.getElementById('export-all-jobs-btn');
     this.exportRawBtn = document.getElementById('export-raw-btn');
     this.micSelect = document.getElementById('mic-select');
-    this.numSpeakersSelect = document.getElementById('num-speakers');
     this.loadingMessage = document.getElementById('loading-message');
     this.progressContainer = document.getElementById('progress-container');
     this.deviceInfo = document.getElementById('device-info');
@@ -290,7 +289,9 @@ export class App {
     // Job export events (from jobNavigation component)
     window.addEventListener('job-copy-json', (e) => this.copyJobJson(e.detail.jobId));
     window.addEventListener('job-export', (e) => this.exportJob(e.detail.jobId));
-    this.numSpeakersSelect.addEventListener('change', (e) => this.handleNumSpeakersChange(e));
+
+    // Settings changes from Alpine sidebar
+    window.addEventListener('num-speakers-change', (e) => this.handleNumSpeakersChange(e.detail.value));
 
     // Enrollment controls - Alpine sidebar dispatches events, we listen here
     window.addEventListener('enrollment-start', (e) => {
@@ -446,10 +447,10 @@ export class App {
   }
 
   /**
-   * Handle number of speakers change
+   * Handle number of speakers change (from settings sidebar)
    */
-  handleNumSpeakersChange(event) {
-    this.numSpeakers = parseInt(event.target.value, 10);
+  handleNumSpeakersChange(value) {
+    this.numSpeakers = value;
     this.transcriptMerger.setNumSpeakers(this.numSpeakers);
 
     // Update inference layer and recalculate if needed

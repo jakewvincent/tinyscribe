@@ -1464,6 +1464,11 @@ document.addEventListener('alpine:init', () => {
         if (['similarityThreshold', 'confidenceMargin', 'numSpeakers'].includes(key)) {
           if (!this.activeJob.settings.clustering) this.activeJob.settings.clustering = {};
           this.activeJob.settings.clustering[key] = value;
+
+          // Dispatch event for numSpeakers so app.js can update live state
+          if (key === 'numSpeakers') {
+            window.dispatchEvent(new CustomEvent('num-speakers-change', { detail: { value } }));
+          }
         }
         // Boosting settings
         else if ([

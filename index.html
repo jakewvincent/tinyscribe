@@ -69,17 +69,6 @@
             <option value="">Default</option>
           </select>
         </div>
-        <div class="speaker-config">
-          <label for="num-speakers">Speakers:</label>
-          <select id="num-speakers">
-            <option value="1">1</option>
-            <option value="2" selected>2</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
-            <option value="5">5</option>
-            <option value="6">6</option>
-          </select>
-        </div>
         <!-- Recordings Dropdown -->
         <div x-data="recordingsDropdown" class="recordings-dropdown-container">
           <button class="btn secondary recordings-dropdown-btn" @click="toggle()" :class="{ 'active': isOpen, 'viewing': isViewingRecording }">
