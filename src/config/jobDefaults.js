@@ -142,11 +142,13 @@ export function createJob(options = {}) {
   const settings = options.settings || buildJobSettings();
 
   // Auto-generate name from model selection if not provided
-  const autoName = `${settings.embeddingModel.name.replace(' SV', '')} + ${settings.segmentationModel.name.replace('Text-based ', '')}`;
+  const autoName = generateJobName(settings);
+  const nameCustomized = options.name ? true : false;
 
   return {
     id: generateJobId(),
     name: options.name || autoName,
+    nameCustomized,
     notes: options.notes || '',
     status: options.status || JOB_STATUS.UNPROCESSED,
     createdAt: Date.now(),
@@ -155,6 +157,17 @@ export function createJob(options = {}) {
     segments: null,
     participants: null,
   };
+}
+
+/**
+ * Generate a job name from its settings (embedding + segmentation model names)
+ * @param {Object} settings - Job settings object
+ * @returns {string} Auto-generated job name
+ */
+export function generateJobName(settings) {
+  const embedName = settings.embeddingModel?.name?.replace(' SV', '') || 'Unknown';
+  const segName = settings.segmentationModel?.name?.replace('Text-based ', '') || 'Unknown';
+  return `${embedName} + ${segName}`;
 }
 
 /**
@@ -250,6 +263,7 @@ export default {
   generateJobId,
   buildJobSettings,
   createJob,
+  generateJobName,
   cloneJobSettings,
   getJobSettingsSummary,
   jobHasNotes,

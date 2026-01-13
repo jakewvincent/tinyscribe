@@ -379,7 +379,7 @@ export class App {
     window.addEventListener('job-create-new', () => this.createNewJob());
     window.addEventListener('job-clone', (e) => this.cloneJob(e.detail.sourceJobId));
     window.addEventListener('job-delete', (e) => this.deleteJob(e.detail.jobId));
-    window.addEventListener('job-update-name', (e) => this.updateJobName(e.detail.jobId, e.detail.name));
+    window.addEventListener('job-update-name', (e) => this.updateJobName(e.detail.jobId, e.detail.name, e.detail.customized !== false));
     window.addEventListener('job-update-notes', (e) => this.updateJobNotes(e.detail.jobId, e.detail.notes));
     window.addEventListener('job-process', (e) => this.processJob(e.detail.jobId, e.detail.mode || 'quick'));
 
@@ -2691,13 +2691,18 @@ export class App {
    * Update a job's name
    * @param {string} jobId - Job ID
    * @param {string} name - New name
+   * @param {boolean} [customized=true] - Whether this is a user customization (vs auto-generated)
    */
-  async updateJobName(jobId, name) {
+  async updateJobName(jobId, name, customized = true) {
     if (!this.isViewingRecording || !this.viewedRecordingId) return;
 
     try {
-      await this.recordingStore.updateJob(this.viewedRecordingId, jobId, { name });
-      console.log(`[Job] Updated name: ${name}`);
+      const updates = { name };
+      if (customized) {
+        updates.nameCustomized = true;
+      }
+      await this.recordingStore.updateJob(this.viewedRecordingId, jobId, updates);
+      console.log(`[Job] Updated name: ${name}${customized ? ' (customized)' : ' (auto)'}`);
     } catch (error) {
       console.error('[Job] Failed to update name:', error);
     }

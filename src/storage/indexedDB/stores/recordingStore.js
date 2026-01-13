@@ -23,6 +23,7 @@ const config = INDEXED_DB_CONFIG.RECORDINGS;
  * @typedef {Object} Job
  * @property {string} id - UUID for the job
  * @property {string} name - User-editable job name
+ * @property {boolean} nameCustomized - Whether name was manually edited (vs auto-generated)
  * @property {string} notes - User notes about this job
  * @property {'unprocessed'|'processing'|'processed'} status - Job status
  * @property {number} createdAt - When job was created

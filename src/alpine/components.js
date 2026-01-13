@@ -1124,13 +1124,16 @@ document.addEventListener('alpine:init', () => {
     saveEdit() {
       if (!this.activeJobId) return;
 
-      // Update name if changed
+      // Update name if changed (mark as customized so auto-naming won't override it)
       const newName = this.editName.trim();
       if (newName && newName !== this.activeJob?.name) {
         window.dispatchEvent(new CustomEvent('job-update-name', {
-          detail: { jobId: this.activeJobId, name: newName },
+          detail: { jobId: this.activeJobId, name: newName, customized: true },
         }));
-        if (this.activeJob) this.activeJob.name = newName;
+        if (this.activeJob) {
+          this.activeJob.name = newName;
+          this.activeJob.nameCustomized = true;
+        }
       }
 
       // Update notes if changed
@@ -1460,8 +1463,24 @@ document.addEventListener('alpine:init', () => {
 
       // Update the job's settings in memory
       if (this.activeJob.settings) {
+        // Embedding model change
+        if (key === 'embeddingModelId') {
+          const model = this.embeddingModels.find(m => m.id === value);
+          if (model) {
+            this.activeJob.settings.embeddingModel = { id: model.id, name: model.name };
+            this.maybeAutoGenerateName();
+          }
+        }
+        // Segmentation model change
+        else if (key === 'segmentationModelId') {
+          const model = this.segmentationModels.find(m => m.id === value);
+          if (model) {
+            this.activeJob.settings.segmentationModel = { id: model.id, name: model.name };
+            this.maybeAutoGenerateName();
+          }
+        }
         // Clustering settings
-        if (['similarityThreshold', 'confidenceMargin', 'numSpeakers'].includes(key)) {
+        else if (['similarityThreshold', 'confidenceMargin', 'numSpeakers'].includes(key)) {
           if (!this.activeJob.settings.clustering) this.activeJob.settings.clustering = {};
           this.activeJob.settings.clustering[key] = value;
 
@@ -1482,7 +1501,22 @@ document.addEventListener('alpine:init', () => {
           if (!this.activeJob.settings.boosting) this.activeJob.settings.boosting = {};
           this.activeJob.settings.boosting[key] = value;
         }
-        // Model settings would need full config lookup
+      }
+    },
+
+    // Auto-generate job name from models if name hasn't been customized
+    maybeAutoGenerateName() {
+      if (!this.activeJob || this.activeJob.nameCustomized) return;
+
+      const embedName = this.activeJob.settings.embeddingModel?.name?.replace(' SV', '') || 'Unknown';
+      const segName = this.activeJob.settings.segmentationModel?.name?.replace('Text-based ', '') || 'Unknown';
+      const newName = `${embedName} + ${segName}`;
+
+      if (newName !== this.activeJob.name) {
+        this.activeJob.name = newName;
+        window.dispatchEvent(new CustomEvent('job-update-name', {
+          detail: { jobId: this.activeJob.id, name: newName, customized: false },
+        }));
       }
     },
 
