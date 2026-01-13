@@ -3518,9 +3518,9 @@ export class App {
         avgEmbedding[i] /= sampleEmbeddings.length;
       }
 
-      // Store the computed centroid
-      await enrollmentStore.setEmbeddingForModel(enrollment.id, modelId, avgEmbedding);
-      console.log(`[App] Computed ${modelId} embedding for "${enrollment.name}"`);
+      // Store the computed centroid and sample embeddings
+      await enrollmentStore.setEmbeddingForModel(enrollment.id, modelId, avgEmbedding, sampleEmbeddings);
+      console.log(`[App] Computed ${modelId} embedding for "${enrollment.name}" (${sampleEmbeddings.length} samples)`);
 
       // Collect for metrics
       speakersWithSamples.push({
@@ -3537,8 +3537,8 @@ export class App {
   }
 
   /**
-   * Compute discriminability metrics for a model from stored centroids
-   * Used when model already has embeddings (no need to recompute)
+   * Compute discriminability metrics for a model from stored embeddings
+   * Uses stored sample embeddings when available for accurate silhouette score
    * @param {string} modelId - Model ID
    * @returns {Promise<{meanSimilarity: number|null, minSimilarity: object|null, silhouetteScore: number|null}>}
    */
@@ -3549,12 +3549,15 @@ export class App {
       return { meanSimilarity: null, minSimilarity: null, silhouetteScore: null };
     }
 
-    // Format for metrics computation (centroids only, no individual samples)
-    const speakersForMetrics = speakers.map(s => ({
-      id: s.id,
-      name: s.name,
-      centroid: s.centroid,
-      samples: [s.centroid], // Use centroid as single sample for simplified silhouette
+    // Retrieve stored sample embeddings for each speaker
+    const speakersForMetrics = await Promise.all(speakers.map(async (s) => {
+      const samples = await enrollmentStore.getEmbeddingSamplesForModel(s.id, modelId);
+      return {
+        id: s.id,
+        name: s.name,
+        centroid: s.centroid,
+        samples: samples || [s.centroid], // Fall back to centroid if no samples stored
+      };
     }));
 
     return computeDiscriminabilityMetrics(speakersForMetrics);

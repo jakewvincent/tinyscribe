@@ -324,10 +324,11 @@ export class EnrollmentStore {
    * Cache an embedding for a specific model
    * @param {string} id - Enrollment ID
    * @param {string} modelId - Model ID
-   * @param {Float32Array|number[]} embedding - Computed embedding
+   * @param {Float32Array|number[]} embedding - Computed centroid embedding
+   * @param {Float32Array[]|number[][]} [samples] - Individual sample embeddings (for metrics)
    * @returns {Promise<boolean>}
    */
-  async setEmbeddingForModel(id, modelId, embedding) {
+  async setEmbeddingForModel(id, modelId, embedding, samples = null) {
     const enrollment = await this.getById(id);
     if (!enrollment) return false;
 
@@ -336,6 +337,14 @@ export class EnrollmentStore {
     }
     enrollment.embeddings[modelId] = Array.from(embedding);
 
+    // Store individual sample embeddings if provided
+    if (samples && samples.length > 0) {
+      if (!enrollment.embeddingSamples) {
+        enrollment.embeddingSamples = {};
+      }
+      enrollment.embeddingSamples[modelId] = samples.map(s => Array.from(s));
+    }
+
     // Also update centroid if this is the default model
     if (modelId === DEFAULT_EMBEDDING_MODEL) {
       enrollment.centroid = Array.from(embedding);
@@ -343,6 +352,18 @@ export class EnrollmentStore {
 
     await this.update(enrollment);
     return true;
+  }
+
+  /**
+   * Get stored sample embeddings for a specific model
+   * @param {string} id - Enrollment ID
+   * @param {string} modelId - Model ID
+   * @returns {Promise<Float32Array[]|null>}
+   */
+  async getEmbeddingSamplesForModel(id, modelId) {
+    const enrollment = await this.getById(id);
+    if (!enrollment?.embeddingSamples?.[modelId]) return null;
+    return enrollment.embeddingSamples[modelId].map(s => new Float32Array(s));
   }
 
   /**
