@@ -4353,6 +4353,7 @@ export class App {
 
     this.pendingEnrollmentSampleId = this.enrollmentManager.getCurrentIndex();
     this.pendingExpectedSentence = this.enrollmentManager.getCurrentSentence();
+    this.pendingEnrollmentAudio = audio; // Store for addSample (was missing - causing 0 samples bug)
     this.pendingTranscriptionResult = null;
     this.pendingEmbeddingResult = null;
 
