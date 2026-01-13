@@ -860,7 +860,10 @@ body.resizing * {
   border-radius: 3px;
   margin-top: 0.2rem;
   width: 100%;
-  text-align: right;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
 }
 
 .candidates-toggle:hover {

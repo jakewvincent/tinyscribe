@@ -1508,9 +1508,10 @@ export class App {
           const candidateRows = sorted.map((c, i) => buildCandidateRow(c, i, i < visibleCount)).join('');
 
           // Build toggle button if there are more candidates
+          const hiddenCount = sorted.length - visibleCount;
           const toggleHtml = hasMore ? `
-            <button class="candidates-toggle" onclick="this.closest('.candidates-panel').classList.toggle('expanded'); this.textContent = this.closest('.candidates-panel').classList.contains('expanded') ? 'Show less' : 'See all ${sorted.length}'">
-              See all ${sorted.length}
+            <button class="candidates-toggle" onclick="this.closest('.candidates-panel').classList.toggle('expanded'); this.innerHTML = this.closest('.candidates-panel').classList.contains('expanded') ? '<i class=\\'ti ti-chevrons-up\\'></i> Show less' : '<i class=\\'ti ti-chevrons-down\\'></i> See ${hiddenCount} more'">
+              <i class="ti ti-chevrons-down"></i> See ${hiddenCount} more
             </button>
           ` : '';
 
