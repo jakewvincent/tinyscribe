@@ -273,6 +273,17 @@ export class EnrollmentStore {
   }
 
   /**
+   * Get count of audio samples for an enrollment (without loading full data)
+   * @param {string} id - Enrollment ID
+   * @returns {Promise<number>}
+   */
+  async getAudioSampleCount(id) {
+    if (!this._initialized) await this.init();
+    const data = await this.adapter.get(config.stores.AUDIO_SAMPLES, id);
+    return data?.samples?.length || 0;
+  }
+
+  /**
    * Get audio samples for an enrollment
    * @param {string} id - Enrollment ID
    * @returns {Promise<Float32Array[]|null>}

@@ -789,7 +789,7 @@
               <div class="speaker-item">
                 <span class="speaker-dot" :style="`background: var(--speaker-${enrollment.colorIndex})`"></span>
                 <span class="speaker-name" x-text="enrollment.name"></span>
-                <span class="speaker-samples" x-text="enrollment.recordings?.length + ' sample' + (enrollment.recordings?.length !== 1 ? 's' : '')"></span>
+                <span class="speaker-samples" x-text="enrollment.sampleCount + ' sample' + (enrollment.sampleCount !== 1 ? 's' : '')"></span>
                 <button class="btn-icon-sm remove-speaker" @click="removeEnrollment(enrollment.id)" title="Remove speaker">
                   <i class="ti ti-trash"></i>
                 </button>

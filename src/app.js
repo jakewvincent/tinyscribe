@@ -3367,7 +3367,7 @@ export class App {
       this.conversationInference.setEnrolledSpeakers(enrollmentsForClusterer);
 
       // Update Alpine UI with enrolled state
-      this.dispatchEnrollmentsUpdated(enrollments);
+      await this.dispatchEnrollmentsUpdated(enrollments);
     }
   }
 
@@ -3493,16 +3493,24 @@ export class App {
   /**
    * Dispatch enrollments list update to Alpine
    */
-  dispatchEnrollmentsUpdated(enrollments) {
+  async dispatchEnrollmentsUpdated(enrollments) {
+    // Fetch audio sample counts from IndexedDB for each enrollment
+    const enrollmentsWithCounts = await Promise.all(
+      enrollments.map(async (e, i) => {
+        const sampleCount = await enrollmentStore.getAudioSampleCount(e.id);
+        return {
+          id: e.id,
+          name: e.name,
+          colorIndex: i % 6,
+          sampleCount,
+        };
+      })
+    );
+
     window.dispatchEvent(
       new CustomEvent('enrollments-updated', {
         detail: {
-          enrollments: enrollments.map((e, i) => ({
-            id: e.id,
-            name: e.name,
-            colorIndex: i % 6,
-            recordings: e.audioSamples || [],
-          })),
+          enrollments: enrollmentsWithCounts,
         },
       })
     );
@@ -3613,7 +3621,7 @@ export class App {
     this.conversationInference.setEnrolledSpeakers(remaining);
 
     // Update Alpine UI
-    this.dispatchEnrollmentsUpdated(remaining);
+    await this.dispatchEnrollmentsUpdated(remaining);
     this.setEnrollStatus('Speaker removed.');
   }
 
@@ -3629,7 +3637,7 @@ export class App {
     this.conversationInference.setEnrolledSpeakers([]);
 
     // Update Alpine UI (empty list will trigger state change to 'intro')
-    this.dispatchEnrollmentsUpdated([]);
+    await this.dispatchEnrollmentsUpdated([]);
     this.setEnrollStatus('All enrollments cleared.');
   }
 
@@ -4130,7 +4138,7 @@ export class App {
     this.closeEnrollmentModal();
 
     // Update Alpine sidebar UI
-    this.dispatchEnrollmentsUpdated(await EnrollmentManager.loadAll());
+    await this.dispatchEnrollmentsUpdated(await EnrollmentManager.loadAll());
 
     // Notify speakers modal that enrollment is complete
     window.dispatchEvent(new CustomEvent('enrollment-complete'));
@@ -4166,7 +4174,7 @@ export class App {
     this.enrollmentManager.reset();
 
     // Update Alpine sidebar UI (state determined by whether enrollments exist)
-    this.dispatchEnrollmentsUpdated(await EnrollmentManager.loadAll());
+    await this.dispatchEnrollmentsUpdated(await EnrollmentManager.loadAll());
     this.setEnrollStatus('Enrollment cancelled.');
   }
 
