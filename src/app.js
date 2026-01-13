@@ -19,7 +19,7 @@ import { ConversationInference } from './core/inference/index.js';
 import { EnrollmentManager } from './utils/enrollmentManager.js';
 
 // Storage layer
-import { PreferencesStore, RecordingStore, ModelSelectionStore, SegmentationModelStore, EnrollmentStore } from './storage/index.js';
+import { PreferencesStore, RecordingStore, ModelSelectionStore, SegmentationModelStore, enrollmentStore } from './storage/index.js';
 
 // Model configuration
 import { getEmbeddingModelConfig } from './config/models.js';
@@ -185,14 +185,14 @@ export class App {
     // Check for WebGPU support
     await this.detectWebGPU();
 
-    // Migrate old single enrollment format if needed
-    EnrollmentManager.migrateFromSingle();
+    // Initialize enrollment store (handles migration from localStorage if needed)
+    await EnrollmentManager.init();
 
     // Initialize resizable dividers first (restores saved sidebar width)
     this.initResizeDividers();
 
     // Load saved enrollments
-    this.loadSavedEnrollments();
+    await this.loadSavedEnrollments();
 
     // Initialize visualization (canvas will be sized correctly now)
     this.initVisualization();
@@ -1955,11 +1955,11 @@ export class App {
   /**
    * Update the participants panel with current hypothesis
    */
-  updateParticipantsPanel() {
+  async updateParticipantsPanel() {
     if (!this.participantsPanel) return;
 
     const hypothesis = this.conversationInference.getHypothesis();
-    const enrollments = EnrollmentManager.loadAll();
+    const enrollments = await EnrollmentManager.loadAll();
     const speakerStats = this.conversationInference.getAllSpeakerStatsForUI();
     const hypothesisHistory = this.conversationInference.getHypothesisHistory();
     this.participantsPanel.render(hypothesis, enrollments, speakerStats, hypothesisHistory);
@@ -2216,7 +2216,7 @@ export class App {
       const duration = lastSegment.endTime || 0;
 
       // Get current enrollments snapshot
-      const enrollmentsSnapshot = EnrollmentManager.loadAll();
+      const enrollmentsSnapshot = await EnrollmentManager.loadAll();
 
       // Extract participants from segments
       const participants = this._extractParticipants(segments);
@@ -2724,7 +2724,7 @@ export class App {
       const { recording, chunks, transcriptionData } = data;
 
       // Apply job settings to clusterer
-      this._applyJobSettings(job.settings);
+      await this._applyJobSettings(job.settings);
 
       // Process based on mode
       let newSegments;
@@ -2774,11 +2774,11 @@ export class App {
    * Apply job settings to the clusterer/inference system
    * @param {Object} settings - JobSettings object
    */
-  _applyJobSettings(settings) {
+  async _applyJobSettings(settings) {
     // Get enrollments based on job's enrollment source
     let enrollments;
     if (settings.enrollmentSource === ENROLLMENT_SOURCE.CURRENT) {
-      enrollments = EnrollmentManager.loadAll();
+      enrollments = await EnrollmentManager.loadAll();
     } else {
       // Use snapshot from recording
       enrollments = this._currentViewedEnrollments || [];
@@ -2989,7 +2989,7 @@ export class App {
    * Re-process all current segments through inference with updated boosting config
    * Works for both live recordings (after stopping) and saved recordings being viewed
    */
-  reprocessBoostingForCurrentSegments() {
+  async reprocessBoostingForCurrentSegments() {
     // Get segments from either viewed recording or live session
     let segments;
     if (this.isViewingRecording && this.viewedRecordingId) {
@@ -3008,7 +3008,7 @@ export class App {
     // Get current enrollments for inference context
     const enrollments = this.isViewingRecording
       ? (this._currentViewedEnrollments || [])
-      : EnrollmentManager.loadAll();
+      : await EnrollmentManager.loadAll();
 
     // Reset inference and re-process all segments with new config
     this.conversationInference.reset();
@@ -3052,7 +3052,7 @@ export class App {
       // Get the appropriate enrollments
       const enrollments = source === 'snapshot'
         ? recording.enrollmentsSnapshot
-        : EnrollmentManager.loadAll();
+        : await EnrollmentManager.loadAll();
 
       // Update stored enrollments for boosting re-processing
       this._currentViewedEnrollments = enrollments || [];
@@ -3353,12 +3353,12 @@ export class App {
    * Load saved enrollments from storage
    * Uses model-specific embeddings when available
    */
-  loadSavedEnrollments() {
-    const enrollments = EnrollmentManager.loadAll();
+  async loadSavedEnrollments() {
+    const enrollments = await EnrollmentManager.loadAll();
     if (enrollments.length > 0) {
       // Prepare enrollments with model-specific embeddings for the clusterer
       const modelId = ModelSelectionStore.getEmbeddingModel();
-      const enrollmentsForClusterer = this.prepareEnrollmentsForModel(enrollments, modelId);
+      const enrollmentsForClusterer = await this.prepareEnrollmentsForModel(enrollments, modelId);
 
       // Import all into speaker clusterer
       this.transcriptMerger.speakerClusterer.importEnrolledSpeakers(enrollmentsForClusterer);
@@ -3375,26 +3375,28 @@ export class App {
    * Prepare enrollments for the current model by using model-specific embeddings
    * @param {Array} enrollments - Raw enrollments from storage
    * @param {string} modelId - Current model ID
-   * @returns {Array} Enrollments with centroid set to model-specific embedding
+   * @returns {Promise<Array>} Enrollments with centroid set to model-specific embedding
    */
-  prepareEnrollmentsForModel(enrollments, modelId) {
-    return enrollments.map(e => {
+  async prepareEnrollmentsForModel(enrollments, modelId) {
+    const results = [];
+    for (const e of enrollments) {
       // Try to get model-specific embedding
-      const modelEmbedding = EnrollmentStore.getEmbeddingForModel(e.id, modelId);
+      const modelEmbedding = await enrollmentStore.getEmbeddingForModel(e.id, modelId);
 
       if (modelEmbedding) {
         // Use model-specific embedding
-        return { ...e, centroid: Array.from(modelEmbedding) };
+        results.push({ ...e, centroid: Array.from(modelEmbedding) });
       } else if (e.centroid) {
         // Fall back to legacy centroid (may be wrong dimensions for different model)
         console.warn(`[App] Enrollment "${e.name}" has no embedding for model ${modelId}, using legacy centroid`);
-        return e;
+        results.push(e);
       } else {
         // No embedding at all - skip this enrollment
         console.warn(`[App] Enrollment "${e.name}" has no usable embedding, skipping`);
-        return null;
+        // Skip by not adding to results
       }
-    }).filter(e => e !== null);
+    }
+    return results;
   }
 
   /**
@@ -3403,7 +3405,7 @@ export class App {
    */
   async recomputeEnrollmentsForCurrentModel() {
     const modelId = ModelSelectionStore.getEmbeddingModel();
-    const enrollmentsNeedingRecompute = EnrollmentStore.getEnrollmentsNeedingEmbeddings(modelId);
+    const enrollmentsNeedingRecompute = await enrollmentStore.getEnrollmentsNeedingEmbeddings(modelId);
 
     if (enrollmentsNeedingRecompute.length === 0) {
       console.log('[App] All enrollments have embeddings for current model');
@@ -3413,7 +3415,7 @@ export class App {
     console.log(`[App] Recomputing embeddings for ${enrollmentsNeedingRecompute.length} enrollment(s) using model: ${modelId}`);
 
     for (const enrollment of enrollmentsNeedingRecompute) {
-      const audioSamples = EnrollmentStore.getAudioSamples(enrollment.id);
+      const audioSamples = await enrollmentStore.getAudioSamples(enrollment.id);
       if (!audioSamples || audioSamples.length === 0) {
         console.warn(`[App] Enrollment "${enrollment.name}" has no audio samples for recomputation`);
         continue;
@@ -3448,7 +3450,7 @@ export class App {
         l2Normalize(avgEmbedding);
 
         // Cache the computed embedding
-        EnrollmentStore.setEmbeddingForModel(enrollment.id, modelId, avgEmbedding);
+        await enrollmentStore.setEmbeddingForModel(enrollment.id, modelId, avgEmbedding);
         console.log(`[App] Recomputed embedding for "${enrollment.name}" (${dim}-dim)`);
       } catch (error) {
         console.error(`[App] Failed to recompute embedding for "${enrollment.name}":`, error);
@@ -3456,7 +3458,7 @@ export class App {
     }
 
     // Reload enrollments into clusterer with new embeddings
-    this.loadSavedEnrollments();
+    await this.loadSavedEnrollments();
   }
 
   /**
@@ -3600,9 +3602,9 @@ export class App {
   /**
    * Remove a specific enrollment (called from Alpine via enrollment-remove event)
    */
-  removeEnrollment(enrollmentId) {
+  async removeEnrollment(enrollmentId) {
     // Remove from storage
-    const remaining = EnrollmentManager.removeEnrollment(enrollmentId);
+    const remaining = await EnrollmentManager.removeEnrollment(enrollmentId);
 
     // Remove from speaker clusterer
     this.transcriptMerger.speakerClusterer.removeEnrolledSpeaker(enrollmentId);
@@ -3618,8 +3620,8 @@ export class App {
   /**
    * Clear all enrollments (called from Alpine via enrollment-clear-all event)
    */
-  clearAllEnrollments() {
-    EnrollmentManager.clearAll();
+  async clearAllEnrollments() {
+    await EnrollmentManager.clearAll();
     this.transcriptMerger.speakerClusterer.clearAllEnrollments();
     this.enrollmentManager.reset();
 
@@ -4098,7 +4100,7 @@ export class App {
   /**
    * Finish enrollment from modal
    */
-  finishModalEnrollment() {
+  async finishModalEnrollment() {
     if (!this.enrollmentManager.canComplete()) {
       this.setModalStatus('Need at least 2 recordings to complete enrollment.', true);
       return;
@@ -4111,7 +4113,7 @@ export class App {
     const audioSamples = this.enrollmentManager.getAudioSamples();
 
     // Save to storage (with audio samples for model switching support)
-    const newEnrollment = EnrollmentManager.addEnrollment(name, avgEmbedding, { audioSamples });
+    const newEnrollment = await EnrollmentManager.addEnrollment(name, avgEmbedding, { audioSamples });
 
     // Import into speaker clusterer
     this.transcriptMerger.speakerClusterer.enrollSpeaker(
@@ -4128,7 +4130,7 @@ export class App {
     this.closeEnrollmentModal();
 
     // Update Alpine sidebar UI
-    this.dispatchEnrollmentsUpdated(EnrollmentManager.loadAll());
+    this.dispatchEnrollmentsUpdated(await EnrollmentManager.loadAll());
 
     // Notify speakers modal that enrollment is complete
     window.dispatchEvent(new CustomEvent('enrollment-complete'));
@@ -4159,12 +4161,12 @@ export class App {
   /**
    * Cancel enrollment from modal
    */
-  cancelModalEnrollment() {
+  async cancelModalEnrollment() {
     this.closeEnrollmentModal();
     this.enrollmentManager.reset();
 
     // Update Alpine sidebar UI (state determined by whether enrollments exist)
-    this.dispatchEnrollmentsUpdated(EnrollmentManager.loadAll());
+    this.dispatchEnrollmentsUpdated(await EnrollmentManager.loadAll());
     this.setEnrollStatus('Enrollment cancelled.');
   }
 

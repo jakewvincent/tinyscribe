@@ -6,7 +6,7 @@
 
 import { l2Normalize, l2NormalizeCopy, cosineSimilarity } from '../core/embedding/embeddingUtils.js';
 import { ENROLLMENT_DEFAULTS, RAINBOW_PASSAGES } from '../config/index.js';
-import { EnrollmentStore, ModelSelectionStore } from '../storage/index.js';
+import { enrollmentStore, ModelSelectionStore } from '../storage/index.js';
 
 export class EnrollmentManager {
   /**
@@ -302,30 +302,22 @@ export class EnrollmentManager {
     this.usedFallback = false;
   }
 
-  // ==================== Static storage methods (delegates to EnrollmentStore) ====================
+  // ==================== Static storage methods (delegates to enrollmentStore) ====================
 
   /**
-   * Migrate old single enrollment to new multi-enrollment format
-   * Call this once on app startup
+   * Initialize the enrollment store (must be called before other static methods)
+   * @returns {Promise<void>}
    */
-  static migrateFromSingle() {
-    return EnrollmentStore.migrateFromLegacy();
-  }
-
-  /**
-   * Save all enrollments
-   * @param {Array} enrollments - Array of {id, name, centroid, timestamp, colorIndex}
-   */
-  static saveAll(enrollments) {
-    EnrollmentStore.saveAll(enrollments);
+  static async init() {
+    await enrollmentStore.init();
   }
 
   /**
    * Load all enrollments
-   * @returns {Array} Array of enrollments or empty array
+   * @returns {Promise<Array>} Array of enrollments or empty array
    */
-  static loadAll() {
-    return EnrollmentStore.getAll();
+  static async loadAll() {
+    return enrollmentStore.getAll();
   }
 
   /**
@@ -334,11 +326,11 @@ export class EnrollmentManager {
    * @param {Float32Array|Array} embedding - Averaged embedding
    * @param {Object} [options] - Additional options
    * @param {Array<Float32Array|number[]>} [options.audioSamples] - Raw audio samples for recomputing embeddings
-   * @returns {Object} The created enrollment
+   * @returns {Promise<Object>} The created enrollment
    */
-  static addEnrollment(name, embedding, options = {}) {
+  static async addEnrollment(name, embedding, options = {}) {
     const modelId = ModelSelectionStore.getEmbeddingModel();
-    return EnrollmentStore.add(name, embedding, {
+    return enrollmentStore.add(name, embedding, {
       audioSamples: options.audioSamples,
       modelId,
     });
@@ -347,50 +339,109 @@ export class EnrollmentManager {
   /**
    * Remove an enrollment by ID
    * @param {string} id - Enrollment ID to remove
-   * @returns {Array} Updated enrollments array
+   * @returns {Promise<Array>} Updated enrollments array
    */
-  static removeEnrollment(id) {
-    return EnrollmentStore.remove(id);
+  static async removeEnrollment(id) {
+    return enrollmentStore.remove(id);
   }
 
   /**
    * Get count of enrollments
-   * @returns {number}
+   * @returns {Promise<number>}
    */
-  static getEnrollmentCount() {
-    return EnrollmentStore.count();
+  static async getEnrollmentCount() {
+    return enrollmentStore.count();
   }
 
   /**
    * Clear all enrollments
+   * @returns {Promise<void>}
    */
-  static clearAll() {
-    EnrollmentStore.clear();
+  static async clearAll() {
+    return enrollmentStore.clear();
   }
 
   /**
    * Check if any enrollments exist
-   * @returns {boolean}
+   * @returns {Promise<boolean>}
    */
-  static hasEnrollments() {
-    return EnrollmentStore.hasEnrollments();
+  static async hasEnrollments() {
+    return enrollmentStore.hasEnrollments();
+  }
+
+  /**
+   * Get audio samples for an enrollment
+   * @param {string} id - Enrollment ID
+   * @returns {Promise<Float32Array[]|null>}
+   */
+  static async getAudioSamples(id) {
+    return enrollmentStore.getAudioSamples(id);
+  }
+
+  /**
+   * Check if enrollment has audio samples
+   * @param {string} id - Enrollment ID
+   * @returns {Promise<boolean>}
+   */
+  static async hasAudioSamples(id) {
+    return enrollmentStore.hasAudioSamples(id);
+  }
+
+  /**
+   * Get embedding for specific model
+   * @param {string} id - Enrollment ID
+   * @param {string} modelId - Model ID
+   * @returns {Promise<Float32Array|null>}
+   */
+  static async getEmbeddingForModel(id, modelId) {
+    return enrollmentStore.getEmbeddingForModel(id, modelId);
+  }
+
+  /**
+   * Set embedding for specific model
+   * @param {string} id - Enrollment ID
+   * @param {string} modelId - Model ID
+   * @param {Float32Array|number[]} embedding - Embedding
+   * @returns {Promise<boolean>}
+   */
+  static async setEmbeddingForModel(id, modelId, embedding) {
+    return enrollmentStore.setEmbeddingForModel(id, modelId, embedding);
+  }
+
+  /**
+   * Check if enrollment has embedding for specific model
+   * @param {string} id - Enrollment ID
+   * @param {string} modelId - Model ID
+   * @returns {Promise<boolean>}
+   */
+  static async hasEmbeddingForModel(id, modelId) {
+    return enrollmentStore.hasEmbeddingForModel(id, modelId);
+  }
+
+  /**
+   * Get enrollments that need embedding computation for a model
+   * @param {string} modelId - Model ID
+   * @returns {Promise<Array>}
+   */
+  static async getEnrollmentsNeedingEmbeddings(modelId) {
+    return enrollmentStore.getEnrollmentsNeedingEmbeddings(modelId);
   }
 
   // Legacy methods for backward compatibility
-  static save(name, embedding) {
+  static async save(name, embedding) {
     return this.addEnrollment(name, embedding);
   }
 
-  static load() {
-    const enrollments = this.loadAll();
+  static async load() {
+    const enrollments = await this.loadAll();
     return enrollments.length > 0 ? enrollments[0] : null;
   }
 
-  static clear() {
-    this.clearAll();
+  static async clear() {
+    return this.clearAll();
   }
 
-  static hasEnrollment() {
+  static async hasEnrollment() {
     return this.hasEnrollments();
   }
 }

@@ -43,6 +43,14 @@ export const INDEXED_DB_CONFIG = {
       CHUNKS: 'recording-chunks',
     },
   },
+  ENROLLMENTS: {
+    name: 'transcription-enrollments',
+    version: 1,
+    stores: {
+      ENROLLMENTS: 'enrollments',
+      AUDIO_SAMPLES: 'enrollment-audio-samples',
+    },
+  },
 };
 
 // Recording schema version (for lazy migration)
@@ -54,4 +62,6 @@ Object.freeze(INDEXED_DB_CONFIG.DEBUG_LOGS.stores);
 Object.freeze(INDEXED_DB_CONFIG.DEBUG_LOGS);
 Object.freeze(INDEXED_DB_CONFIG.RECORDINGS.stores);
 Object.freeze(INDEXED_DB_CONFIG.RECORDINGS);
+Object.freeze(INDEXED_DB_CONFIG.ENROLLMENTS.stores);
+Object.freeze(INDEXED_DB_CONFIG.ENROLLMENTS);
 Object.freeze(INDEXED_DB_CONFIG);

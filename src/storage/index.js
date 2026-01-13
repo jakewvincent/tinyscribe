@@ -10,11 +10,16 @@ export { LOCAL_STORAGE_KEYS, INDEXED_DB_CONFIG } from './keys.js';
 export {
   LocalStorageAdapter,
   PreferencesStore,
-  EnrollmentStore,
   DebugSettingsStore,
   ModelSelectionStore,
   SegmentationModelStore,
 } from './localStorage/index.js';
 
 // IndexedDB
-export { IndexedDBAdapter, DebugLogStore, RecordingStore } from './indexedDB/index.js';
+export {
+  IndexedDBAdapter,
+  DebugLogStore,
+  RecordingStore,
+  EnrollmentStore,
+  enrollmentStore,
+} from './indexedDB/index.js';
