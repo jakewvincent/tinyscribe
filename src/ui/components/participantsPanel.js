@@ -132,17 +132,17 @@ export class ParticipantsPanel {
         const minPct = stats.minSimilarity !== null ? Math.round(stats.minSimilarity * 100) : '-';
         const maxPct = stats.maxSimilarity !== null ? Math.round(stats.maxSimilarity * 100) : '-';
 
-        // Build sparkline from time series (last 8 data points)
+        // Build sparkline from time series (last 20 data points for full-width display)
         let sparklineHtml = '';
         if (stats.timeSeries && stats.timeSeries.length > 1) {
-          const recentData = stats.timeSeries.slice(-8);
+          const recentData = stats.timeSeries.slice(-20);
           const bars = recentData.map(point => {
             // Scale similarity (0.5-1.0 range) to bar height (20-100%)
             const normalizedHeight = Math.max(0, Math.min(100, (point.similarity - 0.5) * 200));
             const barClass = point.rank === 1 ? 'sparkline-bar-best' : 'sparkline-bar-second';
             return `<div class="sparkline-bar ${barClass}" style="height: ${normalizedHeight}%" title="${Math.round(point.similarity * 100)}%"></div>`;
           }).join('');
-          sparklineHtml = `<div class="sparkline" title="Recent similarity values">${bars}</div>`;
+          sparklineHtml = `<div class="sparkline-row"><div class="sparkline" title="Recent similarity values (last ${recentData.length} segments)">${bars}</div></div>`;
         }
 
         enhancedStatsHtml = `
@@ -153,11 +153,11 @@ export class ParticipantsPanel {
             <span class="stat-item stat-range" title="Similarity range (min-max)">
               ${minPct}-${maxPct}%
             </span>
-            ${sparklineHtml}
             <span class="stat-trend ${trendClass}" title="Trend: ${stats.trend}">
               ${trendIcon}
             </span>
           </div>
+          ${sparklineHtml}
         `;
       }
 
