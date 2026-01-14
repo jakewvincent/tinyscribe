@@ -33,10 +33,6 @@ export const CONVERSATION_INFERENCE_DEFAULTS = {
   skipBoostIfConfident: 0.82, // Don't boost if best match already confident
   minSimilarityForBoosting: 0.65, // Don't boost garbage matches
 
-  // Ambiguous display (show "Speaker1 (Speaker2?)" format)
-  ambiguousDisplayThreshold: 0.70, // Both candidates must be above this
-  ambiguousMarginMax: 0.12, // Show alternate if margin below this
-
   // Unexpected speaker detection
   unexpectedSpeakerThreshold: 0.70, // Below this for non-participant = unexpected
 };

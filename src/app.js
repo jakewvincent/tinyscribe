@@ -1552,12 +1552,6 @@ export class App {
         }
       }
 
-      // Build alternate speaker HTML if inference suggests ambiguity
-      let alternateHtml = '';
-      if (displayInfo?.showAlternate && displayInfo?.alternateLabel) {
-        alternateHtml = ` <span class="alternate-speaker">(${displayInfo.alternateLabel}?)</span>`;
-      }
-
       // Determine margin confidence class for ambiguity highlighting
       let marginClass = '';
       if (clustering?.margin != null && !segment.isEnvironmental) {
@@ -1587,11 +1581,11 @@ export class App {
         segmentEl.className = `transcript-segment unknown-speaker ${marginClass}`.trim();
         labelEl.className = 'speaker-label unknown-speaker';
 
-        // Use inference label if available (might show alternate)
+        // Use inference label if available
         const label = displayInfo?.label || segment.speakerLabel || 'Unknown';
         labelEl.innerHTML = `
           <div class="segment-header">
-            <span class="speaker-name">${label}</span>${alternateHtml}${reasonBadgeHtml}${boostHtml}
+            <span class="speaker-name">${label}</span>${reasonBadgeHtml}${boostHtml}
             <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
           </div>
         `;
@@ -1605,7 +1599,7 @@ export class App {
         const label = displayInfo?.label || segment.speakerLabel;
         labelEl.innerHTML = `
           <div class="segment-header">
-            <span class="speaker-name">${label}</span>${alternateHtml}${reasonBadgeHtml}${boostHtml}
+            <span class="speaker-name">${label}</span>${reasonBadgeHtml}${boostHtml}
             <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
           </div>
         `;
@@ -2204,11 +2198,6 @@ export class App {
         if (!displayInfo) continue;
 
         // Rebuild the label content
-        let alternateHtml = '';
-        if (displayInfo.showAlternate && displayInfo.alternateLabel) {
-          alternateHtml = ` <span class="alternate-speaker">(${displayInfo.alternateLabel}?)</span>`;
-        }
-
         let boostHtml = '';
         if (displayInfo.wasInfluenced) {
           boostHtml = '<span class="boost-indicator" title="Boosted by conversation context"></span>';
@@ -2225,7 +2214,7 @@ export class App {
         // Update label
         const label = displayInfo.label || segment.speakerLabel;
         labelEl.innerHTML = `
-          ${label}${alternateHtml}${boostHtml}
+          ${label}${boostHtml}
           ${timestampHtml}
           ${confidenceHtml}
         `;

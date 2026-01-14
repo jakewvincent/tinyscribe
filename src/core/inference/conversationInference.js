@@ -25,8 +25,6 @@ import { CONVERSATION_INFERENCE_DEFAULTS, CLUSTERING_DEFAULTS, ATTRIBUTION_UI_DE
 /**
  * @typedef {Object} DisplayInfo
  * @property {string} label - Primary display label
- * @property {string|null} alternateLabel - Secondary label for ambiguous cases
- * @property {boolean} showAlternate - Whether to show alternate label
  * @property {boolean} isUnexpected - Whether this is an unexpected speaker
  */
 
@@ -463,18 +461,12 @@ export class ConversationInference {
    * Build display info from attribution
    */
   buildDisplayInfoFromAttribution(boostedAttribution, originalAttribution) {
-    const {
-      ambiguousDisplayThreshold,
-      ambiguousMarginMax,
-      unexpectedSpeakerThreshold,
-    } = this.config;
+    const { unexpectedSpeakerThreshold } = this.config;
 
     const debug = boostedAttribution.debug;
     if (!debug || !debug.allMatches || debug.allMatches.length === 0) {
       return {
         label: 'Unknown',
-        alternateLabel: null,
-        showAlternate: false,
         isUnexpected: false,
       };
     }
@@ -494,8 +486,6 @@ export class ConversationInference {
 
     // Determine label
     let label = best.speakerName;
-    let alternateLabel = null;
-    let showAlternate = false;
 
     if (boostedAttribution.speakerName === 'Unknown') {
       label = 'Unknown';
@@ -503,23 +493,8 @@ export class ConversationInference {
       label = `Unexpected: ${best.speakerName}`;
     }
 
-    // Check for ambiguous display
-    if (second &&
-        margin < ambiguousMarginMax &&
-        best.similarity >= ambiguousDisplayThreshold &&
-        second.similarity >= ambiguousDisplayThreshold) {
-      // Both are plausible - show alternate
-      const secondIsParticipant = participantNames.has(second.speakerName);
-      if (isParticipant || secondIsParticipant) {
-        alternateLabel = second.speakerName;
-        showAlternate = true;
-      }
-    }
-
     return {
       label,
-      alternateLabel,
-      showAlternate,
       isUnexpected,
       wasInfluenced: boostedAttribution.wasInfluenced,
     };
@@ -531,8 +506,6 @@ export class ConversationInference {
   buildDisplayInfo(best, second, margin) {
     return {
       label: best ? best.speakerName : 'Unknown',
-      alternateLabel: null,
-      showAlternate: false,
       isUnexpected: false,
     };
   }
@@ -552,15 +525,13 @@ export class ConversationInference {
       if (!attr || !attr.originalAttribution) continue;
 
       const oldLabel = attr.displayInfo?.label;
-      const oldAlternate = attr.displayInfo?.alternateLabel;
 
       // Re-apply boosting with new hypothesis
       const boostedAttribution = this.applyBoosting(attr.originalAttribution);
       const displayInfo = this.buildDisplayInfoFromAttribution(boostedAttribution, attr.originalAttribution);
 
       // Check if display changed
-      const displayChanged = oldLabel !== displayInfo.label ||
-                            oldAlternate !== displayInfo.alternateLabel;
+      const displayChanged = oldLabel !== displayInfo.label;
 
       // Update attribution
       this.segmentAttributions[i] = {

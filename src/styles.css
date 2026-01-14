@@ -3326,13 +3326,6 @@ body.resizing * {
   border-radius: 4px;
 }
 
-/* Alternate speaker display in transcript */
-.alternate-speaker {
-  color: var(--text-muted);
-  font-size: 0.85em;
-  font-style: italic;
-}
-
 /* Boost indicator */
 .boost-indicator {
   display: inline-block;
