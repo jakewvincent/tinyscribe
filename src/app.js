@@ -3122,10 +3122,23 @@ export class App {
         newSeg.isEnrolledSpeaker = result.debug?.isEnrolled || false;
         newSeg.speakerName = clusterer.speakers[result.speakerId]?.name || null;
         newSeg.debug = { ...newSeg.debug, clustering: result.debug };
+        // Clear stale inference attribution - will be rebuilt below
+        delete newSeg.inferenceAttribution;
       }
 
       return newSeg;
     });
+
+    // Rebuild inference attributions with new clustering data
+    // This ensures displayInfo.label matches the new speaker assignments
+    this.recordingStatus.textContent = 'Processing (quick): rebuilding inference...';
+    for (let i = 0; i < newSegments.length; i++) {
+      const segment = newSegments[i];
+      if (segment.debug?.clustering?.allSimilarities && !segment.isEnvironmental) {
+        const { attribution } = this.conversationInference.processNewSegment(segment, i);
+        segment.inferenceAttribution = attribution;
+      }
+    }
 
     return newSegments;
   }
@@ -3214,6 +3227,17 @@ export class App {
       }
 
       lastChunkResult = { transcript: filteredTranscript, phrases };
+    }
+
+    // Rebuild inference attributions for all segments
+    // This provides boost indicators, alternate suggestions, etc.
+    this.recordingStatus.textContent = 'Processing (full): rebuilding inference...';
+    for (let i = 0; i < allSegments.length; i++) {
+      const segment = allSegments[i];
+      if (segment.debug?.clustering?.allSimilarities && !segment.isEnvironmental) {
+        const { attribution } = this.conversationInference.processNewSegment(segment, i);
+        segment.inferenceAttribution = attribution;
+      }
     }
 
     return allSegments;
