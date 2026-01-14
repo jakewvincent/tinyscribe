@@ -841,6 +841,9 @@ export class App {
     this.sessionAudioChunks = []; // Reset audio chunks for new recording
     this.sessionTranscriptionData = []; // Reset transcription data for new recording
 
+    // Reset conversation inference for fresh hypothesis building
+    this.conversationInference.reset();
+
     // Start debug logging session
     await this.debugLogger.startSession();
 
@@ -977,6 +980,9 @@ export class App {
       this.completedChunks = 0;
       this.rawChunksData = [];
       this.sessionTranscriptionData = [];
+
+      // Reset conversation inference for fresh hypothesis building
+      this.conversationInference.reset();
 
       // Read file as ArrayBuffer
       const arrayBuffer = await file.arrayBuffer();
@@ -2576,7 +2582,7 @@ export class App {
       this.conversationInference.setEnrolledSpeakers(enrollments);
       this.conversationInference.setExpectedSpeakers(activeJob.settings?.clustering?.numSpeakers || this.numSpeakers);
 
-      // Process each segment through inference to build hypothesis
+      // Process each segment through inference
       // Use saved inferenceAttribution if present, otherwise rebuild from debug.clustering
       const segments = activeJob.segments || [];
       for (let i = 0; i < segments.length; i++) {
@@ -2591,6 +2597,11 @@ export class App {
           segment.inferenceAttribution = attribution;
         }
       }
+
+      // Always rebuild hypothesis from segment clustering data
+      // This populates speakerStats for the participants panel, which is needed
+      // even when segments have saved inferenceAttribution (since speakerStats isn't saved)
+      this.conversationInference.rebuildFromSegments(segments);
 
       // Render saved segments using the same renderer as live recording
       // This ensures colors, similarity bars, reason badges, and boost indicators display correctly

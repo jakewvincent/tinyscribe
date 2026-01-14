@@ -130,12 +130,21 @@ export class SpeakerClusterer {
         centroid: l2NormalizeCopy(embedding),
         count: 1,
       });
+
+      // Include allSimilarities so first segment contributes to hypothesis building
+      const firstSpeaker = this.speakers[0];
       return makeResult(0, {
         similarity: 1,
         secondBestSimilarity: 0,
         margin: 1,
-        isEnrolled: false,
+        isEnrolled: firstSpeaker.enrolled || false,
         reason: 'new_speaker',
+        allSimilarities: [{
+          speaker: firstSpeaker.name || 'Speaker 1',
+          speakerIdx: 0,
+          similarity: 1.0,
+          enrolled: firstSpeaker.enrolled || false,
+        }],
       });
     }
 

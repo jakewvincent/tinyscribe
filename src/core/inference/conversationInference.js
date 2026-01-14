@@ -617,6 +617,76 @@ export class ConversationInference {
   }
 
   /**
+   * Rebuild hypothesis from existing segments without re-processing attributions.
+   * Used when loading saved recordings that already have inferenceAttribution data.
+   *
+   * This extracts statistics from segments' clustering data to rebuild:
+   * - speakerStats Map (competitive counts, similarities, time series)
+   * - hypothesis (participants, version, totalSegments)
+   *
+   * Unlike processNewSegment(), this does NOT recalculate boosting or change
+   * segmentAttributions - it preserves whatever attributions are already stored.
+   *
+   * @param {Object[]} segments - Array of segments with debug.clustering data
+   * @returns {Object} The rebuilt hypothesis
+   */
+  rebuildFromSegments(segments) {
+    // Clear stats but preserve segmentAttributions (they were already loaded)
+    this.speakerStats.clear();
+    this.hypothesis = {
+      participants: [],
+      version: 0,
+      totalSegments: 0,
+    };
+    this.hypothesisHistory = [];
+
+    // Process each segment to rebuild statistics
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+
+      // Skip environmental sounds
+      if (segment.isEnvironmental) continue;
+
+      // Get clustering data from segment
+      const clustering = segment.debug?.clustering;
+      if (!clustering?.allSimilarities || clustering.allSimilarities.length === 0) {
+        continue;
+      }
+
+      // Map allSimilarities to the format expected by updateSpeakerStats
+      // Note: allSimilarities from clusterer is NOT sorted - sort by similarity descending
+      const allMatches = clustering.allSimilarities
+        .map(s => ({
+          speakerName: s.speaker,
+          similarity: s.similarity,
+          enrolled: s.enrolled,
+        }))
+        .sort((a, b) => b.similarity - a.similarity);
+
+      // Build a minimal attribution object for updateSpeakerStats
+      const attribution = {
+        debug: {
+          allMatches,
+          similarity: clustering.similarity,
+          margin: clustering.margin,
+          reason: clustering.reason,
+        },
+      };
+
+      // Update speaker statistics (same logic as processNewSegment)
+      this.updateSpeakerStats(attribution);
+      this.hypothesis.totalSegments++;
+    }
+
+    // Build the hypothesis from accumulated statistics
+    if (this.hypothesis.totalSegments >= this.config.minSegmentsForHypothesis) {
+      this.buildHypothesis();
+    }
+
+    return this.getHypothesis();
+  }
+
+  /**
    * Update config parameters at runtime (for tuning panel)
    * @param {Object} updates - Key-value pairs of config parameters to update
    */
