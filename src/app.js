@@ -1552,18 +1552,6 @@ export class App {
         }
       }
 
-      // Determine margin confidence class for ambiguity highlighting
-      let marginClass = '';
-      if (clustering?.margin != null && !segment.isEnvironmental) {
-        if (clustering.margin >= 0.15) {
-          marginClass = 'margin-high';
-        } else if (clustering.margin >= 0.05) {
-          marginClass = 'margin-medium';
-        } else {
-          marginClass = 'margin-low';
-        }
-      }
-
       // Set tooltip on segment
       if (tooltipText) {
         segmentEl.title = tooltipText;
@@ -1578,7 +1566,7 @@ export class App {
         `;
       } else if (segment.speaker === -1) {
         // Unknown speaker - distinct styling to indicate unassignable
-        segmentEl.className = `transcript-segment unknown-speaker ${marginClass}`.trim();
+        segmentEl.className = 'transcript-segment unknown-speaker';
         labelEl.className = 'speaker-label unknown-speaker';
 
         // Use inference label if available
@@ -1592,7 +1580,7 @@ export class App {
       } else {
         // Regular speaker segment
         const speakerClass = `speaker-${segment.speaker % 6}`;
-        segmentEl.className = `transcript-segment ${speakerClass} ${marginClass}`.trim();
+        segmentEl.className = `transcript-segment ${speakerClass}`;
         labelEl.className = `speaker-label ${speakerClass}`;
 
         // Use inference label if available
