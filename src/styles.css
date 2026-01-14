@@ -606,7 +606,12 @@ body.resizing * {
 .transcript-segment.speaker-4 { background: rgba(139, 92, 246, 0.05); }
 .transcript-segment.speaker-5 { background: rgba(236, 72, 153, 0.05); }
 .transcript-segment.environmental { background: rgba(156, 163, 175, 0.08); }
-.transcript-segment.unknown-speaker { background: rgba(245, 158, 11, 0.08); }
+/* Unknown speaker - uses gray palette for non-enrolled speakers */
+.transcript-segment.unknown-speaker { background: rgba(107, 114, 128, 0.08); border-left-style: dashed; }
+.transcript-segment.unknown-speaker-0 { background: rgba(107, 114, 128, 0.10); }
+.transcript-segment.unknown-speaker-1 { background: rgba(75, 85, 99, 0.10); }
+.transcript-segment.unknown-speaker-2 { background: rgba(156, 163, 175, 0.10); }
+.transcript-segment.unknown-speaker-3 { background: rgba(55, 65, 81, 0.10); }
 
 .speaker-label {
   font-weight: 600;
@@ -624,7 +629,12 @@ body.resizing * {
 .speaker-label.speaker-4 { color: var(--speaker-4); }
 .speaker-label.speaker-5 { color: var(--speaker-5); }
 .speaker-label.environmental { color: #6b7280; }
-.speaker-label.unknown-speaker { color: #d97706; }
+/* Unknown speaker labels - gray palette for non-enrolled */
+.speaker-label.unknown-speaker { color: #6b7280; }
+.speaker-label.unknown-speaker-0 { color: #6b7280; }
+.speaker-label.unknown-speaker-1 { color: #4b5563; }
+.speaker-label.unknown-speaker-2 { color: #9ca3af; }
+.speaker-label.unknown-speaker-3 { color: #374151; }
 
 .segment-text {
   font-size: 0.95rem;
@@ -734,6 +744,27 @@ body.resizing * {
 .reason-boosted {
   background: rgba(234, 179, 8, 0.15);
   color: #ca8a04;
+}
+
+/* Unknown speaker clustering reasons */
+.reason-unknown-new {
+  background: rgba(107, 114, 128, 0.15);
+  color: #4b5563;
+}
+
+.reason-unknown-match {
+  background: rgba(107, 114, 128, 0.15);
+  color: #6b7280;
+}
+
+.reason-unknown-boosted {
+  background: rgba(107, 114, 128, 0.2);
+  color: #374151;
+}
+
+.reason-unknown-better {
+  background: rgba(107, 114, 128, 0.2);
+  color: #374151;
 }
 
 /* Feature 1: Two-Column Segment Layout */
@@ -2872,6 +2903,32 @@ body.resizing * {
     opacity: 1;
     transform: translateX(0);
   }
+}
+
+/* Unknown (non-enrolled) speaker styling */
+.participant-item.participant-unknown {
+  background: #f1f5f9;
+  border-left-style: dashed;
+}
+
+.participant-unknown-badge {
+  color: white;
+  font-size: 0.6rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.participant-closest-enrolled {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-bottom: 0.25rem;
+  padding-left: 1rem;
 }
 
 .participant-header {

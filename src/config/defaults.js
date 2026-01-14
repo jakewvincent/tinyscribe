@@ -37,6 +37,25 @@ export const CONVERSATION_INFERENCE_DEFAULTS = {
   unexpectedSpeakerThreshold: 0.70, // Below this for non-participant = unexpected
 };
 
+// Unknown speaker clustering configuration
+// Differentiates multiple non-enrolled speakers instead of lumping into single "Unknown"
+export const UNKNOWN_CLUSTERING_DEFAULTS = {
+  // Similarity threshold for clustering unknowns together
+  similarityThreshold: 0.75,
+  // Minimum margin to confidently assign to existing unknown cluster
+  confidenceMargin: 0.18,
+  // Maximum number of unknown speakers to track
+  maxUnknownSpeakers: 4,
+  // Minimum segments before an unknown cluster is considered real
+  minSegmentsForCluster: 2,
+  // Boost factor for unknown participants (lower than enrolled)
+  unknownBoostFactor: 1.05,
+};
+
+// Unknown speaker ID range (negative, below UNKNOWN_SPEAKER_ID of -1)
+// Unknown 1 = -100, Unknown 2 = -101, etc.
+export const UNKNOWN_SPEAKER_BASE = -100;
+
 // VAD (Voice Activity Detection) configuration
 export const VAD_DEFAULTS = {
   // Speech duration constraints (seconds)
@@ -173,6 +192,11 @@ export const REASON_BADGES = {
   no_embedding: { label: 'No Embed', cssClass: 'reason-nodata' },
   no_confident_match: { label: 'Uncertain', cssClass: 'reason-uncertain' },
   boosted_match: { label: 'Boosted', cssClass: 'reason-boosted' },
+  // Unknown speaker clustering reasons
+  unknown_new_cluster: { label: 'New Unknown', cssClass: 'reason-unknown-new' },
+  unknown_cluster_match: { label: 'Unknown Match', cssClass: 'reason-unknown-match' },
+  unknown_boosted: { label: 'Unknown Boosted', cssClass: 'reason-unknown-boosted' },
+  unknown_participant_better: { label: 'Unknown Better', cssClass: 'reason-unknown-better' },
 };
 
 // Speaker colors for UI display
@@ -185,9 +209,18 @@ export const SPEAKER_COLORS = [
   '#1abc9c', // Teal
 ];
 
+// Unknown speaker colors (grays with subtle differentiation)
+export const UNKNOWN_SPEAKER_COLORS = [
+  '#6b7280', // Gray-500
+  '#4b5563', // Gray-600
+  '#9ca3af', // Gray-400
+  '#374151', // Gray-700
+];
+
 // Combined defaults export for convenience
 export const DEFAULTS = {
   clustering: CLUSTERING_DEFAULTS,
+  unknownClustering: UNKNOWN_CLUSTERING_DEFAULTS,
   vad: VAD_DEFAULTS,
   phrase: PHRASE_DEFAULTS,
   overlapMerger: OVERLAP_MERGER_DEFAULTS,
@@ -195,6 +228,7 @@ export const DEFAULTS = {
   validation: VALIDATION_DEFAULTS,
   soundClassification: SOUND_CLASSIFICATION,
   speakerColors: SPEAKER_COLORS,
+  unknownSpeakerColors: UNKNOWN_SPEAKER_COLORS,
   rainbowPassages: RAINBOW_PASSAGES,
   debug: DEBUG_DEFAULTS,
   recording: RECORDING_DEFAULTS,

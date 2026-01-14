@@ -1,18 +1,24 @@
 /**
  * Conversation-Level Speaker Inference
  *
- * Builds hypotheses about which enrolled speakers are participating in the conversation,
- * applies boosting to competitive matches, and handles retroactive re-attribution.
+ * Builds hypotheses about which speakers are participating in the conversation,
+ * including both enrolled and unknown (non-enrolled) speakers.
+ * Applies boosting to competitive matches and handles retroactive re-attribution.
  */
 
-import { CONVERSATION_INFERENCE_DEFAULTS, CLUSTERING_DEFAULTS, ATTRIBUTION_UI_DEFAULTS } from '../../config/defaults.js';
+import { CONVERSATION_INFERENCE_DEFAULTS, CLUSTERING_DEFAULTS, ATTRIBUTION_UI_DEFAULTS, UNKNOWN_CLUSTERING_DEFAULTS } from '../../config/defaults.js';
+import { UnknownClusterer } from './unknownClusterer.js';
+import { UNKNOWN_SPEAKER_ID } from '../embedding/speakerClusterer.js';
 
 /**
  * @typedef {Object} ParticipantHypothesis
  * @property {string} speakerName - Name of the hypothesized participant
  * @property {number} confidence - Confidence score (0-1)
- * @property {number} segmentCount - Number of segments where this speaker was competitive
+ * @property {number} segmentCount - Number of segments assigned to this speaker
  * @property {number} avgSimilarity - Average similarity when competitive
+ * @property {boolean} [isUnknown] - Whether this is an unknown (non-enrolled) speaker
+ * @property {number} [unknownId] - For unknowns: the unknown speaker ID (e.g., -100)
+ * @property {Object} [closestEnrolled] - For unknowns: { name, similarity } of closest enrolled speaker
  */
 
 /**
@@ -41,6 +47,7 @@ import { CONVERSATION_INFERENCE_DEFAULTS, CLUSTERING_DEFAULTS, ATTRIBUTION_UI_DE
 export class ConversationInference {
   constructor(config = {}) {
     this.config = { ...CONVERSATION_INFERENCE_DEFAULTS, ...config };
+    this.unknownConfig = { ...UNKNOWN_CLUSTERING_DEFAULTS, ...config };
 
     // Current hypothesis about who's in the conversation
     this.hypothesis = {
@@ -52,9 +59,16 @@ export class ConversationInference {
     // Track all segment attributions
     this.segmentAttributions = [];
 
-    // Per-speaker statistics for hypothesis building
+    // Per-speaker statistics for hypothesis building (enrolled speakers)
     // speakerName -> { name, competitiveCount, similarities[], bestMatchCount, timeSeries[] }
     this.speakerStats = new Map();
+
+    // Track actual segment assignments (not just competitive)
+    // speakerLabel -> { count, similarities[] }
+    this.assignmentStats = new Map();
+
+    // Unknown speaker clusterer - differentiates multiple non-enrolled speakers
+    this.unknownClusterer = new UnknownClusterer(this.unknownConfig);
 
     // Hypothesis change history for Feature 9
     this.hypothesisHistory = [];
@@ -111,7 +125,7 @@ export class ConversationInference {
       }))
       .sort((a, b) => b.similarity - a.similarity) || [];
 
-    const originalAttribution = clustering ? {
+    let originalAttribution = clustering ? {
       speakerId: segment.speaker,
       speakerName: segment.speakerLabel || 'Unknown',
       debug: {
@@ -136,7 +150,37 @@ export class ConversationInference {
       return attribution;
     }
 
-    // Update speaker statistics
+    // === UNKNOWN SPEAKER CLUSTERING ===
+    // If segment was assigned to UNKNOWN_SPEAKER_ID, route through UnknownClusterer
+    // to differentiate between multiple unknown speakers
+    let unknownClusterResult = null;
+    if (segment.speaker === UNKNOWN_SPEAKER_ID && segment.debug?.embedding) {
+      unknownClusterResult = this.unknownClusterer.processUnknownSegment(
+        segment.debug.embedding,
+        allMatches
+      );
+
+      // Update attribution with unknown cluster info
+      originalAttribution = {
+        ...originalAttribution,
+        speakerId: unknownClusterResult.unknownId,
+        speakerName: this.unknownClusterer.getLabel(unknownClusterResult.unknownId),
+        unknownClusterResult,
+        debug: {
+          ...originalAttribution.debug,
+          unknownClustering: {
+            unknownId: unknownClusterResult.unknownId,
+            closestEnrolled: unknownClusterResult.closestEnrolled,
+            reason: unknownClusterResult.reason,
+          },
+        },
+      };
+    }
+
+    // Track actual assignment (what speaker label was assigned)
+    this.trackAssignment(originalAttribution);
+
+    // Update speaker statistics (for competitive enrolled speakers)
     this.updateSpeakerStats(originalAttribution);
     this.hypothesis.totalSegments++;
 
@@ -164,6 +208,32 @@ export class ConversationInference {
     }
 
     return { attribution, changedSegments: [] };
+  }
+
+  /**
+   * Track actual segment assignment for hypothesis building
+   * @param {Object} attribution - Attribution with speakerName
+   */
+  trackAssignment(attribution) {
+    const speakerName = attribution.speakerName;
+    if (!speakerName) return;
+
+    if (!this.assignmentStats.has(speakerName)) {
+      this.assignmentStats.set(speakerName, {
+        count: 0,
+        similarities: [],
+        isUnknown: speakerName.startsWith('Unknown'),
+      });
+    }
+
+    const stats = this.assignmentStats.get(speakerName);
+    stats.count++;
+
+    // Track similarity if available
+    const similarity = attribution.debug?.similarity;
+    if (typeof similarity === 'number') {
+      stats.similarities.push(similarity);
+    }
   }
 
   /**
@@ -225,43 +295,73 @@ export class ConversationInference {
 
   /**
    * Build or rebuild the hypothesis about who's in the conversation
+   * Now uses actual assignment counts instead of competitive counts,
+   * and includes unknown speakers from UnknownClusterer.
    */
   buildHypothesis() {
     const {
-      participantConfidenceThreshold,
       participantMinOccurrences,
     } = this.config;
 
     const candidates = [];
 
-    // speakerStats is keyed by speakerName
-    for (const [speakerName, stats] of this.speakerStats) {
-      // Include all speakers who meet the quality thresholds
-      // No filtering by enrollment status - all speakers treated equally
+    // === BUILD CANDIDATES FROM ACTUAL ASSIGNMENTS ===
+    // Use assignmentStats which tracks actual segment assignments
+    for (const [speakerName, stats] of this.assignmentStats) {
+      // Skip if not enough segments
+      if (stats.count < participantMinOccurrences) continue;
 
-      // Calculate average similarity when competitive
+      // Calculate average similarity when assigned
       const avgSimilarity = stats.similarities.length > 0
         ? stats.similarities.reduce((a, b) => a + b, 0) / stats.similarities.length
-        : 0;
+        : 0.5; // Default for unknowns without similarity data
 
-      // Must meet minimum criteria
-      if (stats.competitiveCount < participantMinOccurrences) continue;
-      if (avgSimilarity < participantConfidenceThreshold) continue;
-
-      // Score = occurrences * average similarity (rewards both consistency and quality)
-      const score = stats.competitiveCount * avgSimilarity;
+      // Score = segment count * average similarity
+      const score = stats.count * avgSimilarity;
 
       candidates.push({
         speakerName,
         confidence: avgSimilarity,
-        segmentCount: stats.competitiveCount,
+        segmentCount: stats.count,
         avgSimilarity,
         score,
+        isUnknown: stats.isUnknown || false,
       });
     }
 
+    // === ADD UNKNOWN SPEAKERS FROM CLUSTERER ===
+    // Get unknown speakers that meet thresholds
+    const unknownSpeakers = this.unknownClusterer.getAllUnknownSpeakers();
+    for (const unknown of unknownSpeakers) {
+      // Check if already added from assignmentStats
+      const existing = candidates.find(c => c.speakerName === unknown.speakerName);
+      if (existing) {
+        // Merge in unknown-specific data
+        existing.isUnknown = true;
+        existing.unknownId = unknown.unknownId;
+        existing.closestEnrolled = unknown.closestEnrolled;
+      } else {
+        // Add as new candidate
+        candidates.push({
+          speakerName: unknown.speakerName,
+          confidence: unknown.confidence,
+          segmentCount: unknown.segmentCount,
+          avgSimilarity: unknown.confidence,
+          score: unknown.segmentCount * unknown.confidence,
+          isUnknown: true,
+          unknownId: unknown.unknownId,
+          closestEnrolled: unknown.closestEnrolled,
+        });
+      }
+    }
+
     // Sort by score and take top N
-    candidates.sort((a, b) => b.score - a.score);
+    // Prioritize enrolled speakers slightly by adding bonus to their score
+    candidates.sort((a, b) => {
+      const aScore = a.score + (a.isUnknown ? 0 : 0.1);
+      const bScore = b.score + (b.isUnknown ? 0 : 0.1);
+      return bScore - aScore;
+    });
     const participants = candidates.slice(0, this.expectedSpeakers);
 
     // Check if hypothesis actually changed (compare by speakerName)
@@ -299,6 +399,7 @@ export class ConversationInference {
    * Boosting is now gated and selective:
    * 1. Ambiguity gating: Only boost when the decision is genuinely uncertain
    * 2. Contender-only: Only boost speakers who could benefit from the boost
+   * 3. Unknown-aware: Handle unknown participants with reduced boost factor
    */
   applyBoosting(originalAttribution) {
     const debug = originalAttribution.debug;
@@ -315,8 +416,14 @@ export class ConversationInference {
       minSimilarityForBoosting,
     } = this.config;
 
-    // Get participant names for quick lookup
-    const participantNames = new Set(this.hypothesis.participants.map(p => p.speakerName));
+    const { unknownBoostFactor } = this.unknownConfig;
+
+    // Build participant lookup with unknown status
+    const participantMap = new Map();
+    for (const p of this.hypothesis.participants) {
+      participantMap.set(p.speakerName, { isUnknown: p.isUnknown || false });
+    }
+    const participantNames = new Set(participantMap.keys());
 
     // Calculate original margin and best similarity for gating decision
     const originalBest = debug.allMatches[0];
@@ -356,6 +463,28 @@ export class ConversationInference {
       };
     }
 
+    // === CHECK FOR UNKNOWN PARTICIPANT MATCH ===
+    // If the original attribution is for an unknown participant in our hypothesis,
+    // we should respect that rather than boosting enrolled speakers over it
+    const originalIsUnknownParticipant = originalAttribution.unknownClusterResult &&
+      participantNames.has(originalAttribution.speakerName);
+
+    if (originalIsUnknownParticipant) {
+      // Unknown participant is already the best match - suppress enrolled boosting
+      return {
+        ...originalAttribution,
+        wasInfluenced: false,
+        boostSkipped: true,
+        skipReason: 'unknown_participant_better',
+        debug: {
+          ...debug,
+          boostApplied: false,
+          boostSkipReason: 'unknown_participant_better',
+          hypothesisVersion: this.hypothesis.version,
+        },
+      };
+    }
+
     // === CONTENDER-ONLY BOOSTING ===
     // Only boost a participant if they're NOT already winning, or if top 2 are both participants
     const bestIsParticipant = participantNames.has(originalBest.speakerName);
@@ -388,6 +517,8 @@ export class ConversationInference {
     // Apply boost selectively
     const boostedMatches = debug.allMatches.map((match, idx) => {
       const isParticipant = participantNames.has(match.speakerName);
+      const participantInfo = participantMap.get(match.speakerName);
+      const isUnknownParticipant = participantInfo?.isUnknown || false;
       const isEligible = idx < boostEligibilityRank;
 
       let boostedSimilarity = match.similarity;
@@ -400,7 +531,9 @@ export class ConversationInference {
         const isBothParticipants = shouldBoostBest;
 
         if (isContender || isBothParticipants) {
-          boostedSimilarity = Math.min(1.0, match.similarity * boostFactor);
+          // Use lower boost factor for unknown participants
+          const effectiveBoostFactor = isUnknownParticipant ? unknownBoostFactor : boostFactor;
+          boostedSimilarity = Math.min(1.0, match.similarity * effectiveBoostFactor);
           wasBoosted = true;
         }
       }
@@ -410,6 +543,7 @@ export class ConversationInference {
         originalSimilarity: match.similarity,
         similarity: boostedSimilarity,
         wasBoosted,
+        isUnknownParticipant,
       };
     });
 
@@ -584,6 +718,8 @@ export class ConversationInference {
     };
     this.segmentAttributions = [];
     this.speakerStats.clear();
+    this.assignmentStats.clear();
+    this.unknownClusterer.reset();
     this.hypothesisHistory = [];
   }
 

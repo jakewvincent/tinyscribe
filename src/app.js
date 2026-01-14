@@ -45,7 +45,7 @@ import {
 } from './core/recording/index.js';
 
 // Configuration
-import { REASON_BADGES, ATTRIBUTION_UI_DEFAULTS } from './config/defaults.js';
+import { REASON_BADGES, ATTRIBUTION_UI_DEFAULTS, UNKNOWN_SPEAKER_BASE } from './config/defaults.js';
 import {
   buildJobSettings,
   createJob,
@@ -1557,6 +1557,10 @@ export class App {
         segmentEl.title = tooltipText;
       }
 
+      // Helper to check if speaker is unknown (includes -1 and new unknown IDs like -100, -101)
+      const isUnknownSpeaker = (speakerId) =>
+        speakerId === -1 || (speakerId !== null && speakerId <= UNKNOWN_SPEAKER_BASE);
+
       if (segment.isEnvironmental || segment.speaker === null) {
         // Environmental sound - gray box, no speaker label
         segmentEl.className = 'transcript-segment environmental';
@@ -1564,13 +1568,15 @@ export class App {
         labelEl.innerHTML = `
           <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
         `;
-      } else if (segment.speaker === -1) {
-        // Unknown speaker - distinct styling to indicate unassignable
-        segmentEl.className = 'transcript-segment unknown-speaker';
-        labelEl.className = 'speaker-label unknown-speaker';
+      } else if (isUnknownSpeaker(segment.speaker)) {
+        // Unknown speaker - distinct styling to indicate non-enrolled
+        // Unknown speakers now have differentiated IDs: -100 = Unknown 1, -101 = Unknown 2, etc.
+        const unknownIndex = segment.speaker === -1 ? 0 : UNKNOWN_SPEAKER_BASE - segment.speaker;
+        segmentEl.className = `transcript-segment unknown-speaker unknown-speaker-${unknownIndex % 4}`;
+        labelEl.className = `speaker-label unknown-speaker unknown-speaker-${unknownIndex % 4}`;
 
-        // Use inference label if available
-        const label = displayInfo?.label || segment.speakerLabel || 'Unknown';
+        // Use inference label if available, fallback to speakerLabel or generic Unknown
+        const label = displayInfo?.label || segment.speakerLabel || `Unknown ${unknownIndex + 1}`;
         labelEl.innerHTML = `
           <div class="segment-header">
             <span class="speaker-name">${label}</span>${reasonBadgeHtml}${boostHtml}

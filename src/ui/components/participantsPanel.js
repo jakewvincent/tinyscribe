@@ -5,7 +5,7 @@
  * Reusable component - accepts container element or ID
  */
 
-import { SPEAKER_COLORS } from '../../config/index.js';
+import { SPEAKER_COLORS, UNKNOWN_SPEAKER_COLORS } from '../../config/index.js';
 
 export class ParticipantsPanel {
   /**
@@ -15,6 +15,7 @@ export class ParticipantsPanel {
    * @param {string} [options.listId='participants-list'] - List element ID
    * @param {string} [options.statusId='participants-status'] - Status element ID
    * @param {string[]} [options.colors] - Custom color palette
+   * @param {string[]} [options.unknownColors] - Custom color palette for unknown speakers
    */
   constructor(options = {}) {
     // Resolve container element
@@ -29,6 +30,7 @@ export class ParticipantsPanel {
     this.listId = options.listId || 'participants-list';
     this.statusId = options.statusId || 'participants-status';
     this.colors = options.colors || SPEAKER_COLORS;
+    this.unknownColors = options.unknownColors || UNKNOWN_SPEAKER_COLORS;
 
     // Track previous state for change detection
     this.previousVersion = -1;
@@ -104,19 +106,42 @@ export class ParticipantsPanel {
       enrolledIndex.set(speaker.name, idx);
     });
 
+    // Track unknown speaker index for color assignment
+    let unknownColorIdx = 0;
+
     const html = participants.map((participant, idx) => {
-      // Get color from enrolled index if available
-      const colorIdx = enrolledIndex.has(participant.speakerName)
-        ? enrolledIndex.get(participant.speakerName)
-        : idx;
-      const color = this.colors[colorIdx % this.colors.length];
+      const isUnknown = participant.isUnknown || false;
+
+      // Get color: enrolled speakers use SPEAKER_COLORS, unknowns use UNKNOWN_SPEAKER_COLORS
+      let color;
+      if (isUnknown) {
+        color = this.unknownColors[unknownColorIdx % this.unknownColors.length];
+        unknownColorIdx++;
+      } else {
+        const colorIdx = enrolledIndex.has(participant.speakerName)
+          ? enrolledIndex.get(participant.speakerName)
+          : idx;
+        color = this.colors[colorIdx % this.colors.length];
+      }
 
       // Determine if this is a new participant (for animation)
       const isNew = !this.previousParticipants.includes(participant.speakerName);
       const animClass = animate && isNew ? ' participant-new' : '';
+      const unknownClass = isUnknown ? ' participant-unknown' : '';
 
       // Confidence as percentage
       const confidencePct = Math.round(participant.confidence * 100);
+
+      // Build "closest enrolled" subtitle for unknown speakers
+      let closestEnrolledHtml = '';
+      if (isUnknown && participant.closestEnrolled) {
+        const closestPct = Math.round(participant.closestEnrolled.similarity * 100);
+        closestEnrolledHtml = `
+          <span class="participant-closest-enrolled" title="Closest enrolled speaker">
+            (closest: ${this.escapeHtml(participant.closestEnrolled.name)} @ ${closestPct}%)
+          </span>
+        `;
+      }
 
       // Get enhanced stats for this participant
       const stats = speakerStats[participant.speakerName];
@@ -161,13 +186,19 @@ export class ParticipantsPanel {
         `;
       }
 
+      // Unknown badge for visual distinction
+      const unknownBadgeHtml = isUnknown
+        ? '<span class="participant-unknown-badge" title="Non-enrolled speaker">?</span>'
+        : '';
+
       return `
-        <div class="participant-item${animClass}" style="--participant-color: ${color}">
+        <div class="participant-item${animClass}${unknownClass}" style="--participant-color: ${color}">
           <div class="participant-header">
-            <span class="participant-color" style="background-color: ${color}"></span>
+            <span class="participant-color" style="background-color: ${color}">${unknownBadgeHtml}</span>
             <span class="participant-name">${this.escapeHtml(participant.speakerName)}</span>
             <span class="participant-confidence">${confidencePct}%</span>
           </div>
+          ${closestEnrolledHtml}
           <div class="participant-bar-container">
             <div class="participant-bar" style="width: ${confidencePct}%; background-color: ${color}"></div>
           </div>
