@@ -305,6 +305,7 @@ body {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 2px;
+  padding-right: 28px; /* Leave space for trash icon on hover */
 }
 
 .recording-item-name {
