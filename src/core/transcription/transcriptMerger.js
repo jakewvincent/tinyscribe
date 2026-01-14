@@ -104,6 +104,12 @@ export class TranscriptMerger {
       const text = words.map((w) => w.text).join('');
       const duration = phrase.end - phrase.start;
 
+      // Filter out zero-duration phrases - these are Whisper timing artifacts
+      if (duration === 0) continue;
+
+      // Filter out inherited phrases (no embedding) - they lack reliable speaker attribution
+      if (!phrase.embedding && phrase.clusteringDebug?.reason === 'inherited') continue;
+
       result.push({
         speaker: phrase.clusteredSpeakerId,
         speakerLabel: this.speakerClusterer.getSpeakerLabel(phrase.clusteredSpeakerId),
@@ -134,6 +140,9 @@ export class TranscriptMerger {
 
       const text = words.map((w) => w.text).join('');
       const duration = phrase.end - phrase.start;
+
+      // Filter out zero-duration phrases - these are Whisper timing artifacts
+      if (duration === 0) continue;
 
       result.push({
         speaker: null,
