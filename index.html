@@ -350,25 +350,34 @@
             <div class="job-settings-sidebar" x-show="isVisible && activeJob" x-cloak x-transition>
               <div class="settings-header">
                 <span class="settings-title">Job Settings</span>
-                <template x-if="isReadOnly">
-                  <span class="readonly-badge">Read-only</span>
-                </template>
                 <template x-if="isLocked">
                   <span class="readonly-badge">Locked</span>
                 </template>
               </div>
 
+              <!-- Tab navigation -->
+              <div class="settings-tabs">
+                <button class="settings-tab" :class="{ active: activeTab === 'model' }" @click="activeTab = 'model'">
+                  <i class="ti ti-box-model"></i> Model
+                </button>
+                <button class="settings-tab" :class="{ active: activeTab === 'speaker' }" @click="activeTab = 'speaker'">
+                  <i class="ti ti-users"></i> Speaker
+                </button>
+              </div>
+
               <!-- Settings content (scrollable) -->
               <div class="settings-content">
-                <!-- Read-only hint for processed jobs -->
-                <template x-if="isReadOnly">
-                  <p class="settings-hint">This job has been processed. To change settings, clone this job.</p>
-                </template>
-
                 <!-- Locked hint for processing jobs -->
                 <template x-if="isLocked">
                   <p class="settings-hint">Processing in progress. Settings are locked.</p>
                 </template>
+
+                <!-- ===== MODEL TAB ===== -->
+                <div class="settings-tab-content" x-show="activeTab === 'model'">
+                  <!-- Read-only hint for processed jobs -->
+                  <template x-if="isReadOnly">
+                    <p class="settings-hint">Model settings are locked after processing. Clone this job to change them.</p>
+                  </template>
 
                 <!-- ===== MODELS SECTION ===== -->
                 <div class="settings-group">
@@ -446,6 +455,10 @@
                     </template>
                   </div>
                 </template>
+                </div><!-- end settings-tab-content model -->
+
+                <!-- ===== SPEAKER TAB ===== -->
+                <div class="settings-tab-content" x-show="activeTab === 'speaker'">
 
                 <!-- ===== CLUSTERING SECTION ===== -->
                 <div class="settings-group">
@@ -505,12 +518,13 @@
                 <div class="settings-group">
                   <div class="settings-group-header">Conversation Boosting</div>
 
-                  <template x-if="isEditable">
+                  <!-- Boosting is always editable (except when locked/processing) -->
+                  <template x-if="isBoostingEditable">
                     <div class="settings-group-content">
                       <div class="settings-section">
                         <label class="settings-label" title="Multiplier applied to similarity scores for hypothesized speakers">Boost Factor</label>
                         <div class="settings-row">
-                          <input type="range" class="settings-slider" min="1.0" max="1.30" step="0.01" x-model="settings.boostFactor" @input="updateSetting('boostFactor', parseFloat($event.target.value))">
+                          <input type="range" class="settings-slider" min="1.0" max="1.30" step="0.01" x-model="settings.boostFactor" @input="updateBoostingSetting('boostFactor', parseFloat($event.target.value))">
                           <span class="settings-value" x-text="formatThreshold(settings.boostFactor)"></span>
                         </div>
                       </div>
@@ -518,7 +532,7 @@
                       <div class="settings-section">
                         <label class="settings-label" title="Speaker must be in top N matches to receive boost">Eligibility Rank</label>
                         <div class="settings-row">
-                          <input type="range" class="settings-slider" min="1" max="4" step="1" x-model="settings.boostEligibilityRank" @input="updateSetting('boostEligibilityRank', parseInt($event.target.value))">
+                          <input type="range" class="settings-slider" min="1" max="4" step="1" x-model="settings.boostEligibilityRank" @input="updateBoostingSetting('boostEligibilityRank', parseInt($event.target.value))">
                           <span class="settings-value" x-text="settings.boostEligibilityRank"></span>
                         </div>
                       </div>
@@ -526,7 +540,7 @@
                       <div class="settings-section">
                         <label class="settings-label" title="Only boost when margin between top candidates is below this">Max Margin</label>
                         <div class="settings-row">
-                          <input type="range" class="settings-slider" min="0.05" max="0.40" step="0.01" x-model="settings.ambiguityMarginThreshold" @input="updateSetting('ambiguityMarginThreshold', parseFloat($event.target.value))">
+                          <input type="range" class="settings-slider" min="0.05" max="0.40" step="0.01" x-model="settings.ambiguityMarginThreshold" @input="updateBoostingSetting('ambiguityMarginThreshold', parseFloat($event.target.value))">
                           <span class="settings-value" x-text="formatThreshold(settings.ambiguityMarginThreshold)"></span>
                         </div>
                       </div>
@@ -534,7 +548,7 @@
                       <div class="settings-section">
                         <label class="settings-label" title="Skip boosting if best match similarity is above this">Skip if Confident</label>
                         <div class="settings-row">
-                          <input type="range" class="settings-slider" min="0.70" max="0.95" step="0.01" x-model="settings.skipBoostIfConfident" @input="updateSetting('skipBoostIfConfident', parseFloat($event.target.value))">
+                          <input type="range" class="settings-slider" min="0.70" max="0.95" step="0.01" x-model="settings.skipBoostIfConfident" @input="updateBoostingSetting('skipBoostIfConfident', parseFloat($event.target.value))">
                           <span class="settings-value" x-text="formatThreshold(settings.skipBoostIfConfident)"></span>
                         </div>
                       </div>
@@ -542,7 +556,7 @@
                       <div class="settings-section">
                         <label class="settings-label" title="Don't boost if best match is below this (garbage match)">Min Similarity</label>
                         <div class="settings-row">
-                          <input type="range" class="settings-slider" min="0.40" max="0.75" step="0.01" x-model="settings.minSimilarityForBoosting" @input="updateSetting('minSimilarityForBoosting', parseFloat($event.target.value))">
+                          <input type="range" class="settings-slider" min="0.40" max="0.75" step="0.01" x-model="settings.minSimilarityForBoosting" @input="updateBoostingSetting('minSimilarityForBoosting', parseFloat($event.target.value))">
                           <span class="settings-value" x-text="formatThreshold(settings.minSimilarityForBoosting)"></span>
                         </div>
                       </div>
@@ -550,14 +564,27 @@
                       <div class="settings-section">
                         <label class="settings-label" title="Even with boost, must meet this threshold for assignment">Min After Boost</label>
                         <div class="settings-row">
-                          <input type="range" class="settings-slider" min="0.60" max="0.85" step="0.01" x-model="settings.minSimilarityAfterBoost" @input="updateSetting('minSimilarityAfterBoost', parseFloat($event.target.value))">
+                          <input type="range" class="settings-slider" min="0.60" max="0.85" step="0.01" x-model="settings.minSimilarityAfterBoost" @input="updateBoostingSetting('minSimilarityAfterBoost', parseFloat($event.target.value))">
                           <span class="settings-value" x-text="formatThreshold(settings.minSimilarityAfterBoost)"></span>
                         </div>
                       </div>
+
+                      <!-- Re-apply button for processed jobs with dirty boosting settings -->
+                      <template x-if="isReadOnly && boostingDirty">
+                        <button class="btn primary btn-sm settings-reapply-btn" @click="reapplyBoosting()" :disabled="isReapplying">
+                          <template x-if="!isReapplying">
+                            <span><i class="ti ti-refresh"></i> Re-apply Boosting</span>
+                          </template>
+                          <template x-if="isReapplying">
+                            <span><i class="ti ti-loader-2 spin"></i> Applying...</span>
+                          </template>
+                        </button>
+                      </template>
                     </div>
                   </template>
 
-                  <template x-if="isReadOnly || isLocked">
+                  <!-- Only show read-only when locked (processing) -->
+                  <template x-if="isLocked">
                     <div class="settings-readonly">
                       <div class="settings-readonly-row">
                         <span class="settings-readonly-label">Boost Factor:</span>
@@ -586,6 +613,7 @@
                     </div>
                   </template>
                 </div>
+                </div><!-- end settings-tab-content speaker -->
               </div>
 
               <!-- Process button (for unprocessed saved jobs only, not live mode) -->

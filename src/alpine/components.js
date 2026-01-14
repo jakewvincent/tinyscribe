@@ -1347,6 +1347,9 @@ document.addEventListener('alpine:init', () => {
     activeJob: null,
     isVisible: false,
 
+    // Tab state
+    activeTab: 'speaker', // 'model' or 'speaker' - default to speaker for quick boosting access
+
     // Editable settings (for unprocessed jobs)
     settings: {
       // Models
@@ -1367,6 +1370,9 @@ document.addEventListener('alpine:init', () => {
       minSimilarityAfterBoost: 0.75,
     },
 
+    // Saved boosting settings (for dirty detection on processed jobs)
+    savedBoostingSettings: null,
+
     // Available models (populated on init)
     embeddingModels: [],
     segmentationModels: [],
@@ -1376,6 +1382,9 @@ document.addEventListener('alpine:init', () => {
 
     // Processing state
     isProcessing: false,
+
+    // Re-applying boosting state
+    isReapplying: false,
 
     init() {
       // Load available models
@@ -1507,6 +1516,16 @@ document.addEventListener('alpine:init', () => {
       this.settings.skipBoostIfConfident = s.boosting?.skipBoostIfConfident ?? 0.82;
       this.settings.minSimilarityForBoosting = s.boosting?.minSimilarityForBoosting ?? 0.65;
       this.settings.minSimilarityAfterBoost = s.boosting?.minSimilarityAfterBoost ?? 0.75;
+
+      // Save boosting settings for dirty detection (for processed jobs)
+      this.savedBoostingSettings = {
+        boostFactor: this.settings.boostFactor,
+        boostEligibilityRank: this.settings.boostEligibilityRank,
+        ambiguityMarginThreshold: this.settings.ambiguityMarginThreshold,
+        skipBoostIfConfident: this.settings.skipBoostIfConfident,
+        minSimilarityForBoosting: this.settings.minSimilarityForBoosting,
+        minSimilarityAfterBoost: this.settings.minSimilarityAfterBoost,
+      };
     },
 
     // Live mode helpers
@@ -1535,6 +1554,26 @@ document.addEventListener('alpine:init', () => {
 
     get isLocked() {
       return this.activeJob?.status === 'processing' || this.isProcessing;
+    },
+
+    // Boosting is editable for all jobs except when locked (processing)
+    get isBoostingEditable() {
+      return !this.isLocked;
+    },
+
+    // Check if boosting settings have changed from saved values
+    get boostingDirty() {
+      if (!this.savedBoostingSettings) return false;
+      const boostingKeys = [
+        'boostFactor', 'boostEligibilityRank', 'ambiguityMarginThreshold',
+        'skipBoostIfConfident', 'minSimilarityForBoosting', 'minSimilarityAfterBoost',
+      ];
+      for (const key of boostingKeys) {
+        if (this.settings[key] !== this.savedBoostingSettings[key]) {
+          return true;
+        }
+      }
+      return false;
     },
 
     // Handle segmentation model change
@@ -1646,6 +1685,68 @@ document.addEventListener('alpine:init', () => {
       window.dispatchEvent(new CustomEvent('job-process', {
         detail: { jobId: this.activeJob.id, mode },
       }));
+    },
+
+    // Update boosting setting (works for both editable and processed jobs)
+    updateBoostingSetting(key, value) {
+      if (this.isLocked || !this.activeJob) return;
+
+      this.settings[key] = value;
+
+      // For live jobs, dispatch to app.js for immediate application
+      if (this.isLiveMode) {
+        window.dispatchEvent(new CustomEvent('live-job-setting-change', {
+          detail: { key, value },
+        }));
+        return;
+      }
+
+      // Update job settings in memory
+      if (this.activeJob?.settings) {
+        if (!this.activeJob.settings.boosting) this.activeJob.settings.boosting = {};
+        this.activeJob.settings.boosting[key] = value;
+      }
+
+      // For unprocessed jobs, persist immediately
+      if (!this.isReadOnly && this.activeJob?.settings) {
+        window.dispatchEvent(new CustomEvent('job-update-settings', {
+          detail: { jobId: this.activeJob.id, settings: JSON.parse(JSON.stringify(this.activeJob.settings)) },
+        }));
+      }
+      // For processed jobs, dirty state will show re-apply button
+    },
+
+    // Re-apply boosting settings to processed job
+    reapplyBoosting() {
+      if (!this.activeJob || !this.isReadOnly || this.isReapplying) return;
+
+      this.isReapplying = true;
+
+      // Dispatch event with new boosting settings
+      window.dispatchEvent(new CustomEvent('reapply-boosting', {
+        detail: {
+          jobId: this.activeJob.id,
+          boostingSettings: {
+            boostFactor: this.settings.boostFactor,
+            boostEligibilityRank: this.settings.boostEligibilityRank,
+            ambiguityMarginThreshold: this.settings.ambiguityMarginThreshold,
+            skipBoostIfConfident: this.settings.skipBoostIfConfident,
+            minSimilarityForBoosting: this.settings.minSimilarityForBoosting,
+            minSimilarityAfterBoost: this.settings.minSimilarityAfterBoost,
+          },
+        },
+      }));
+
+      // Listen for completion
+      const handleComplete = (e) => {
+        if (e.detail.jobId === this.activeJob?.id) {
+          this.isReapplying = false;
+          // Update saved boosting settings to reflect new state
+          this.savedBoostingSettings = { ...this.settings };
+          window.removeEventListener('reapply-boosting-complete', handleComplete);
+        }
+      };
+      window.addEventListener('reapply-boosting-complete', handleComplete);
     },
 
     // Get display name for embedding model

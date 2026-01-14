@@ -404,6 +404,7 @@ export class App {
     window.addEventListener('job-update-notes', (e) => this.updateJobNotes(e.detail.jobId, e.detail.notes));
     window.addEventListener('job-update-settings', (e) => this.updateJobSettings(e.detail.jobId, e.detail.settings));
     window.addEventListener('job-process', (e) => this.processJob(e.detail.jobId, e.detail.mode || 'quick'));
+    window.addEventListener('reapply-boosting', (e) => this.reapplyBoosting(e.detail.jobId, e.detail.boostingSettings));
 
     // Live job settings changes (applies to live processing in real-time)
     window.addEventListener('live-job-setting-change', (e) => {
@@ -3301,6 +3302,85 @@ export class App {
     this.updateParticipantsPanel();
 
     console.log(`[Boosting] Re-processed ${segments.length} segments with updated config`);
+  }
+
+  /**
+   * Re-apply boosting settings to a processed job
+   * @param {string} jobId - The job to update
+   * @param {Object} boostingSettings - New boosting configuration
+   */
+  async reapplyBoosting(jobId, boostingSettings) {
+    if (!this.isViewingRecording || !this.viewedRecordingId) {
+      console.warn('[Boosting] Cannot reapply: not viewing a recording');
+      window.dispatchEvent(new CustomEvent('reapply-boosting-complete', { detail: { jobId, success: false } }));
+      return;
+    }
+
+    try {
+      // Get the recording and job
+      const data = await this.recordingStore.getWithChunks(this.viewedRecordingId);
+      if (!data) {
+        throw new Error('Recording not found');
+      }
+
+      const { recording } = data;
+      const job = recording.jobs?.find(j => j.id === jobId);
+      if (!job) {
+        throw new Error('Job not found');
+      }
+
+      // Get segments from current view
+      const segments = this._currentViewedSegments;
+      if (!segments || segments.length === 0) {
+        console.log('[Boosting] No segments to reprocess');
+        window.dispatchEvent(new CustomEvent('reapply-boosting-complete', { detail: { jobId, success: true } }));
+        return;
+      }
+
+      // Update boosting config
+      this.conversationInference.updateConfig(boostingSettings);
+
+      // Get current enrollments for inference context
+      const enrollments = this._currentViewedEnrollments || [];
+
+      // Reset inference and re-process all segments with new config
+      this.conversationInference.reset();
+      this.conversationInference.setEnrolledSpeakers(enrollments);
+      this.conversationInference.setExpectedSpeakers(job.settings?.clustering?.numSpeakers || 2);
+
+      // Re-process each segment through inference (keeps same clustering, new boosting)
+      for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
+        if (segment.debug?.clustering?.allSimilarities) {
+          const { attribution } = this.conversationInference.processNewSegment(segment, i);
+          segment.inferenceAttribution = attribution;
+        }
+      }
+
+      // Update job settings with new boosting config
+      if (!job.settings.boosting) job.settings.boosting = {};
+      Object.assign(job.settings.boosting, boostingSettings);
+
+      // Update job segments in storage
+      await this.recordingStore.updateJob(this.viewedRecordingId, jobId, {
+        settings: job.settings,
+        segments: segments,
+      });
+
+      // Re-render transcript with new attributions
+      this.clearTranscriptDisplay();
+      this.renderSegments(segments, { autoScroll: false });
+
+      // Update participants panel
+      this.updateParticipantsPanel();
+
+      console.log(`[Boosting] Re-applied boosting to ${segments.length} segments`);
+      window.dispatchEvent(new CustomEvent('reapply-boosting-complete', { detail: { jobId, success: true } }));
+
+    } catch (error) {
+      console.error('[Boosting] Failed to reapply:', error);
+      window.dispatchEvent(new CustomEvent('reapply-boosting-complete', { detail: { jobId, success: false, error: error.message } }));
+    }
   }
 
   /**
