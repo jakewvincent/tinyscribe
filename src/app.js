@@ -3196,15 +3196,10 @@ export class App {
     });
 
     // Rebuild inference attributions with new clustering data
-    // This ensures displayInfo.label matches the new speaker assignments
+    // Uses two-pass processing: first builds hypothesis from all segments,
+    // then applies retroactive boosting to ALL segments (not just future ones)
     this.recordingStatus.textContent = 'Processing (quick): rebuilding inference...';
-    for (let i = 0; i < newSegments.length; i++) {
-      const segment = newSegments[i];
-      if (segment.debug?.clustering?.allSimilarities && !segment.isEnvironmental) {
-        const { attribution } = this.conversationInference.processNewSegment(segment, i);
-        segment.inferenceAttribution = attribution;
-      }
-    }
+    this.conversationInference.rebuildFromSegments(newSegments);
 
     return newSegments;
   }
@@ -3296,15 +3291,10 @@ export class App {
     }
 
     // Rebuild inference attributions for all segments
-    // This provides boost indicators, alternate suggestions, etc.
+    // Uses two-pass processing: first builds hypothesis from all segments,
+    // then applies retroactive boosting to ALL segments (not just future ones)
     this.recordingStatus.textContent = 'Processing (full): rebuilding inference...';
-    for (let i = 0; i < allSegments.length; i++) {
-      const segment = allSegments[i];
-      if (segment.debug?.clustering?.allSimilarities && !segment.isEnvironmental) {
-        const { attribution } = this.conversationInference.processNewSegment(segment, i);
-        segment.inferenceAttribution = attribution;
-      }
-    }
+    this.conversationInference.rebuildFromSegments(allSegments);
 
     return allSegments;
   }
@@ -3334,19 +3324,14 @@ export class App {
       ? (this._currentViewedEnrollments || [])
       : await EnrollmentManager.loadAll();
 
-    // Reset inference and re-process all segments with new config
+    // Reset inference and configure with enrollments
     this.conversationInference.reset();
     this.conversationInference.setEnrolledSpeakers(enrollments);
     this.conversationInference.setExpectedSpeakers(this.numSpeakers);
 
-    // Re-process each segment through inference (keeps same clustering, new boosting)
-    for (let i = 0; i < segments.length; i++) {
-      const segment = segments[i];
-      if (segment.debug?.clustering?.allSimilarities) {
-        const { attribution } = this.conversationInference.processNewSegment(segment, i);
-        segment.inferenceAttribution = attribution;
-      }
-    }
+    // Re-process all segments through inference with two-pass processing:
+    // first builds hypothesis from all segments, then applies retroactive boosting
+    this.conversationInference.rebuildFromSegments(segments);
 
     // Re-render transcript with new attributions
     this.clearTranscriptDisplay();
@@ -3397,19 +3382,14 @@ export class App {
       // Get current enrollments for inference context
       const enrollments = this._currentViewedEnrollments || [];
 
-      // Reset inference and re-process all segments with new config
+      // Reset inference and configure with enrollments
       this.conversationInference.reset();
       this.conversationInference.setEnrolledSpeakers(enrollments);
       this.conversationInference.setExpectedSpeakers(job.settings?.clustering?.numSpeakers || 2);
 
-      // Re-process each segment through inference (keeps same clustering, new boosting)
-      for (let i = 0; i < segments.length; i++) {
-        const segment = segments[i];
-        if (segment.debug?.clustering?.allSimilarities) {
-          const { attribution } = this.conversationInference.processNewSegment(segment, i);
-          segment.inferenceAttribution = attribution;
-        }
-      }
+      // Re-process all segments through inference with two-pass processing:
+      // first builds hypothesis from all segments, then applies retroactive boosting
+      this.conversationInference.rebuildFromSegments(segments);
 
       // Update job settings with new boosting config
       if (!job.settings.boosting) job.settings.boosting = {};
@@ -3495,14 +3475,9 @@ export class App {
       this.conversationInference.setEnrolledSpeakers(enrollments || []);
       this.conversationInference.setExpectedSpeakers(this.numSpeakers);
 
-      // Process segments through inference using new clustering data
-      for (let i = 0; i < recording.segments.length; i++) {
-        const segment = recording.segments[i];
-        if (segment.debug?.clustering?.allSimilarities) {
-          const { attribution } = this.conversationInference.processNewSegment(segment, i);
-          segment.inferenceAttribution = attribution;
-        }
-      }
+      // Process segments through inference with two-pass processing:
+      // first builds hypothesis from all segments, then applies retroactive boosting
+      this.conversationInference.rebuildFromSegments(recording.segments);
 
       // Clear and re-render transcript using the same renderer as live recording
       this.clearTranscriptDisplay();
