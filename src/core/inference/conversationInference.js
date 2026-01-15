@@ -740,6 +740,8 @@ export class ConversationInference {
   rebuildFromSegments(segments) {
     // Clear stats but preserve segmentAttributions (they were already loaded)
     this.speakerStats.clear();
+    this.assignmentStats.clear();
+    this.unknownClusterer.reset();
     this.hypothesis = {
       participants: [],
       version: 0,
@@ -754,9 +756,22 @@ export class ConversationInference {
       // Skip environmental sounds
       if (segment.isEnvironmental) continue;
 
-      // Get clustering data from segment
+      // Track actual assignment for hypothesis building
+      // This uses the segment's assigned speaker (speakerLabel), not competitive matches
+      if (segment.speakerLabel) {
+        const assignmentAttribution = {
+          speakerName: segment.speakerLabel,
+          debug: {
+            similarity: segment.debug?.clustering?.similarity ?? segment.attribution?.similarity,
+          },
+        };
+        this.trackAssignment(assignmentAttribution);
+      }
+
+      // Get clustering data from segment for competitive stats
       const clustering = segment.debug?.clustering;
       if (!clustering?.allSimilarities || clustering.allSimilarities.length === 0) {
+        this.hypothesis.totalSegments++;
         continue;
       }
 
