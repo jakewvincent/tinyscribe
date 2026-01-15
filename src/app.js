@@ -2045,6 +2045,27 @@ export class App {
    * @returns {Object} Export data
    */
   _buildJobExportData(job, recording = null) {
+    // Build enrollments list from job settings or current enrollments
+    const enrollments = job.enrollmentsSnapshot?.map(e => ({
+      name: e.name,
+      sampleCount: e.samples?.length || 0,
+    })) || [];
+
+    // Build unknown clusters summary if available
+    const unknownClusters = this.conversationInference?.unknownClusterer?.getStats() || null;
+
+    // Build inference stats summary
+    const segments = job.segments || [];
+    let boostStats = { applied: 0, skipped: 0, changedResult: 0 };
+    segments.forEach(seg => {
+      const inf = seg.inferenceAttribution;
+      if (inf) {
+        if (inf.wasBoosted) boostStats.applied++;
+        if (inf.boostSkipped) boostStats.skipped++;
+        if (inf.wasInfluenced) boostStats.changedResult++;
+      }
+    });
+
     return {
       job: {
         id: job.id,
@@ -2062,32 +2083,82 @@ export class App {
           duration: recording.duration,
         },
       }),
-      segmentCount: job.segments?.length || 0,
+      // Enrollments used for this job
+      enrollments,
+      // Unknown speaker clusters (if any)
+      unknownClusters,
+      // Boost statistics summary
+      inferenceStats: {
+        boostApplied: boostStats.applied,
+        boostSkipped: boostStats.skipped,
+        boostChangedResult: boostStats.changedResult,
+      },
+      segmentCount: segments.length,
       participants: job.participants || [],
-      segments: (job.segments || []).map((seg) => ({
-        text: seg.text?.trim() || '',
-        speaker: seg.speaker,
-        speakerLabel: seg.speakerLabel,
-        startTime: seg.startTime,
-        endTime: seg.endTime,
-        isEnvironmental: seg.isEnvironmental || false,
-        words: seg.words,
-        attribution: seg.debug?.clustering
-          ? {
-              similarity: seg.debug.clustering.similarity,
-              secondBestSimilarity: seg.debug.clustering.secondBestSimilarity,
-              margin: seg.debug.clustering.margin,
-              secondBestSpeaker: seg.debug.clustering.secondBestSpeaker,
-              isEnrolled: seg.debug.clustering.isEnrolled,
-              reason: seg.debug.clustering.reason,
-            }
-          : null,
-        debug: {
-          duration: seg.debug?.duration,
-          frameCount: seg.debug?.frameCount,
-          type: seg.debug?.type,
-        },
-      })),
+      segments: segments.map((seg) => {
+        const clustering = seg.debug?.clustering;
+        const inference = seg.inferenceAttribution;
+
+        // Build all predictions array (ranked by similarity)
+        // Use boosted matches if available, otherwise fall back to original clustering
+        const allPredictions = (inference?.debug?.allMatches || clustering?.allSimilarities || [])
+          .map(m => ({
+            speaker: m.speakerName || m.speaker,
+            similarity: m.similarity,
+            // Include boosted similarity if different from original
+            ...(m.originalSimilarity !== undefined && m.originalSimilarity !== m.similarity
+              ? { originalSimilarity: m.originalSimilarity, wasBoosted: m.wasBoosted }
+              : {}),
+            isEnrolled: m.enrolled ?? true,
+          }))
+          .sort((a, b) => b.similarity - a.similarity);
+
+        return {
+          text: seg.text?.trim() || '',
+          speaker: seg.speaker,
+          speakerLabel: seg.speakerLabel,
+          startTime: seg.startTime,
+          endTime: seg.endTime,
+          isEnvironmental: seg.isEnvironmental || false,
+          words: seg.words,
+          // Attribution from clustering
+          attribution: clustering
+            ? {
+                similarity: clustering.similarity,
+                secondBestSimilarity: clustering.secondBestSimilarity,
+                margin: clustering.margin,
+                secondBestSpeaker: clustering.secondBestSpeaker,
+                isEnrolled: clustering.isEnrolled,
+                reason: clustering.reason,
+              }
+            : null,
+          // All speaker predictions (ranked by similarity)
+          predictions: allPredictions.length > 0 ? allPredictions : null,
+          // Boosting info from inference
+          boosting: inference
+            ? {
+                wasInfluenced: inference.wasInfluenced || false,
+                wasBoosted: inference.wasBoosted || false,
+                boostSkipped: inference.boostSkipped || false,
+                skipReason: inference.skipReason || null,
+                boostScenario: inference.debug?.boostScenario || null,
+              }
+            : null,
+          // Unknown clustering info (for non-enrolled speakers)
+          unknownClustering: inference?.unknownClusterResult
+            ? {
+                unknownId: inference.unknownClusterResult.unknownId,
+                closestEnrolled: inference.unknownClusterResult.closestEnrolled,
+                reason: inference.unknownClusterResult.reason,
+              }
+            : null,
+          debug: {
+            duration: seg.debug?.duration,
+            frameCount: seg.debug?.frameCount,
+            type: seg.debug?.type,
+          },
+        };
+      }),
     };
   }
 
