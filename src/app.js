@@ -4,7 +4,7 @@
  */
 
 // Audio layer (browser audio APIs)
-import { AudioCapture, VADProcessor, AudioPlayback } from './audio/index.js';
+import { AudioCapture, VADProcessor, AudioPlayback, AudioInputManager } from './audio/index.js';
 
 // UI components
 import { SpeakerVisualizer, ParticipantsPanel, DebugPanel, ResizeDividers } from './ui/index.js';
@@ -78,12 +78,19 @@ export class App {
     this.modalFocusTrap = null; // For accessibility focus management
 
     // VAD + overlap-based chunk management
-    this.vadProcessor = null; // VAD processor for speech detection
+    this.vadProcessor = null; // VAD processor for speech detection (single-input mode)
+    this.audioInputManager = null; // AudioInputManager for dual-input mode
     this.overlapMerger = new OverlapMerger(); // For comparing overlapping transcriptions
     this.lastChunkResult = null; // Previous chunk's result for overlap comparison
     this.globalTimeOffset = 0; // Tracks global time in the recording
     this.chunkQueue = []; // Queue of pending audio chunks
     this.isProcessingChunk = false; // Flag to ensure sequential processing
+
+    // Dual-input channel management
+    this.channelConfigs = new Map(); // channelId -> { deviceId, expectedSpeakers, label }
+    this.channelMergers = new Map(); // channelId -> TranscriptMerger
+    this.channelTimeOffsets = new Map(); // channelId -> cumulative time offset
+    this.channelLastChunkResults = new Map(); // channelId -> last chunk result for overlap merging
 
     // Debug stats
     this.completedChunks = 0;
@@ -98,7 +105,7 @@ export class App {
 
     // Recording management
     this.recordingStore = null; // RecordingStore instance (initialized in init)
-    this.sessionAudioChunks = []; // Cloned audio chunks for saving
+    this.sessionAudioChunks = {}; // Cloned audio chunks for saving, keyed by channelId
     this.sessionTranscriptionData = []; // Raw Whisper output per chunk for saving
     this.isViewingRecording = false; // True when viewing a saved recording
     this.viewedRecordingId = null; // ID of currently viewed recording
@@ -295,6 +302,12 @@ export class App {
     // Settings changes from Alpine sidebar
     window.addEventListener('num-speakers-change', (e) => this.handleNumSpeakersChange(e.detail.value));
 
+    // Audio inputs configuration from Alpine topbar
+    window.addEventListener('audio-inputs-change', (e) => this.handleAudioInputsChange(e.detail.inputs));
+
+    // Expose device enumeration for Alpine component
+    window.getAudioInputDevices = () => AudioCapture.getAudioInputDevices();
+
     // Enrollment controls - Alpine sidebar dispatches events, we listen here
     window.addEventListener('enrollment-start', (e) => {
       this.startEnrollmentWithName(e.detail.name);
@@ -486,6 +499,23 @@ export class App {
     if (changedSegments && changedSegments.length > 0) {
       this.updateParticipantsPanel();
     }
+  }
+
+  /**
+   * Handle audio inputs configuration change from Alpine
+   * Updates channelConfigs map for use during recording
+   * @param {Array<{id: number, deviceId: string, expectedSpeakers: number}>} inputs
+   */
+  handleAudioInputsChange(inputs) {
+    this.channelConfigs.clear();
+    inputs.forEach((input, idx) => {
+      this.channelConfigs.set(idx, {
+        deviceId: input.deviceId || null,
+        expectedSpeakers: input.expectedSpeakers ?? 2,
+        label: `Input ${idx + 1}`,
+      });
+    });
+    console.log('[App] Audio inputs updated:', Array.from(this.channelConfigs.entries()));
   }
 
   /**
@@ -839,8 +869,13 @@ export class App {
     this.completedChunks = 0;
     this.lastDebugTiming = null;
     this.lastPhraseDebug = null;
-    this.sessionAudioChunks = []; // Reset audio chunks for new recording
+    this.sessionAudioChunks = {}; // Reset audio chunks for new recording (keyed by channelId)
     this.sessionTranscriptionData = []; // Reset transcription data for new recording
+
+    // Reset channel-specific state for dual-input support
+    this.channelMergers.clear();
+    this.channelTimeOffsets.clear();
+    this.channelLastChunkResults.clear();
 
     // Reset conversation inference for fresh hypothesis building
     this.conversationInference.reset();
@@ -851,33 +886,60 @@ export class App {
     // Reset UI
     this.updateChunkQueueViz();
 
-    // Get selected microphone device ID
-    const selectedDeviceId = this.micSelect.value || null;
-
-    // Create VAD processor for speech-triggered chunking
-    this.vadProcessor = new VADProcessor({
-      minSpeechDuration: 1.0, // Min 1s of speech before emitting
-      maxSpeechDuration: 15.0, // Max 15s - force emit at this point
-      overlapDuration: 1.5, // 1.5s overlap between chunks
-      deviceId: selectedDeviceId,
-      onSpeechStart: () => this.handleSpeechStart(),
-      onSpeechEnd: (chunk) => this.handleAudioChunk(chunk),
-      onSpeechProgress: (progress) => this.handleSpeechProgress(progress),
-      onError: (error) => this.handleError(error),
-      onAudioLevel: (level) => this.updateAudioLevel(level),
+    // Use AudioInputManager for all recording (handles both single and dual input)
+    this.audioInputManager = new AudioInputManager({
+      onChunkReady: (chunk) => this.handleAudioChunk(chunk),
+      onSpeechStart: (channelId) => this.handleSpeechStart(channelId),
+      onSpeechProgress: (channelId, progress) => this.handleSpeechProgress(progress),
+      onAudioLevel: (channelId, level) => this.updateAudioLevel(level),
+      onError: (channelId, error) => this.handleError(error),
+      onDeviceDisconnected: (channelId, deviceId) => {
+        console.warn(`[App] Device disconnected on channel ${channelId}: ${deviceId}`);
+      },
     });
 
-    const initSuccess = await this.vadProcessor.init();
-    if (!initSuccess) {
-      this.recordingStatus.textContent =
-        'Failed to initialize VAD. Please check permissions and try again.';
-      return;
+    // Add configured inputs (from Alpine audioInputs component)
+    if (this.channelConfigs.size > 0) {
+      for (const [channelId, config] of this.channelConfigs) {
+        await this.audioInputManager.addInput(channelId, {
+          deviceId: config.deviceId,
+          expectedSpeakers: config.expectedSpeakers,
+          label: config.label,
+          vadOptions: {
+            minSpeechDuration: 1.0,
+            maxSpeechDuration: 15.0,
+            overlapDuration: 1.5,
+          },
+        });
+      }
+    } else {
+      // Default: single input with legacy mic dropdown (backward compatibility)
+      const selectedDeviceId = this.micSelect?.value || null;
+      await this.audioInputManager.addInput(0, {
+        deviceId: selectedDeviceId,
+        expectedSpeakers: this.numSpeakers,
+        label: 'Input 1',
+        vadOptions: {
+          minSpeechDuration: 1.0,
+          maxSpeechDuration: 15.0,
+          overlapDuration: 1.5,
+        },
+      });
+      // Update channelConfigs to reflect the default input
+      this.channelConfigs.set(0, {
+        deviceId: selectedDeviceId,
+        expectedSpeakers: this.numSpeakers,
+        label: 'Input 1',
+      });
     }
 
     try {
-      await this.vadProcessor.start();
+      await this.audioInputManager.startAll();
       this.isRecording = true;
-      this.recordingStatus.textContent = 'Listening for speech...';
+      const inputCount = this.audioInputManager.inputCount;
+      this.recordingStatus.textContent = inputCount > 1
+        ? `Listening for speech on ${inputCount} inputs...`
+        : 'Listening for speech...';
       this.updateStatusBar('recording');
 
       // Notify Alpine of recording state change
@@ -890,7 +952,12 @@ export class App {
     } catch (error) {
       this.recordingStatus.textContent =
         'Failed to access microphone. Please check permissions and try again.';
-      console.error('Failed to start VAD:', error);
+      console.error('Failed to start recording:', error);
+      // Clean up on failure
+      if (this.audioInputManager) {
+        await this.audioInputManager.destroyAll();
+        this.audioInputManager = null;
+      }
     }
   }
 
@@ -913,6 +980,14 @@ export class App {
    * Stop recording
    */
   async stopRecording() {
+    // Stop AudioInputManager (handles all inputs)
+    if (this.audioInputManager) {
+      await this.audioInputManager.stopAll();
+      await this.audioInputManager.destroyAll();
+      this.audioInputManager = null;
+    }
+
+    // Legacy: also clean up single vadProcessor if it exists
     if (this.vadProcessor) {
       await this.vadProcessor.stop();
       await this.vadProcessor.destroy();
@@ -1109,9 +1184,12 @@ export class App {
    * Handle audio chunk from capture
    */
   handleAudioChunk(chunk) {
+    const channelId = chunk.channelId ?? 0;
+
     // Log VAD chunk emission
     this.debugLogger.logVadChunk({
       chunkIndex: chunk.index,
+      channelId,
       duration: chunk.audio.length / 16000, // Assuming 16kHz sample rate
       wasForced: chunk.wasForced || false,
       overlapDuration: chunk.overlapDuration || 0,
@@ -1119,19 +1197,30 @@ export class App {
       isFinal: chunk.isFinal,
     });
 
-    // Clone audio for session recording (before queuing)
+    // Clone audio for session recording (before queuing), keyed by channelId
     if (this.isRecording && !this.isViewingRecording) {
-      this.sessionAudioChunks.push({
+      if (!this.sessionAudioChunks[channelId]) {
+        this.sessionAudioChunks[channelId] = [];
+      }
+      this.sessionAudioChunks[channelId].push({
         index: chunk.index,
+        channelId,
         audio: new Float32Array(chunk.audio), // Clone the audio
         duration: chunk.audio.length / 16000,
         overlapDuration: chunk.overlapDuration || 0,
+        wallTime: chunk.wallTime, // Wall-clock time for ordering
         isFinal: chunk.isFinal || false,
       });
     }
 
-    // Queue the chunk for processing
-    this.chunkQueue.push(chunk);
+    // Queue the chunk for processing with sort key for chronological ordering
+    this.chunkQueue.push({
+      ...chunk,
+      sortKey: chunk.wallTime ?? Date.now(), // Use wallTime for ordering across channels
+    });
+
+    // Sort queue by timestamp to maintain chronological order across channels
+    this.chunkQueue.sort((a, b) => a.sortKey - b.sortKey);
 
     // Update status
     const queueSize = this.chunkQueue.length;
@@ -1157,11 +1246,13 @@ export class App {
 
     this.isProcessingChunk = true;
     const chunk = this.chunkQueue.shift();
+    const channelId = chunk.channelId ?? 0;
 
     const durationStr = chunk.rawDuration ? `${chunk.rawDuration.toFixed(1)}s` : '';
+    const channelLabel = this.channelConfigs.size > 1 ? ` [Ch${channelId + 1}]` : '';
     const processingText = chunk.isFinal
-      ? `Processing final chunk...`
-      : `Processing chunk ${chunk.index + 1} (${durationStr})...`;
+      ? `Processing final chunk${channelLabel}...`
+      : `Processing chunk ${chunk.index + 1}${channelLabel} (${durationStr})...`;
     this.recordingStatus.textContent = processingText;
 
     // Update chunk queue visualization
@@ -1171,9 +1262,18 @@ export class App {
     // chunk.audio already includes overlap from previous segment
     // chunk.overlapDuration tells us how much overlap is at the start
 
-    // Track pending chunk info
-    this.pendingChunks.set(chunk.index, {
-      globalStartTime: this.globalTimeOffset,
+    // Get per-channel time offset
+    const timeOffset = this.channelTimeOffsets.get(channelId) || 0;
+
+    // Determine if we should skip embedding (single-speaker channel optimization)
+    const channelConfig = this.channelConfigs.get(channelId);
+    const skipEmbedding = channelConfig?.expectedSpeakers === 1;
+
+    // Track pending chunk info with composite key (channelId-chunkIndex)
+    const chunkKey = `${channelId}-${chunk.index}`;
+    this.pendingChunks.set(chunkKey, {
+      globalStartTime: timeOffset,
+      channelId,
       overlapDuration: chunk.overlapDuration || 0,
       audio: chunk.audio,
       isFinal: chunk.isFinal,
@@ -1189,6 +1289,8 @@ export class App {
         audio: chunk.audio,
         language: 'en',
         chunkIndex: chunk.index,
+        channelId,
+        skipEmbedding,
         overlapDuration: chunk.overlapDuration || 0,
         isFinal: chunk.isFinal,
       },
@@ -1203,6 +1305,7 @@ export class App {
       transcript,
       phrases,
       chunkIndex,
+      channelId: channelIdFromWorker,
       processingTime,
       overlapDuration,
       debug,
@@ -1211,10 +1314,13 @@ export class App {
       isEffectivelyEmpty,
     } = data;
 
-    // Get chunk info
-    const chunkInfo = this.pendingChunks.get(chunkIndex);
+    const channelId = channelIdFromWorker ?? 0;
+
+    // Get chunk info using composite key
+    const chunkKey = `${channelId}-${chunkIndex}`;
+    const chunkInfo = this.pendingChunks.get(chunkKey);
     if (!chunkInfo) {
-      console.warn('No chunk info for index', chunkIndex);
+      console.warn('No chunk info for key', chunkKey);
       // Continue processing queue even on error
       this.isProcessingChunk = false;
       this.processNextChunk();
@@ -1224,7 +1330,7 @@ export class App {
     const { globalStartTime, audio, isFinal } = chunkInfo;
 
     // Remove from pending
-    this.pendingChunks.delete(chunkIndex);
+    this.pendingChunks.delete(chunkKey);
 
     // Track completed chunks
     this.completedChunks++;
@@ -1240,20 +1346,25 @@ export class App {
       this.hideProcessingIndicator();
 
       // Auto-save recording when all chunks are processed and recording has stopped
-      if (!this.isRecording && this.sessionAudioChunks.length > 0 && !this.isViewingRecording) {
+      // Check if we have any audio chunks (object with channel arrays)
+      const hasAudioChunks = Object.values(this.sessionAudioChunks).some(arr => arr.length > 0);
+      if (!this.isRecording && hasAudioChunks && !this.isViewingRecording) {
         this.saveCurrentSession();
       }
     }
 
-    // Overlap-based merging: compare with previous chunk's words
+    // Get per-channel last chunk result for overlap merging
+    const lastChunkResult = this.channelLastChunkResults.get(channelId);
+
+    // Overlap-based merging: compare with previous chunk's words (per-channel)
     let wordsToUse = transcript?.chunks || [];
     let phrasesToUse = phrases || [];
     let mergeInfo = null;
 
-    if (this.lastChunkResult && overlapDuration > 0 && wordsToUse.length > 0) {
+    if (lastChunkResult && overlapDuration > 0 && wordsToUse.length > 0) {
       // Find merge point by comparing overlap regions
       mergeInfo = this.overlapMerger.findMergePoint(
-        this.lastChunkResult.words,
+        lastChunkResult.words,
         wordsToUse,
         overlapDuration
       );
@@ -1274,7 +1385,8 @@ export class App {
     // Log overlap merge decision
     this.debugLogger.logOverlapMerge({
       chunkIndex,
-      hadPreviousChunk: !!this.lastChunkResult,
+      channelId,
+      hadPreviousChunk: !!lastChunkResult,
       overlapDuration: overlapDuration || 0,
       mergeMethod: mergeInfo?.method || 'none',
       mergeConfidence: mergeInfo?.confidence,
@@ -1291,6 +1403,7 @@ export class App {
     if (rawAsr && this.isRecording && !this.isViewingRecording) {
       this.sessionTranscriptionData.push({
         chunkIndex,
+        channelId,
         rawAsr,
         overlapDuration: overlapDuration || 0,
         mergeInfo: mergeInfo || null,
@@ -1300,20 +1413,28 @@ export class App {
       });
     }
 
-    // Update global time offset
-    // With overlap merging, we process the full audio minus overlap
+    // Update per-channel time offset
     const audioDuration = audio ? audio.length / 16000 : 0;
     const newAudioProcessed = audioDuration - (overlapDuration || 0);
-    this.globalTimeOffset += Math.max(0, newAudioProcessed);
+    const currentOffset = this.channelTimeOffsets.get(channelId) || 0;
+    this.channelTimeOffsets.set(channelId, currentOffset + Math.max(0, newAudioProcessed));
 
-    // Store result for next chunk's overlap comparison (unless final)
+    // Also update global offset for backward compatibility
+    this.globalTimeOffset = Math.max(this.globalTimeOffset, this.channelTimeOffsets.get(channelId));
+
+    // Store result for next chunk's overlap comparison (per-channel, unless final)
     if (!isFinal && transcript?.chunks?.length > 0) {
-      this.lastChunkResult = {
-        words: transcript.chunks, // Original words (not the filtered ones)
+      this.channelLastChunkResults.set(channelId, {
+        words: transcript.chunks,
         endTime: globalStartTime + audioDuration,
-      };
+      });
     } else {
-      this.lastChunkResult = null;
+      this.channelLastChunkResults.delete(channelId);
+    }
+
+    // Also update legacy lastChunkResult for backward compat in single-input mode
+    if (this.channelConfigs.size <= 1) {
+      this.lastChunkResult = this.channelLastChunkResults.get(channelId) || null;
     }
 
     // Process transcript if we have words to use
@@ -1328,8 +1449,32 @@ export class App {
       // Calculate chunk start time for transcript display
       const chunkStartTime = globalStartTime + (overlapDuration || 0);
 
+      // Get or create per-channel merger
+      let merger = this.channelMergers.get(channelId);
+      if (!merger) {
+        const channelConfig = this.channelConfigs.get(channelId);
+        merger = new TranscriptMerger(channelConfig?.expectedSpeakers ?? this.numSpeakers);
+        this.channelMergers.set(channelId, merger);
+      }
+
+      // Get channel config for labeling and single-speaker handling
+      const channelConfig = this.channelConfigs.get(channelId);
+      const channelLabel = channelConfig?.label || `Input ${channelId + 1}`;
+      const isSingleSpeaker = channelConfig?.expectedSpeakers === 1;
+
+      // Add channel metadata to phrases before merging
+      phrasesToUse.forEach(p => {
+        p.channelId = channelId;
+        p.channelLabel = channelLabel;
+        // Single-speaker optimization: direct assignment without clustering
+        if (isSingleSpeaker && !p.isEnvironmental) {
+          p.clusteredSpeakerId = 0;
+          p.clusteringDebug = { reason: 'single_speaker_channel' };
+        }
+      });
+
       // Merge ASR with phrase-based diarization
-      const mergedSegments = this.transcriptMerger.merge(
+      const mergedSegments = merger.merge(
         filteredTranscript,
         phrasesToUse,
         chunkStartTime
@@ -1337,6 +1482,12 @@ export class App {
 
       // Render and store segments
       if (mergedSegments.length > 0) {
+        // Tag segments with channel info
+        mergedSegments.forEach(segment => {
+          segment.channelId = channelId;
+          segment.channelLabel = channelLabel;
+        });
+
         // Process each segment through inference layer
         const baseIndex = this.transcriptMerger.segments.length;
         for (let i = 0; i < mergedSegments.length; i++) {
@@ -1351,15 +1502,18 @@ export class App {
         }
 
         this.renderSegments(mergedSegments);
+        // Store in main transcriptMerger.segments for unified view
         this.transcriptMerger.segments.push(...mergedSegments);
 
         // Log segment creation with clustering info
         this.debugLogger.logSegmentCreation({
           chunkIndex,
+          channelId,
           segmentCount: mergedSegments.length,
           segments: mergedSegments.map(s => ({
             text: s.text?.substring(0, 100),
             speaker: s.speakerLabel,
+            channelLabel: s.channelLabel,
             startTime: s.startTime,
             endTime: s.endTime,
             duration: s.endTime - s.startTime,
@@ -1476,6 +1630,13 @@ export class App {
       let boostHtml = '';
       let candidatesHtml = '';
 
+      // Build channel badge for multi-input recordings
+      let channelBadgeHtml = '';
+      if (this.channelConfigs.size > 1 && segment.channelId != null) {
+        const channelLabel = segment.channelLabel || `Ch${segment.channelId + 1}`;
+        channelBadgeHtml = `<span class="channel-badge" data-channel="${segment.channelId}">${channelLabel}</span>`;
+      }
+
       if (clustering && !segment.isEnvironmental) {
         // Feature 3: Decision reason badge
         const reason = clustering.reason;
@@ -1577,7 +1738,7 @@ export class App {
         segmentEl.className = 'transcript-segment environmental';
         labelEl.className = 'speaker-label environmental';
         labelEl.innerHTML = `
-          <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
+          ${channelBadgeHtml}<span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
         `;
       } else if (isUnknownSpeaker(effectiveSpeakerId)) {
         // Unknown speaker - distinct styling to indicate non-enrolled
@@ -1590,7 +1751,7 @@ export class App {
         const label = displayInfo?.label || segment.speakerLabel || `Unknown ${unknownIndex + 1}`;
         labelEl.innerHTML = `
           <div class="segment-header">
-            <span class="speaker-name">${label}</span>${reasonBadgeHtml}${boostHtml}
+            ${channelBadgeHtml}<span class="speaker-name">${label}</span>${reasonBadgeHtml}${boostHtml}
             <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
           </div>
         `;
@@ -1604,7 +1765,7 @@ export class App {
         const label = displayInfo?.label || segment.speakerLabel;
         labelEl.innerHTML = `
           <div class="segment-header">
-            <span class="speaker-name">${label}</span>${reasonBadgeHtml}${boostHtml}
+            ${channelBadgeHtml}<span class="speaker-name">${label}</span>${reasonBadgeHtml}${boostHtml}
             <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
           </div>
         `;
@@ -2467,7 +2628,9 @@ export class App {
    * Save the current recording session (v2 job-based schema)
    */
   async saveCurrentSession() {
-    if (this.sessionAudioChunks.length === 0) {
+    // Check if we have any audio chunks (object with channel arrays)
+    const hasAudioChunks = Object.values(this.sessionAudioChunks).some(arr => arr.length > 0);
+    if (!hasAudioChunks) {
       console.log('[Recording] No audio chunks to save');
       return;
     }
@@ -2475,7 +2638,7 @@ export class App {
     const segments = this.transcriptMerger.getTranscript();
     if (segments.length === 0) {
       console.log('[Recording] No segments to save');
-      this.sessionAudioChunks = []; // Clear chunks even if no segments
+      this.sessionAudioChunks = {}; // Clear chunks even if no segments
       return;
     }
 
@@ -2526,6 +2689,17 @@ export class App {
       job.segments = segments;
       job.participants = participants;
 
+      // Calculate total chunk count across all channels
+      const totalChunkCount = Object.values(this.sessionAudioChunks)
+        .reduce((total, chunks) => total + chunks.length, 0);
+
+      // Serialize channelConfigs for storage
+      const channelConfigsArray = Array.from(this.channelConfigs.entries()).map(([id, config]) => ({
+        id,
+        label: config.label,
+        expectedSpeakers: config.expectedSpeakers,
+      }));
+
       // Create recording (v2 schema) as container for jobs
       const recording = {
         id: generateRecordingId(),
@@ -2533,8 +2707,9 @@ export class App {
         createdAt: Date.now(),
         duration,
         enrollmentsSnapshot,
+        channelConfigs: channelConfigsArray,
         metadata: {
-          chunkCount: this.sessionAudioChunks.length,
+          chunkCount: totalChunkCount,
           sizeBytes,
         },
         jobs: [job],
@@ -2552,7 +2727,7 @@ export class App {
       }
 
       // Clear session data
-      this.sessionAudioChunks = [];
+      this.sessionAudioChunks = {};
       this.sessionTranscriptionData = [];
 
       // Update recordings list
@@ -2631,6 +2806,17 @@ export class App {
       this.isViewingRecording = true;
       this.viewedRecordingId = recordingId;
       this.viewedJobId = activeJob.id;
+
+      // Restore channelConfigs for proper channel badge display
+      this.channelConfigs.clear();
+      if (recording.channelConfigs && recording.channelConfigs.length > 0) {
+        for (const config of recording.channelConfigs) {
+          this.channelConfigs.set(config.id, {
+            label: config.label,
+            expectedSpeakers: config.expectedSpeakers,
+          });
+        }
+      }
 
       // Store references for re-processing (e.g., when boosting config changes)
       this._currentViewedSegments = activeJob.segments || [];
@@ -2756,6 +2942,9 @@ export class App {
 
     // Notify Alpine
     window.dispatchEvent(new CustomEvent('recording-closed'));
+
+    // Request current audio input config from Alpine to restore channelConfigs
+    window.dispatchEvent(new CustomEvent('request-audio-inputs'));
 
     // Create fresh live job for new session
     this.liveJob = this._createFreshLiveJob();

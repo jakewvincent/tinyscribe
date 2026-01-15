@@ -569,7 +569,7 @@ function isBlankAudioMarker(word) {
  * - Overlap audio is prepended by AudioCapture
  * - ALL words are kept (no discard) - overlap merging happens in app.js
  */
-async function handleTranscribe({ audio, language = 'en', chunkIndex, overlapDuration = 0, isFinal = false }, requestId) {
+async function handleTranscribe({ audio, language = 'en', chunkIndex, overlapDuration = 0, isFinal = false, channelId = 0, skipEmbedding = false }, requestId) {
   try {
     const startTime = performance.now();
 
@@ -653,6 +653,7 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, overlapDur
     });
 
     // 5. Extract audio segments for each phrase and get SV embeddings
+    // Skip embedding extraction if skipEmbedding=true (single-speaker channel optimization)
     const embeddingStartTime = performance.now();
     const phrasesWithEmbeddings = [];
 
@@ -665,18 +666,26 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, overlapDur
       const phraseAudio = audioData.slice(startSample, endSample);
 
       // Only get embedding if phrase is long enough (0.5s = 8000 samples)
+      // and skipEmbedding is not set (single-speaker channels skip this)
       let embedding = null;
       let frameCount = phraseAudio.length;
+      let reason = null;
 
-      if (duration >= 0.5 && phraseAudio.length >= 8000) {
+      if (skipEmbedding) {
+        reason = 'skipped_single_speaker';
+      } else if (duration >= 0.5 && phraseAudio.length >= 8000) {
         embedding = await ModelManager.extractEmbedding(phraseAudio);
+        reason = embedding ? null : 'extraction_failed';
+      } else {
+        reason = 'too_short';
       }
 
       phrasesWithEmbeddings.push({
         ...phrase,
         embedding,
         frameCount,
-        reason: embedding ? null : (duration < 0.5 ? 'too_short' : 'extraction_failed'),
+        channelId, // Include channel info on each phrase
+        reason,
       });
     }
 
@@ -727,6 +736,7 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, overlapDur
         },
         phrases: phrasesWithEmbeddings,
         chunkIndex,
+        channelId, // Include channel for dual-input support
         processingTime,
         overlapDuration, // Echo back for app.js merge logic
         isFinal,
@@ -737,6 +747,7 @@ async function handleTranscribe({ audio, language = 'en', chunkIndex, overlapDur
           segTime: Math.round(segTime),
           segMethod: segResult.method,
           embeddingTime: Math.round(embeddingTime),
+          skippedEmbedding: skipEmbedding, // Track if we skipped embedding for this chunk
         },
       },
     });

@@ -191,6 +191,136 @@ body {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
+/* Audio Inputs Config (Dual Input Support) */
+.audio-inputs-config {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.audio-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 0.2rem var(--space-sm);
+  background: var(--surface-secondary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+}
+
+.audio-input-row select {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  font-size: 0.8rem;
+  background: white;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.audio-input-row select:hover {
+  border-color: #94a3b8;
+  box-shadow: var(--shadow-sm);
+}
+
+.audio-input-row select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.audio-input-row select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.input-device-select {
+  min-width: 120px;
+  max-width: 160px;
+}
+
+.speakers-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  white-space: nowrap;
+}
+
+.speakers-label {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.speakers-select {
+  width: 50px;
+}
+
+.add-input-btn {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  background: transparent;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.add-input-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-bg);
+}
+
+.add-input-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.remove-input-btn {
+  opacity: 0.5;
+  padding: 0.125rem 0.375rem;
+  font-size: 0.875rem;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  color: var(--text-muted);
+}
+
+.remove-input-btn:hover:not(:disabled) {
+  opacity: 1;
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.remove-input-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Channel Badge in Transcript Segments */
+.channel-badge {
+  font-size: var(--text-xs);
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  margin-right: var(--space-xs);
+}
+
+.channel-badge[data-channel="0"] {
+  background: var(--primary-bg);
+  color: var(--primary);
+}
+
+.channel-badge[data-channel="1"] {
+  background: rgba(245, 158, 11, 0.15);
+  color: #b45309;
+}
+
 /* Recordings Dropdown */
 .recordings-dropdown-container {
   position: relative;
@@ -3798,9 +3928,8 @@ body.resizing * {
   justify-content: space-between;
   padding: var(--space-sm) var(--space-md);
   background: var(--panel-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  margin-bottom: var(--space-md);
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 0;
   gap: var(--space-md);
 }
 
@@ -4531,6 +4660,24 @@ body.resizing * {
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
+}
+
+.settings-section.settings-info {
+  padding: var(--space-sm);
+  background: var(--surface-secondary);
+  border-radius: var(--radius-sm);
+}
+
+.settings-info-text {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.settings-info-text i {
+  color: var(--primary);
 }
 
 .settings-label {

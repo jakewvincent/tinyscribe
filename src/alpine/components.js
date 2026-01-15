@@ -344,6 +344,84 @@ document.addEventListener('alpine:init', () => {
   }));
 
   /**
+   * Audio Inputs component
+   * Manages dual audio input configuration in topbar
+   */
+  Alpine.data('audioInputs', () => ({
+    inputs: Alpine.$persist([
+      { id: 0, deviceId: '', expectedSpeakers: 2 }
+    ]).as('audio-inputs'),
+    devices: [],
+    maxInputs: 2,
+    isRecording: false,
+
+    init() {
+      this.loadDevices();
+
+      // Listen for device changes
+      if (navigator.mediaDevices) {
+        navigator.mediaDevices.addEventListener('devicechange', () => this.loadDevices());
+      }
+
+      // Listen for recording state
+      window.addEventListener('recording-state', (e) => {
+        this.isRecording = e.detail.recording;
+      });
+
+      // Listen for requests to re-send audio input config (e.g., when returning from viewing recording)
+      window.addEventListener('request-audio-inputs', () => {
+        this.dispatchChange();
+      });
+
+      // Dispatch initial config to app.js after short delay (ensure app.js is ready)
+      setTimeout(() => this.dispatchChange(), 100);
+    },
+
+    async loadDevices() {
+      try {
+        this.devices = await window.getAudioInputDevices?.() || [];
+      } catch (e) {
+        console.warn('[audioInputs] Failed to load devices:', e);
+        this.devices = [];
+      }
+    },
+
+    get canAddInput() {
+      return this.inputs.length < this.maxInputs;
+    },
+
+    availableDevicesFor(inputId) {
+      const usedDevices = this.inputs
+        .filter(i => i.id !== inputId)
+        .map(i => i.deviceId)
+        .filter(Boolean);
+      return this.devices.filter(d => !usedDevices.includes(d.deviceId));
+    },
+
+    addInput() {
+      if (!this.canAddInput) return;
+      this.inputs.push({
+        id: Date.now(),
+        deviceId: '',
+        expectedSpeakers: 1, // Default to 1 for second input (common use case)
+      });
+      this.dispatchChange();
+    },
+
+    removeInput(id) {
+      if (this.inputs.length <= 1) return;
+      this.inputs = this.inputs.filter(i => i.id !== id);
+      this.dispatchChange();
+    },
+
+    dispatchChange() {
+      window.dispatchEvent(new CustomEvent('audio-inputs-change', {
+        detail: { inputs: this.inputs }
+      }));
+    },
+  }));
+
+  /**
    * Speakers Button component
    * Shows enrolled count in topbar
    */

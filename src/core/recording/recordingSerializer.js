@@ -22,18 +22,46 @@ export function deserializeAudio(array) {
 }
 
 /**
- * Serialize audio chunks for storage
- * @param {Object[]} chunks - Array of chunks with Float32Array audio
- * @returns {Object[]} Chunks with serialized audio arrays
+ * Serialize a single chunk
+ * @param {Object} chunk - Chunk with Float32Array audio
+ * @returns {Object} Chunk with serialized audio array
  */
-export function serializeChunks(chunks) {
-  return chunks.map((chunk) => ({
+function serializeChunk(chunk) {
+  return {
     index: chunk.index,
     audio: serializeAudio(chunk.audio),
     duration: chunk.duration,
     overlapDuration: chunk.overlapDuration || 0,
     isFinal: chunk.isFinal || false,
-  }));
+    channelId: chunk.channelId,
+    wallTime: chunk.wallTime,
+  };
+}
+
+/**
+ * Serialize audio chunks for storage
+ * Handles both array format (legacy) and object format (per-channel)
+ * @param {Object[]|Object} chunks - Array of chunks OR object keyed by channelId
+ * @returns {Object[]} Flattened array of chunks with serialized audio
+ */
+export function serializeChunks(chunks) {
+  // Handle legacy array format
+  if (Array.isArray(chunks)) {
+    return chunks.map(serializeChunk);
+  }
+
+  // Handle per-channel object format: { 0: [...], 1: [...] }
+  const allChunks = [];
+  for (const [channelId, channelChunks] of Object.entries(chunks)) {
+    for (const chunk of channelChunks) {
+      allChunks.push(serializeChunk({
+        ...chunk,
+        channelId: parseInt(channelId, 10),
+      }));
+    }
+  }
+  // Sort by wallTime for chronological order
+  return allChunks.sort((a, b) => (a.wallTime || 0) - (b.wallTime || 0));
 }
 
 /**
@@ -48,6 +76,8 @@ export function deserializeChunks(chunks) {
     duration: chunk.duration,
     overlapDuration: chunk.overlapDuration || 0,
     isFinal: chunk.isFinal || false,
+    channelId: chunk.channelId,
+    wallTime: chunk.wallTime,
   }));
 }
 
@@ -94,8 +124,9 @@ export function deserializeTranscriptionData(transcriptionData) {
 
 /**
  * Calculate approximate storage size for a recording
+ * Handles both array format (legacy) and object format (per-channel)
  * @param {Object[]} segments - Transcript segments
- * @param {Object[]} chunks - Audio chunks (with Float32Array or Array audio)
+ * @param {Object[]|Object} chunks - Audio chunks (array or object keyed by channelId)
  * @param {Object[]} [transcriptionData] - Optional transcription data per chunk
  * @returns {number} Approximate size in bytes
  */
@@ -104,8 +135,16 @@ export function calculateStorageSize(segments, chunks, transcriptionData) {
   const segmentsJson = JSON.stringify(segments);
   const segmentsSize = new Blob([segmentsJson]).size;
 
+  // Flatten chunks if in object format
+  let chunkArray;
+  if (Array.isArray(chunks)) {
+    chunkArray = chunks;
+  } else {
+    chunkArray = Object.values(chunks).flat();
+  }
+
   // Audio size: each Float32 is 4 bytes
-  const audioSize = chunks.reduce((total, chunk) => {
+  const audioSize = chunkArray.reduce((total, chunk) => {
     const audioLength = chunk.audio?.length || 0;
     return total + audioLength * 4;
   }, 0);

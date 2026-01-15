@@ -6,3 +6,4 @@
 export { AudioCapture } from './audioCapture.js';
 export { VADProcessor } from './vadProcessor.js';
 export { AudioPlayback } from './audioPlayback.js';
+export { AudioInputManager } from './audioInputManager.js';

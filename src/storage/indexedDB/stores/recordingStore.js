@@ -34,12 +34,20 @@ const config = INDEXED_DB_CONFIG.RECORDINGS;
  */
 
 /**
+ * @typedef {Object} ChannelConfig
+ * @property {number} id - Channel ID (0, 1, etc.)
+ * @property {string} label - Channel label (e.g., "Input 1")
+ * @property {number} expectedSpeakers - Expected speakers for this channel
+ */
+
+/**
  * @typedef {Object} RecordingV2
  * @property {string} id - UUID
  * @property {string} name - User-editable recording name
  * @property {number} createdAt - Unix timestamp (ms)
  * @property {number} duration - Total duration in seconds
  * @property {Object[]} enrollmentsSnapshot - Enrollments active at recording time
+ * @property {ChannelConfig[]} [channelConfigs] - Per-channel audio input configs (optional for backward compat)
  * @property {Object} metadata - Additional metadata (chunkCount, sizeBytes)
  * @property {Job[]} jobs - Array of processing jobs
  * @property {string} activeJobId - Currently displayed job ID
@@ -158,6 +166,7 @@ export class RecordingStore {
       createdAt: oldRecording.createdAt,
       duration: oldRecording.duration,
       enrollmentsSnapshot: oldRecording.enrollmentsSnapshot || [],
+      channelConfigs: [], // No channel config for legacy single-input recordings
       metadata: {
         chunkCount: oldRecording.metadata?.chunkCount || 0,
         sizeBytes: oldRecording.metadata?.sizeBytes || 0,

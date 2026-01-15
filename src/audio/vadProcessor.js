@@ -18,6 +18,7 @@ export class VADProcessor {
    * @param {number} [options.redemptionMs] - Wait time before triggering speech end
    * @param {number} [options.preSpeechPadMs] - Audio to include before speech start
    * @param {string} [options.deviceId] - Audio device ID
+   * @param {number} [options.channelId] - Channel identifier for dual-input support (default: 0)
    * @param {Function} [options.onSpeechStart] - Callback when speech starts
    * @param {Function} [options.onSpeechEnd] - Callback when speech ends
    * @param {Function} [options.onSpeechProgress] - Callback for progress updates
@@ -45,6 +46,9 @@ export class VADProcessor {
 
     // Device selection
     this.deviceId = options.deviceId || null;
+
+    // Channel identification (for dual-input support)
+    this.channelId = options.channelId ?? 0;
 
     // Callbacks
     this.onSpeechStart = options.onSpeechStart || (() => {});
@@ -245,6 +249,7 @@ export class VADProcessor {
       isFinal,
       overlapDuration,
       rawDuration: duration, // Duration of just this segment (without overlap)
+      channelId: this.channelId, // Channel identifier for dual-input support
     });
 
     this.chunkIndex++;

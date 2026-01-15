@@ -63,12 +63,64 @@
         <div id="recording-status"></div>
       </div>
       <div class="topbar-right">
-        <div class="mic-config">
-          <label for="mic-select">Mic:</label>
-          <select id="mic-select">
-            <option value="">Default</option>
-          </select>
+        <!-- Audio Inputs Configuration (Dual-Input Support) -->
+        <div x-data="audioInputs" class="audio-inputs-config">
+          <template x-for="(input, idx) in inputs" :key="input.id">
+            <div class="audio-input-row">
+              <select
+                x-model="input.deviceId"
+                @change="dispatchChange()"
+                class="input-device-select"
+                :disabled="isRecording"
+              >
+                <option value="">Default</option>
+                <template x-for="device in availableDevicesFor(input.id)" :key="device.deviceId">
+                  <option :value="device.deviceId" x-text="device.label || 'Unknown Device'"></option>
+                </template>
+              </select>
+
+              <div class="speakers-inline">
+                <span class="speakers-label">Speakers:</span>
+                <select
+                  x-model.number="input.expectedSpeakers"
+                  @change="dispatchChange()"
+                  class="speakers-select"
+                  :disabled="isRecording"
+                >
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                </select>
+              </div>
+
+              <button
+                x-show="inputs.length > 1"
+                @click="removeInput(input.id)"
+                class="btn-icon-sm remove-input-btn"
+                :disabled="isRecording"
+                title="Remove input"
+              >
+                <i class="ti ti-x"></i>
+              </button>
+            </div>
+          </template>
+
+          <button
+            x-show="canAddInput"
+            @click="addInput()"
+            class="btn secondary small add-input-btn"
+            :disabled="isRecording"
+          >
+            <i class="ti ti-plus"></i> Add Input
+          </button>
         </div>
+
+        <!-- Legacy mic-select for backward compatibility (hidden, populated by app.js) -->
+        <select id="mic-select" class="hidden">
+          <option value="">Default</option>
+        </select>
+
         <!-- Recordings Dropdown -->
         <div x-data="recordingsDropdown" class="recordings-dropdown-container">
           <button class="btn secondary recordings-dropdown-btn" @click="toggle()" :class="{ 'active': isOpen, 'viewing': isViewingRecording }">
@@ -482,16 +534,11 @@
                         </div>
                       </div>
 
-                      <div class="settings-section">
-                        <label class="settings-label" title="Maximum number of speakers to identify">Max Speakers</label>
-                        <select class="settings-select" x-model="settings.numSpeakers" @change="updateSetting('numSpeakers', parseInt($event.target.value))">
-                          <option value="1">1</option>
-                          <option value="2">2</option>
-                          <option value="3">3</option>
-                          <option value="4">4</option>
-                          <option value="5">5</option>
-                          <option value="6">6</option>
-                        </select>
+                      <div class="settings-section settings-info">
+                        <span class="settings-info-text">
+                          <i class="ti ti-info-circle"></i>
+                          Speaker count is configured per-input in the topbar
+                        </span>
                       </div>
                     </div>
                   </template>
