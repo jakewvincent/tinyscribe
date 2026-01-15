@@ -288,6 +288,12 @@ export class ConversationInference {
       return false;
     }
 
+    // ALWAYS trigger when hypothesis is first formed (version 0 → 1)
+    // This ensures retroactive boosting is applied to all earlier segments
+    if (this.hypothesis.version === 0) {
+      return true;
+    }
+
     // Update every few segments after initial hypothesis
     const updateInterval = Math.max(2, Math.floor(minSegmentsForHypothesis / 2));
     return this.hypothesis.totalSegments % updateInterval === 0;
@@ -738,10 +744,11 @@ export class ConversationInference {
    * @returns {Object} The rebuilt hypothesis
    */
   rebuildFromSegments(segments) {
-    // Clear stats but preserve segmentAttributions (they were already loaded)
+    // Clear all state for fresh rebuild
     this.speakerStats.clear();
     this.assignmentStats.clear();
     this.unknownClusterer.reset();
+    this.segmentAttributions = [];
     this.hypothesis = {
       participants: [],
       version: 0,
@@ -749,15 +756,18 @@ export class ConversationInference {
     };
     this.hypothesisHistory = [];
 
-    // Process each segment to rebuild statistics
+    // First pass: collect statistics for hypothesis building
+    const segmentData = []; // Store processed data for second pass
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i];
 
       // Skip environmental sounds
-      if (segment.isEnvironmental) continue;
+      if (segment.isEnvironmental) {
+        segmentData.push({ segment, skip: true });
+        continue;
+      }
 
       // Track actual assignment for hypothesis building
-      // This uses the segment's assigned speaker (speakerLabel), not competitive matches
       if (segment.speakerLabel) {
         const assignmentAttribution = {
           speakerName: segment.speakerLabel,
@@ -768,15 +778,15 @@ export class ConversationInference {
         this.trackAssignment(assignmentAttribution);
       }
 
-      // Get clustering data from segment for competitive stats
+      // Get clustering data from segment
       const clustering = segment.debug?.clustering;
       if (!clustering?.allSimilarities || clustering.allSimilarities.length === 0) {
         this.hypothesis.totalSegments++;
+        segmentData.push({ segment, skip: true });
         continue;
       }
 
       // Map allSimilarities to the format expected by updateSpeakerStats
-      // Note: allSimilarities from clusterer is NOT sorted - sort by similarity descending
       const allMatches = clustering.allSimilarities
         .map(s => ({
           speakerName: s.speaker,
@@ -785,8 +795,10 @@ export class ConversationInference {
         }))
         .sort((a, b) => b.similarity - a.similarity);
 
-      // Build a minimal attribution object for updateSpeakerStats
-      const attribution = {
+      // Build attribution object
+      const originalAttribution = {
+        speakerId: segment.speaker,
+        speakerName: segment.speakerLabel || 'Unknown',
         debug: {
           allMatches,
           similarity: clustering.similarity,
@@ -795,14 +807,46 @@ export class ConversationInference {
         },
       };
 
-      // Update speaker statistics (same logic as processNewSegment)
-      this.updateSpeakerStats(attribution);
+      // Update speaker statistics
+      this.updateSpeakerStats(originalAttribution);
       this.hypothesis.totalSegments++;
+
+      segmentData.push({ segment, originalAttribution, index: i });
     }
 
     // Build the hypothesis from accumulated statistics
     if (this.hypothesis.totalSegments >= this.config.minSegmentsForHypothesis) {
       this.buildHypothesis();
+    }
+
+    // Second pass: apply boosting with the formed hypothesis
+    // This retroactively applies boosting to ALL segments now that we know who's in the conversation
+    for (const data of segmentData) {
+      if (data.skip || !data.originalAttribution) continue;
+
+      const { segment, originalAttribution, index } = data;
+
+      // Apply boosting with current hypothesis
+      const boostedAttribution = this.applyBoosting(originalAttribution);
+
+      // Build display info
+      const displayInfo = this.buildDisplayInfoFromAttribution(boostedAttribution, originalAttribution);
+
+      // Store attribution
+      this.segmentAttributions[index] = {
+        segmentIndex: index,
+        originalAttribution,
+        boostedAttribution,
+        displayInfo,
+        hypothesisVersion: this.hypothesis.version,
+        wasInfluenced: boostedAttribution.wasInfluenced || false,
+        wasBoosted: boostedAttribution.wasBoosted || false,
+        boostSkipped: boostedAttribution.boostSkipped || false,
+        skipReason: boostedAttribution.skipReason || null,
+      };
+
+      // Update segment's inferenceAttribution for UI rendering
+      segment.inferenceAttribution = this.segmentAttributions[index];
     }
 
     return this.getHypothesis();
