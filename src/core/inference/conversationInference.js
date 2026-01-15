@@ -120,6 +120,7 @@ export class ConversationInference {
     const allMatches = clustering?.allSimilarities
       ?.map(s => ({
         speakerName: s.speaker,
+        speakerIdx: s.speakerIdx,
         similarity: s.similarity,
         enrolled: s.enrolled,
       }))
@@ -790,6 +791,7 @@ export class ConversationInference {
       const allMatches = clustering.allSimilarities
         .map(s => ({
           speakerName: s.speaker,
+          speakerIdx: s.speakerIdx,
           similarity: s.similarity,
           enrolled: s.enrolled,
         }))

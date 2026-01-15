@@ -1561,6 +1561,17 @@ export class App {
       const isUnknownSpeaker = (speakerId) =>
         speakerId === -1 || (speakerId !== null && speakerId <= UNKNOWN_SPEAKER_BASE);
 
+      // Determine effective speaker for styling
+      // If boosting influenced the result, use the boosted speaker's index for color/styling
+      let effectiveSpeakerId = segment.speaker;
+      if (displayInfo?.wasInfluenced && inference?.boostedAttribution?.debug?.allMatches?.length > 0) {
+        const boostedBest = inference.boostedAttribution.debug.allMatches[0];
+        // Use the boosted speaker's index if available (for enrolled speakers)
+        if (boostedBest.speakerIdx !== undefined && boostedBest.speakerIdx >= 0) {
+          effectiveSpeakerId = boostedBest.speakerIdx;
+        }
+      }
+
       if (segment.isEnvironmental || segment.speaker === null) {
         // Environmental sound - gray box, no speaker label
         segmentEl.className = 'transcript-segment environmental';
@@ -1568,10 +1579,10 @@ export class App {
         labelEl.innerHTML = `
           <span class="timestamp">${this.formatTime(segment.startTime)} - ${this.formatTime(segment.endTime)}</span>
         `;
-      } else if (isUnknownSpeaker(segment.speaker)) {
+      } else if (isUnknownSpeaker(effectiveSpeakerId)) {
         // Unknown speaker - distinct styling to indicate non-enrolled
         // Unknown speakers now have differentiated IDs: -100 = Unknown 1, -101 = Unknown 2, etc.
-        const unknownIndex = segment.speaker === -1 ? 0 : UNKNOWN_SPEAKER_BASE - segment.speaker;
+        const unknownIndex = effectiveSpeakerId === -1 ? 0 : UNKNOWN_SPEAKER_BASE - effectiveSpeakerId;
         segmentEl.className = `transcript-segment unknown-speaker unknown-speaker-${unknownIndex % 4}`;
         labelEl.className = `speaker-label unknown-speaker unknown-speaker-${unknownIndex % 4}`;
 
@@ -1584,8 +1595,8 @@ export class App {
           </div>
         `;
       } else {
-        // Regular speaker segment
-        const speakerClass = `speaker-${segment.speaker % 6}`;
+        // Regular speaker segment - use effective speaker ID for styling
+        const speakerClass = `speaker-${effectiveSpeakerId % 6}`;
         segmentEl.className = `transcript-segment ${speakerClass}`;
         labelEl.className = `speaker-label ${speakerClass}`;
 
