@@ -183,13 +183,6 @@ export class SpeakerClusterer {
       }
     }
 
-    // If similarity is below minimum threshold, assign to Unknown
-    // This prevents forcing bad matches onto enrolled speakers
-    if (match.similarity < this.minimumSimilarityThreshold) {
-      debug.reason = 'below_minimum_threshold';
-      return makeResult(UNKNOWN_SPEAKER_ID, debug);
-    }
-
     // If similarity is above threshold, consider assigning to that speaker
     if (match.similarity >= this.similarityThreshold) {
       // Check confidence margin when we have multiple speakers
@@ -213,6 +206,8 @@ export class SpeakerClusterer {
     }
 
     // If we haven't reached numSpeakers yet, create a new speaker
+    // This applies whether similarity is low (clearly different person) or
+    // mid-range (somewhat different) - both indicate a new speaker
     if (this.speakers.length < this.numSpeakers) {
       const newId = this.speakers.length;
       this.speakers.push({
@@ -225,7 +220,14 @@ export class SpeakerClusterer {
       return makeResult(newId, debug);
     }
 
-    // We've reached max speakers and similarity is between minimum and threshold
+    // We've reached max speakers - now apply minimum threshold
+    // Below minimum means it doesn't match any known speaker well enough
+    if (match.similarity < this.minimumSimilarityThreshold) {
+      debug.reason = 'below_minimum_threshold';
+      return makeResult(UNKNOWN_SPEAKER_ID, debug);
+    }
+
+    // Similarity is between minimum and threshold but we're at max speakers
     // Assign to Unknown rather than forcing a potentially incorrect match
     debug.reason = 'no_confident_match';
     return makeResult(UNKNOWN_SPEAKER_ID, debug);
