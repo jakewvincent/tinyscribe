@@ -1301,6 +1301,15 @@ export class App {
    * Handle transcription result from worker
    */
   handleTranscriptionResult(data) {
+    // Debug: Log incoming data to diagnose Safari issue
+    console.log('[App] handleTranscriptionResult received:', {
+      hasData: !!data,
+      hasTranscript: !!data?.transcript,
+      hasPhrases: !!data?.phrases,
+      phraseCount: data?.phrases?.length ?? 0,
+      wordCount: data?.transcript?.chunks?.length ?? 0,
+    });
+
     const {
       transcript,
       phrases,
@@ -1437,6 +1446,15 @@ export class App {
       this.lastChunkResult = this.channelLastChunkResults.get(channelId) || null;
     }
 
+    // Debug: Log processing state to diagnose Safari issue
+    console.log('[App] Transcript processing state:', {
+      wordsToUse: wordsToUse.length,
+      phrasesToUse: phrasesToUse.length,
+      hasTranscript: !!transcript,
+      hasPhrases: !!phrases,
+      phrasesFromWorker: phrases?.length ?? 0,
+    });
+
     // Process transcript if we have words to use
     if (wordsToUse.length > 0) {
       // Create a modified transcript with the filtered words
@@ -1479,6 +1497,15 @@ export class App {
         phrasesToUse,
         chunkStartTime
       );
+
+      // Debug: Log merge results
+      console.log('[App] Merge results:', {
+        mergedSegments: mergedSegments.length,
+        firstSegment: mergedSegments[0] ? {
+          text: mergedSegments[0].text?.substring(0, 50),
+          speaker: mergedSegments[0].speaker,
+        } : null,
+      });
 
       // Render and store segments
       if (mergedSegments.length > 0) {
