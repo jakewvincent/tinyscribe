@@ -447,8 +447,12 @@ async function handleLoad({ device, embeddingModel, segmentationModel, segmentat
       });
 
       // Run a tiny inference to trigger shader compilation
+      // Note: Don't pass 'language' for English-only models like whisper-tiny.en
       const warmupAudio = new Float32Array(16000); // 1 second of silence
-      await ModelManager.transcriber(warmupAudio, { language: 'en' });
+      await ModelManager.transcriber(warmupAudio, {
+        return_timestamps: 'word',
+        chunk_length_s: 30,
+      });
     }
 
     const embeddingModelInfo = ModelManager.getEmbeddingModelInfo();
