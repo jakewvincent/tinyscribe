@@ -43,6 +43,13 @@ export class ResizeDividers {
    * Initialize event listeners
    */
   init() {
+    // Remove the initial layout style element (has !important which blocks inline styles)
+    // This style is injected in index.html to prevent flash of unstyled content
+    const initialLayoutStyle = document.getElementById('initial-workspace-layout');
+    if (initialLayoutStyle) {
+      initialLayoutStyle.remove();
+    }
+
     // Attach mousedown to horizontal divider
     if (this.horizontal?.dividerEl) {
       this.horizontal.dividerEl.addEventListener('mousedown', (e) => {

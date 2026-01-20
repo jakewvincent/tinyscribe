@@ -16,6 +16,7 @@
       var workspaceTop = localStorage.getItem('workspace-top-percent');
       if (workspaceTop) {
         var style = document.createElement('style');
+        style.id = 'initial-workspace-layout';
         style.textContent = '#raw-chunks-panel { flex: 0 0 ' + workspaceTop + '% !important; }';
         document.head.appendChild(style);
       }
@@ -46,18 +47,21 @@
           <button id="record-btn" class="btn"
                   :class="{ 'recording': isRecording }"
                   :disabled="!modelLoaded"
-                  @click="toggleRecording()">
+                  @click="toggleRecording()"
+                  title="Record">
             <i x-show="!isRecording" class="ti ti-microphone"></i>
             <i x-show="isRecording" class="ti ti-player-stop"></i>
-            <span x-text="isRecording ? 'Stop' : 'Record'"></span>
+            <span class="btn-text" x-text="isRecording ? 'Stop' : 'Record'"></span>
           </button>
           <button id="upload-btn" class="btn secondary"
                   :disabled="!modelLoaded || isRecording"
-                  @click="uploadAudio()"><i class="ti ti-upload"></i> Upload</button>
+                  @click="uploadAudio()"
+                  title="Upload audio file"><i class="ti ti-upload"></i><span class="btn-text"> Upload</span></button>
           <input type="file" id="upload-file-input" accept="audio/*" class="hidden">
           <button id="clear-btn" class="btn secondary"
                   :disabled="!modelLoaded"
-                  @click="clearTranscript()"><i class="ti ti-eraser"></i> Clear</button>
+                  @click="clearTranscript()"
+                  title="Clear transcript"><i class="ti ti-eraser"></i><span class="btn-text"> Clear</span></button>
         </div>
         <div id="audio-visualizer" :class="{ 'active': isRecording }"></div>
         <div id="recording-status"></div>

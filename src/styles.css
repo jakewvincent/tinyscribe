@@ -105,6 +105,8 @@ body {
   border-bottom: 1px solid var(--border-strong);
   flex-shrink: 0;
   gap: 1rem;
+  container-type: inline-size;
+  container-name: topbar;
 }
 
 .topbar-left {
@@ -585,6 +587,19 @@ body {
   background: var(--border-color);
   cursor: ns-resize;
   flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+
+/* Expanded hit area (16px total: 4px visible + 6px padding each side) */
+.workspace-divider::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -6px;
+  bottom: -6px;
+  cursor: ns-resize;
 }
 
 .workspace-divider:hover {
@@ -4842,4 +4857,24 @@ body.resizing * {
 .processing-text {
   font-size: 0.875rem;
   color: var(--text-muted);
+}
+
+/* ==================== RESPONSIVE TOPBAR ==================== */
+/* Collapse button text when topbar is narrow */
+@container topbar (max-width: 900px) {
+  .topbar-center .btn {
+    padding: 0.5rem;
+    min-width: 2.25rem;
+  }
+
+  .topbar-center .btn .btn-text {
+    display: none;
+  }
+}
+
+/* Further collapse - hide title at very narrow widths */
+@container topbar (max-width: 700px) {
+  .topbar-left h1 {
+    display: none;
+  }
 }

@@ -1382,9 +1382,36 @@ export class App {
       if (mergeInfo.mergeIndex > 0) {
         wordsToUse = wordsToUse.slice(mergeInfo.mergeIndex);
 
-        // Also filter phrases to only include those after merge point
+        // Filter phrases to only include those after merge point
         const mergeTimestamp = mergeInfo.timestamp || overlapDuration;
-        phrasesToUse = phrases.filter((p) => p.start >= mergeTimestamp);
+        let filteredPhrases = phrases.filter((p) => p.start >= mergeTimestamp);
+
+        // FALLBACK: If all phrases were filtered out, keep phrases that span the merge point
+        if (filteredPhrases.length === 0 && phrases.length > 0) {
+          // Keep phrases that END after the merge point (partial overlap is OK)
+          filteredPhrases = phrases.filter((p) => p.end > mergeTimestamp);
+
+          if (filteredPhrases.length > 0) {
+            // Adjust phrase start times to account for removed overlap
+            filteredPhrases = filteredPhrases.map((p) => ({
+              ...p,
+              start: Math.max(0, p.start - overlapDuration),
+              end: p.end - overlapDuration,
+              words: p.words?.map((w) => ({
+                ...w,
+                start: Math.max(0, (w.start || 0) - overlapDuration),
+                end: (w.end || 0) - overlapDuration,
+              })),
+            }));
+            console.log(
+              '[App] Phrase recovery: kept',
+              filteredPhrases.length,
+              'phrases spanning merge point'
+            );
+          }
+        }
+
+        phrasesToUse = filteredPhrases;
 
         // Adjust timestamps for the words we keep (subtract overlap)
         wordsToUse = this.overlapMerger.adjustTimestamps(wordsToUse, overlapDuration);
@@ -1401,6 +1428,8 @@ export class App {
       mergeConfidence: mergeInfo?.confidence,
       wordsDropped: mergeInfo?.mergeIndex || 0,
       matchedWords: mergeInfo?.matchedWords,
+      phrasesOriginal: phrases?.length || 0,
+      phrasesAfterFilter: phrasesToUse?.length || 0,
     });
 
     // Render raw chunk data for debugging (with merge info)
