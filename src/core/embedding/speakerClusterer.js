@@ -214,6 +214,17 @@ export class SpeakerClusterer {
         centroid: l2NormalizeCopy(embedding),
         count: 1,
       });
+
+      // Add the new speaker to allSimilarities with perfect similarity
+      // This ensures inference correctly identifies the new speaker as the best match
+      const newSpeaker = this.speakers[newId];
+      debug.allSimilarities.push({
+        speaker: newSpeaker.name || `Speaker ${newId + 1}`,
+        speakerIdx: newId,
+        similarity: 1.0,  // Perfect match to self
+        enrolled: newSpeaker.enrolled || false,
+      });
+
       debug.reason = 'new_speaker';
       debug.similarity = 1;
       debug.margin = 1;

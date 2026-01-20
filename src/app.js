@@ -2312,10 +2312,28 @@ export class App {
           }))
           .sort((a, b) => b.similarity - a.similarity);
 
+        // Determine effective speaker (what UI displays, accounting for boosting)
+        let effectiveSpeaker = seg.speaker;
+        let effectiveSpeakerLabel = seg.speakerLabel;
+
+        if (inference?.wasInfluenced && inference?.boostedAttribution?.debug?.allMatches?.length > 0) {
+          // Boosting changed the result - use boosted speaker
+          const boostedBest = inference.boostedAttribution.debug.allMatches[0];
+          if (boostedBest.speakerIdx !== undefined) {
+            effectiveSpeaker = boostedBest.speakerIdx;
+          }
+          effectiveSpeakerLabel = inference.displayInfo?.label || boostedBest.speakerName || seg.speakerLabel;
+        } else if (inference?.displayInfo?.label) {
+          // No boosting influence, but displayInfo may have the correct label
+          effectiveSpeakerLabel = inference.displayInfo.label;
+        }
+
         return {
           text: seg.text?.trim() || '',
-          speaker: seg.speaker,
-          speakerLabel: seg.speakerLabel,
+          speaker: seg.speaker,                    // Original clustering result
+          speakerLabel: seg.speakerLabel,          // Original clustering label
+          effectiveSpeaker: effectiveSpeaker,      // What UI displays (may differ if boosted)
+          effectiveSpeakerLabel: effectiveSpeakerLabel,  // What UI displays (may differ if boosted)
           startTime: seg.startTime,
           endTime: seg.endTime,
           isEnvironmental: seg.isEnvironmental || false,
