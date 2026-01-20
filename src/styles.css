@@ -4860,6 +4860,11 @@ body.resizing * {
 }
 
 /* ==================== RESPONSIVE TOPBAR ==================== */
+/* Prevent button wrapping in topbar - let container query handle collapse */
+.topbar-center .button-group {
+  flex-wrap: nowrap;
+}
+
 /* Collapse button text when topbar is narrow */
 @container topbar (max-width: 900px) {
   .topbar-center .btn {
