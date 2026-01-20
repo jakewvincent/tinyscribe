@@ -256,6 +256,30 @@ body {
   width: 50px;
 }
 
+/* Refresh devices button */
+.refresh-devices-btn {
+  flex-shrink: 0;
+}
+
+.refresh-devices-btn.pulse {
+  animation: device-pulse 2s ease-in-out infinite;
+  color: var(--primary);
+}
+
+.refresh-devices-btn .spin {
+  animation: device-spin 1s linear infinite;
+}
+
+@keyframes device-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes device-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .add-input-btn {
   padding: 0.2rem 0.5rem;
   font-size: 0.75rem;

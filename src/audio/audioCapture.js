@@ -6,16 +6,20 @@
 export class AudioCapture {
   /**
    * Enumerate available audio input devices
+   * @param {Object} options - Options for enumeration
+   * @param {boolean} options.dispatchEvent - Whether to dispatch devices-updated event (default: true)
    * @returns {Promise<Array<{deviceId: string, label: string}>>}
    */
-  static async getAudioInputDevices() {
+  static async getAudioInputDevices(options = {}) {
+    const { dispatchEvent: shouldDispatch = true } = options;
+
     try {
       // Request permission first (needed to get device labels)
       // We'll immediately stop the stream - just need permission
       const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       tempStream.getTracks().forEach(track => track.stop());
 
-      // Now enumerate devices
+      // Now enumerate devices - permission granted, should get full list with labels
       const devices = await navigator.mediaDevices.enumerateDevices();
       const audioInputs = devices
         .filter(device => device.kind === 'audioinput')
@@ -24,9 +28,37 @@ export class AudioCapture {
           label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`,
         }));
 
+      // Dispatch event so UI components can update
+      if (shouldDispatch && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('devices-updated', {
+          detail: { devices: audioInputs }
+        }));
+      }
+
       return audioInputs;
     } catch (error) {
       console.error('Failed to enumerate audio devices:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Enumerate devices without requesting permission (for checking current state)
+   * Returns devices with labels only if permission was already granted
+   * @returns {Promise<Array<{deviceId: string, label: string, hasLabel: boolean}>>}
+   */
+  static async enumerateDevicesWithoutPermission() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      return devices
+        .filter(device => device.kind === 'audioinput')
+        .map(device => ({
+          deviceId: device.deviceId,
+          label: device.label || '',
+          hasLabel: !!device.label,
+        }));
+    } catch (error) {
+      console.error('Failed to enumerate devices:', error);
       return [];
     }
   }

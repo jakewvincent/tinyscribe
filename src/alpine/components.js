@@ -354,18 +354,36 @@ document.addEventListener('alpine:init', () => {
     devices: [],
     maxInputs: 2,
     isRecording: false,
+    isLoadingDevices: false,
+    permissionState: 'unknown', // 'unknown', 'prompt', 'granted', 'denied'
 
     init() {
+      // Check initial permission state without prompting
+      this.checkPermissionState();
+
+      // Try to load devices (will prompt for permission if needed)
       this.loadDevices();
 
-      // Listen for device changes
+      // Listen for device changes from browser
       if (navigator.mediaDevices) {
         navigator.mediaDevices.addEventListener('devicechange', () => this.loadDevices());
       }
 
+      // Listen for devices-updated event (fired after successful getUserMedia anywhere in app)
+      window.addEventListener('devices-updated', (e) => {
+        if (e.detail?.devices) {
+          this.devices = e.detail.devices;
+          this.permissionState = 'granted';
+        }
+      });
+
       // Listen for recording state
       window.addEventListener('recording-state', (e) => {
         this.isRecording = e.detail.recording;
+        // Re-enumerate after recording starts (permission definitely granted)
+        if (e.detail.recording && this.devices.length === 0) {
+          this.loadDevices();
+        }
       });
 
       // Listen for requests to re-send audio input config (e.g., when returning from viewing recording)
@@ -377,13 +395,47 @@ document.addEventListener('alpine:init', () => {
       setTimeout(() => this.dispatchChange(), 100);
     },
 
-    async loadDevices() {
+    async checkPermissionState() {
+      // Check permission state without triggering prompt
       try {
-        this.devices = await window.getAudioInputDevices?.() || [];
+        if (navigator.permissions) {
+          const result = await navigator.permissions.query({ name: 'microphone' });
+          this.permissionState = result.state; // 'granted', 'denied', or 'prompt'
+          // Listen for permission changes
+          result.addEventListener('change', () => {
+            this.permissionState = result.state;
+            if (result.state === 'granted') {
+              this.loadDevices();
+            }
+          });
+        }
+      } catch (e) {
+        // permissions.query may not be supported for microphone in all browsers
+        this.permissionState = 'unknown';
+      }
+    },
+
+    async loadDevices() {
+      if (this.isLoadingDevices) return;
+      this.isLoadingDevices = true;
+
+      try {
+        // Try to get devices - this may prompt for permission
+        const devices = await window.getAudioInputDevices?.() || [];
+        this.devices = devices;
+        if (devices.length > 0) {
+          this.permissionState = 'granted';
+        }
       } catch (e) {
         console.warn('[audioInputs] Failed to load devices:', e);
         this.devices = [];
+      } finally {
+        this.isLoadingDevices = false;
       }
+    },
+
+    async refreshDevices() {
+      await this.loadDevices();
     },
 
     get canAddInput() {

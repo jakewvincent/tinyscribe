@@ -79,6 +79,18 @@
                 </template>
               </select>
 
+              <!-- Refresh devices button (shows when no devices or as hover action) -->
+              <button
+                x-show="idx === 0"
+                @click="refreshDevices()"
+                class="btn-icon-sm refresh-devices-btn"
+                :disabled="isRecording || isLoadingDevices"
+                :title="devices.length === 0 ? 'Click to detect microphones' : 'Refresh device list'"
+                :class="{ 'pulse': devices.length === 0 && !isLoadingDevices }"
+              >
+                <i class="ti" :class="isLoadingDevices ? 'ti-loader-2 spin' : 'ti-refresh'"></i>
+              </button>
+
               <div class="speakers-inline">
                 <span class="speakers-label">Speakers:</span>
                 <select
