@@ -230,6 +230,15 @@ export class WorkerClient {
   }
 
   /**
+   * Clear visualization backends to reduce idle resource usage.
+   * Should be called when the speakers modal closes.
+   * @returns {Promise<{success: boolean, clearedCount: number}>}
+   */
+  async clearVisualizationBackends() {
+    return this.sendRequest('clear-visualization-backends');
+  }
+
+  /**
    * Terminate the worker
    */
   terminate() {

@@ -67,6 +67,9 @@ export class OnnxSegBackend extends SegmentationBackend {
     // Fetch model file
     const modelBuffer = await this._fetchModel(modelUrl, progressCallback);
 
+    // Configure ONNX Runtime - limit threads to reduce idle CPU usage
+    ort.env.wasm.numThreads = 2;
+
     // Create ONNX session
     const sessionOptions = {
       executionProviders: ['wasm'],

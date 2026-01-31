@@ -621,6 +621,8 @@ document.addEventListener('alpine:init', () => {
       this.isOpen = false;
       this.isAdding = false;
       this.newSpeakerName = '';
+      // Notify app.js to clean up visualization resources
+      window.dispatchEvent(new CustomEvent('speakers-modal-closed'));
     },
 
     startAdd() {

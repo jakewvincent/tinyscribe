@@ -334,6 +334,17 @@ export class App {
         window.dispatchEvent(new CustomEvent('visualization-metrics-updated', { detail: { metrics, modelId: defaultModel } }));
       }
     });
+    window.addEventListener('speakers-modal-closed', async () => {
+      // Clean up visualization backends to reduce idle resource usage
+      try {
+        const result = await this.workerClient.clearVisualizationBackends();
+        if (result.clearedCount > 0) {
+          console.log(`[App] Cleared ${result.clearedCount} visualization backend(s)`);
+        }
+      } catch (err) {
+        console.error('[App] Failed to clear visualization backends:', err);
+      }
+    });
     window.addEventListener('visualization-model-change', async (e) => {
       const modelId = e.detail.modelId;
       let metrics = null;

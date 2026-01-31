@@ -291,6 +291,8 @@ export class OnnxBackend extends EmbeddingBackend {
     console.log(`[OnnxBackend] Loading model from ${modelConfig.modelUrl}`);
 
     // Configure ONNX Runtime for browser
+    // Limit threads to reduce idle CPU usage (Safari energy warnings)
+    ort.env.wasm.numThreads = 2;
     ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/';
 
     // Fetch the model file with progress tracking

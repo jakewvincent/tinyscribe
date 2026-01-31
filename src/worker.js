@@ -4,13 +4,22 @@
  * Uses phrase-based diarization: Whisper word timestamps + WavLM frame features.
  */
 
-import { pipeline } from '@huggingface/transformers';
+import { pipeline, env as transformersEnv } from '@huggingface/transformers';
+import * as ort from 'onnxruntime-web';
 
 import { TransformersBackend, OnnxBackend } from './worker/backends/index.js';
 import { PhraseGapBackend, PyannoteSegBackend, OnnxSegBackend } from './worker/backends/segmentation/index.js';
 import { mapWordsToSegments } from './core/transcription/wordSegmentMapper.js';
 import { getEmbeddingModelConfig, DEFAULT_EMBEDDING_MODEL } from './config/models.js';
 import { getSegmentationModelConfig, DEFAULT_SEGMENTATION_MODEL } from './config/segmentation.js';
+
+// Configure ONNX Runtime globally to limit threads
+// This reduces idle CPU usage and Safari energy warnings
+ort.env.wasm.numThreads = 2;
+
+// Configure Transformers.js to use our ONNX settings
+// Transformers.js uses onnxruntime-web internally
+transformersEnv.backends.onnx.wasm.numThreads = 2;
 
 // Model identifiers
 const ASR_MODEL_ID = 'Xenova/whisper-tiny.en';
@@ -231,6 +240,39 @@ class ModelManager {
       return null;
     }
   }
+
+  /**
+   * Clear visualization backends that are not the primary embedding backend.
+   * This releases ONNX sessions and reduces idle CPU/memory usage.
+   * Should be called when the speakers modal closes.
+   * @returns {Promise<number>} Number of backends cleared
+   */
+  static async clearVisualizationBackends() {
+    const primaryModelId = this.embeddingModelConfig?.id;
+    let clearedCount = 0;
+
+    for (const [modelId, backend] of this.embeddingBackendCache.entries()) {
+      // Don't dispose the primary embedding backend used for transcription
+      if (modelId === primaryModelId) {
+        continue;
+      }
+
+      try {
+        console.log(`[ModelManager] Disposing visualization backend: ${modelId}`);
+        await backend.dispose();
+        this.embeddingBackendCache.delete(modelId);
+        clearedCount++;
+      } catch (error) {
+        console.error(`[ModelManager] Error disposing backend ${modelId}:`, error);
+      }
+    }
+
+    if (clearedCount > 0) {
+      console.log(`[ModelManager] Cleared ${clearedCount} visualization backend(s)`);
+    }
+
+    return clearedCount;
+  }
 }
 
 // Singleton segmentation manager
@@ -348,6 +390,9 @@ self.addEventListener('message', async (event) => {
     case 'set-segmentation-params':
       handleSetSegmentationParams(data, requestId);
       break;
+    case 'clear-visualization-backends':
+      await handleClearVisualizationBackends(requestId);
+      break;
   }
 });
 
@@ -376,6 +421,30 @@ function handleSetSegmentationParams(data, requestId) {
     success: true,
     params: SegmentationManager.getParams(),
   });
+}
+
+/**
+ * Handle clearing visualization backends
+ * Releases ONNX sessions loaded for visualization to reduce idle resource usage
+ */
+async function handleClearVisualizationBackends(requestId) {
+  try {
+    const clearedCount = await ModelManager.clearVisualizationBackends();
+    self.postMessage({
+      type: 'clear-visualization-backends',
+      requestId,
+      success: true,
+      clearedCount,
+    });
+  } catch (error) {
+    console.error('[Worker] Error clearing visualization backends:', error);
+    self.postMessage({
+      type: 'clear-visualization-backends',
+      requestId,
+      success: false,
+      error: error.message,
+    });
+  }
 }
 
 /**
