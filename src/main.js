@@ -68,6 +68,91 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /**
+ * Detect if the browser is Safari
+ */
+function isSafari() {
+  const ua = navigator.userAgent;
+  // Safari includes "Safari" but not "Chrome" or "Chromium" (which also include "Safari" in UA)
+  return ua.includes('Safari') && !ua.includes('Chrome') && !ua.includes('Chromium');
+}
+
+/**
+ * Show Safari compatibility warning modal
+ */
+function showSafariWarning() {
+  const modalId = 'safari-warning-modal';
+
+  // Don't show if already dismissed this session
+  if (sessionStorage.getItem('safari-warning-dismissed')) {
+    return;
+  }
+
+  const dismissModal = () => {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+      modal.classList.add('hidden');
+      setTimeout(() => modal.remove(), 200);
+    }
+    sessionStorage.setItem('safari-warning-dismissed', 'true');
+  };
+
+  // Expose dismiss function globally for onclick
+  window.dismissSafariWarning = dismissModal;
+
+  const modal = document.createElement('div');
+  modal.id = modalId;
+  modal.className = 'modal-overlay hidden';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width: 480px;">
+      <div class="modal-header">
+        <h2>Safari Not Recommended</h2>
+      </div>
+      <div class="modal-body" style="margin-bottom: var(--space-lg);">
+        <p style="margin: 0 0 1rem 0; line-height: 1.6;">
+          This experimental app relies on audio processing libraries that have
+          known compatibility issues with Safari. You may experience problems
+          with speech detection not working or the app getting stuck.
+        </p>
+        <p style="margin: 0; line-height: 1.6;">
+          For the best experience, please use <strong>Chrome</strong>, <strong>Edge</strong>,
+          or <strong>Firefox</strong>.
+        </p>
+      </div>
+      <div class="modal-actions" style="justify-content: flex-end;">
+        <button class="btn btn-primary" onclick="window.dismissSafariWarning()">
+          Continue Anyway
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Trigger animation by removing hidden class after append
+  requestAnimationFrame(() => {
+    modal.classList.remove('hidden');
+  });
+
+  // Close on backdrop click
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      dismissModal();
+    }
+  });
+
+  // Close on Escape key
+  const handleEscape = (e) => {
+    if (e.key === 'Escape') {
+      dismissModal();
+      document.removeEventListener('keydown', handleEscape);
+    }
+  };
+  document.addEventListener('keydown', handleEscape);
+}
+
+/**
  * Check if the browser supports required features
  */
 function checkBrowserSupport() {
@@ -114,6 +199,12 @@ function checkBrowserSupport() {
       </div>
     `;
     return false;
+  }
+
+  // Show warning for Safari users (non-blocking)
+  if (isSafari()) {
+    // Defer to allow app container to be ready
+    setTimeout(showSafariWarning, 0);
   }
 
   return true;
