@@ -283,12 +283,9 @@ body {
   box-shadow: var(--focus-ring);
 }
 
-/* Audio Inputs Config (Dual Input Support) */
-.audio-inputs-config {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: var(--space-sm);
+/* Audio Inputs Dropdown */
+.audio-inputs-dropdown-container {
+  position: relative;
 }
 
 .audio-input-row {
@@ -443,11 +440,7 @@ body {
 }
 
 .recordings-dropdown-btn {
-  display: flex;
-  align-items: center;
   gap: var(--space-sm);
-  padding: var(--space-xs) var(--space-sm-md);
-  font-size: var(--text-md);
 }
 
 .recordings-dropdown-btn.viewing {
@@ -2486,30 +2479,7 @@ body.resizing * {
     border-right: none;
   }
 
-  #topbar {
-    flex-wrap: wrap;
-    height: auto;
-    padding: var(--space-sm);
-    gap: var(--space-sm);
-  }
-
-  .topbar-left {
-    order: 1;
-    width: 100%;
-    text-align: center;
-  }
-
-  .topbar-center {
-    order: 3;
-    width: 100%;
-    justify-content: center;
-  }
-
-  .topbar-right {
-    order: 2;
-    width: 100%;
-    justify-content: center;
-  }
+  /* Topbar stacking now handled by container query at 500px */
 
   #main-content {
     height: calc(100vh - 120px - var(--statusbar-height));
@@ -4971,5 +4941,109 @@ body.resizing * {
 @container topbar (max-width: 700px) {
   .topbar-left h1 {
     display: none;
+  }
+}
+
+/* ==================== RESPONSIVE TOPBAR (ENHANCED) ==================== */
+
+/* Audio Inputs Dropdown Button */
+.audio-inputs-dropdown-btn {
+  gap: var(--space-sm);
+}
+
+.audio-inputs-chevron {
+  font-size: var(--text-md);
+  transition: transform var(--transition-fast);
+}
+
+.audio-inputs-chevron.rotated {
+  transform: rotate(180deg);
+}
+
+/* Audio Inputs Dropdown Menu */
+.audio-inputs-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 320px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-sticky);
+  overflow: hidden;
+}
+
+.audio-inputs-dropdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.audio-inputs-title {
+  font-weight: var(--font-weight-medium);
+  font-size: var(--text-md);
+}
+
+.audio-inputs-dropdown-body {
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.audio-inputs-dropdown-body .audio-input-row {
+  width: 100%;
+}
+
+.audio-inputs-dropdown-body .input-device-select {
+  flex: 1;
+  max-width: none;
+}
+
+.audio-inputs-dropdown-body .add-input-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+/* 600px: Speakers, Recordings, and Inputs become icon-only */
+@container topbar (max-width: 600px) {
+  .speakers-btn .btn-text,
+  .recordings-dropdown-btn .btn-text,
+  .recordings-chevron,
+  .audio-inputs-dropdown-btn .btn-text,
+  .audio-inputs-chevron {
+    display: none;
+  }
+}
+
+/* 500px: Stack layout for mobile */
+@container topbar (max-width: 500px) {
+  #topbar {
+    flex-wrap: wrap;
+    height: auto;
+    padding: var(--space-sm);
+  }
+
+  .topbar-left {
+    order: 1;
+    flex: 0 0 auto;
+  }
+
+  .topbar-right {
+    order: 2;
+    flex: 1;
+    justify-content: flex-end;
+    gap: var(--space-xs);
+  }
+
+  .topbar-center {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+    padding-top: var(--space-sm);
   }
 }

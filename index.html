@@ -39,7 +39,7 @@
         <!-- Speakers Button -->
         <button x-data="speakersButton" class="btn secondary speakers-btn" @click="openModal()">
           <i class="ti ti-users"></i>
-          <span x-text="buttonText">Speakers</span>
+          <span class="btn-text" x-text="buttonText">Speakers</span>
         </button>
       </div>
       <div class="topbar-center" x-data="recordingControls()" x-cloak>
@@ -68,24 +68,25 @@
       </div>
       <div class="topbar-right">
         <!-- Audio Inputs Configuration (Dual-Input Support) -->
-        <div x-data="audioInputs" class="audio-inputs-config">
-          <template x-for="(input, idx) in inputs" :key="input.id">
-            <div class="audio-input-row">
-              <select
-                x-model="input.deviceId"
-                @change="dispatchChange()"
-                class="input-device-select"
-                :disabled="isRecording"
-              >
-                <option value="">Default</option>
-                <template x-for="device in availableDevicesFor(input.id)" :key="device.deviceId">
-                  <option :value="device.deviceId" x-text="device.label || 'Unknown Device'"></option>
-                </template>
-              </select>
+        <div x-data="audioInputs" class="audio-inputs-dropdown-container">
+          <!-- Dropdown trigger -->
+          <button class="btn secondary audio-inputs-dropdown-btn"
+                  @click="togglePopover()"
+                  :class="{ 'active': popoverOpen }"
+                  :disabled="isRecording">
+            <i class="ti ti-microphone-2"></i>
+            <span class="btn-text" x-text="'Inputs (' + inputs.length + ')'">Inputs (1)</span>
+            <i class="ti ti-chevron-down audio-inputs-chevron" :class="{ 'rotated': popoverOpen }"></i>
+          </button>
 
-              <!-- Refresh devices button (shows when no devices or as hover action) -->
+          <!-- Dropdown menu -->
+          <div x-show="popoverOpen"
+               x-transition
+               @click.outside="closePopover()"
+               class="audio-inputs-dropdown-menu">
+            <div class="audio-inputs-dropdown-header">
+              <span class="audio-inputs-title">Audio Inputs</span>
               <button
-                x-show="idx === 0"
                 @click="refreshDevices()"
                 class="btn-icon-sm refresh-devices-btn"
                 :disabled="isRecording || isLoadingDevices"
@@ -94,42 +95,59 @@
               >
                 <i class="ti" :class="isLoadingDevices ? 'ti-loader-2 spin' : 'ti-refresh'"></i>
               </button>
+            </div>
+            <div class="audio-inputs-dropdown-body">
+              <template x-for="(input, idx) in inputs" :key="input.id">
+                <div class="audio-input-row">
+                  <select
+                    x-model="input.deviceId"
+                    @change="dispatchChange()"
+                    class="input-device-select"
+                    :disabled="isRecording"
+                  >
+                    <option value="">Default</option>
+                    <template x-for="device in availableDevicesFor(input.id)" :key="device.deviceId">
+                      <option :value="device.deviceId" x-text="device.label || 'Unknown Device'"></option>
+                    </template>
+                  </select>
 
-              <div class="speakers-inline">
-                <span class="speakers-label">Speakers:</span>
-                <select
-                  x-model.number="input.expectedSpeakers"
-                  @change="dispatchChange()"
-                  class="speakers-select"
-                  :disabled="isRecording"
-                >
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                  <option value="3">3</option>
-                  <option value="4">4</option>
-                </select>
-              </div>
+                  <div class="speakers-inline">
+                    <span class="speakers-label">Speakers:</span>
+                    <select
+                      x-model.number="input.expectedSpeakers"
+                      @change="dispatchChange()"
+                      class="speakers-select"
+                      :disabled="isRecording"
+                    >
+                      <option value="1">1</option>
+                      <option value="2">2</option>
+                      <option value="3">3</option>
+                      <option value="4">4</option>
+                    </select>
+                  </div>
+
+                  <button
+                    x-show="inputs.length > 1"
+                    @click="removeInput(input.id)"
+                    class="btn-icon-sm remove-input-btn"
+                    :disabled="isRecording"
+                    title="Remove input"
+                  >
+                    <i class="ti ti-x"></i>
+                  </button>
+                </div>
+              </template>
 
               <button
-                x-show="inputs.length > 1"
-                @click="removeInput(input.id)"
-                class="btn-icon-sm remove-input-btn"
+                x-show="canAddInput"
+                @click="addInput()"
+                class="btn secondary small add-input-btn"
                 :disabled="isRecording"
-                title="Remove input"
               >
-                <i class="ti ti-x"></i>
+                <i class="ti ti-plus"></i> Add Input
               </button>
             </div>
-          </template>
-
-          <button
-            x-show="canAddInput"
-            @click="addInput()"
-            class="btn secondary small add-input-btn"
-            :disabled="isRecording"
-          >
-            <i class="ti ti-plus"></i> Add Input
-          </button>
+          </div>
         </div>
 
         <!-- Legacy mic-select for backward compatibility (hidden, populated by app.js) -->
@@ -141,7 +159,7 @@
         <div x-data="recordingsDropdown" class="recordings-dropdown-container">
           <button class="btn secondary recordings-dropdown-btn" @click="toggle()" :class="{ 'active': isOpen, 'viewing': isViewingRecording }">
             <i class="ti ti-folder"></i>
-            <span x-text="buttonText">Recordings</span>
+            <span class="btn-text" x-text="buttonText">Recordings</span>
             <i class="ti ti-chevron-down recordings-chevron" :class="{ 'rotated': isOpen }"></i>
           </button>
 

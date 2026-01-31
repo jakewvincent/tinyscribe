@@ -356,6 +356,7 @@ document.addEventListener('alpine:init', () => {
     isRecording: false,
     isLoadingDevices: false,
     permissionState: 'unknown', // 'unknown', 'prompt', 'granted', 'denied'
+    popoverOpen: false,
 
     init() {
       // Check initial permission state without prompting
@@ -470,6 +471,14 @@ document.addEventListener('alpine:init', () => {
       window.dispatchEvent(new CustomEvent('audio-inputs-change', {
         detail: { inputs: this.inputs }
       }));
+    },
+
+    togglePopover() {
+      this.popoverOpen = !this.popoverOpen;
+    },
+
+    closePopover() {
+      this.popoverOpen = false;
     },
   }));
 
