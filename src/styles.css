@@ -5421,3 +5421,142 @@ body.resizing * {
   backdrop-filter: none;
   background: rgba(255, 255, 255, 0.9);
 }
+
+/* =================================================
+   GLASSMORPHISM THEME
+   Frosted glass panels on a colorful gradient background.
+   Semi-transparent with blur effects.
+   ================================================= */
+[data-theme="glassmorphism"] {
+  /* Gradient background - purple to blue to teal */
+  --bg-color: #667eea;
+
+  /* Semi-transparent panels */
+  --panel-bg: rgba(255, 255, 255, 0.25);
+
+  /* Text colors for contrast on glass */
+  --text-color: #1e293b;
+  --text-muted: #475569;
+
+  /* Subtle white/light borders */
+  --border-color: rgba(255, 255, 255, 0.3);
+  --border-light: rgba(255, 255, 255, 0.2);
+  --border-strong: rgba(255, 255, 255, 0.4);
+
+  /* Primary - vibrant but works on glass */
+  --primary-color: #6366f1;
+  --primary-hover: #4f46e5;
+  --primary-bg: rgba(99, 102, 241, 0.2);
+  --primary-border: rgba(99, 102, 241, 0.4);
+
+  /* Adjusted grays for glass context */
+  --gray-100: rgba(255, 255, 255, 0.3);
+  --gray-200: rgba(255, 255, 255, 0.4);
+  --gray-300: rgba(255, 255, 255, 0.5);
+
+  /* Soft shadows with color tint */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.15);
+  --shadow-xl: 0 12px 48px rgba(0, 0, 0, 0.2);
+
+  /* Glass panel styling */
+  --panel-border-width: 1px;
+  --panel-border-color: rgba(255, 255, 255, 0.3);
+  --panel-radius: var(--radius-xl);
+  --panel-shadow: var(--shadow-lg);
+
+  /* Button styling */
+  --button-border-width: 1px;
+  --button-radius: var(--radius-lg);
+  --button-shadow: var(--shadow-sm);
+  --button-shadow-hover: var(--shadow-md);
+  --button-secondary-bg: rgba(255, 255, 255, 0.3);
+  --button-secondary-border: rgba(255, 255, 255, 0.4);
+  --button-secondary-hover-bg: rgba(255, 255, 255, 0.5);
+
+  /* Input styling */
+  --input-border-width: 1px;
+  --input-radius: var(--radius-lg);
+  --input-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
+  --input-shadow-focus: 0 0 0 3px rgba(99, 102, 241, 0.3);
+
+  /* Modal */
+  --modal-radius: var(--radius-2xl);
+  --modal-shadow: 0 24px 64px rgba(0, 0, 0, 0.25);
+
+  /* Larger radii for softer look */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+}
+
+/* Glassmorphism gradient background */
+[data-theme="glassmorphism"] body {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #6B8DD6 100%);
+  background-attachment: fixed;
+}
+
+/* Glassmorphism panels get blur effect */
+[data-theme="glassmorphism"] .sidebar-panel,
+[data-theme="glassmorphism"] .modal-content,
+[data-theme="glassmorphism"] .recordings-dropdown-menu,
+[data-theme="glassmorphism"] .audio-inputs-dropdown-menu,
+[data-theme="glassmorphism"] .theme-dropdown-menu {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Glassmorphism topbar */
+[data-theme="glassmorphism"] #topbar {
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Glassmorphism workspace */
+[data-theme="glassmorphism"] .workspace {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Glassmorphism status bar */
+[data-theme="glassmorphism"] #statusbar {
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Glassmorphism buttons need visible backgrounds */
+[data-theme="glassmorphism"] .btn.secondary {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+[data-theme="glassmorphism"] .btn.primary {
+  background: rgba(99, 102, 241, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+[data-theme="glassmorphism"] .btn.primary:hover:not(:disabled) {
+  background: rgba(79, 70, 229, 0.95);
+}
+
+/* Glassmorphism inputs */
+[data-theme="glassmorphism"] .settings-select {
+  background: rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Glassmorphism modal overlay - darker for contrast */
+[data-theme="glassmorphism"] .modal-overlay {
+  background: rgba(102, 126, 234, 0.5);
+}

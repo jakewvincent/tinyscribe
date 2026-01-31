@@ -152,6 +152,7 @@ document.addEventListener('alpine:init', () => {
       { id: 'neumorphism', name: 'Neumorphism', description: 'Soft, extruded UI' },
       { id: 'neo-memphis', name: 'Neo-Memphis', description: 'Bold, playful, 80s inspired' },
       { id: 'neobrutalist', name: 'Neobrutalist', description: 'Raw, harsh, monospace' },
+      { id: 'glassmorphism', name: 'Glassmorphism', description: 'Frosted glass on gradient' },
     ],
 
     current: (() => {
