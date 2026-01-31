@@ -59,7 +59,7 @@ export const UNKNOWN_SPEAKER_BASE = -100;
 // VAD (Voice Activity Detection) configuration
 export const VAD_DEFAULTS = {
   // Speech duration constraints (seconds)
-  minSpeechDuration: 1.0,
+  minSpeechDuration: 0.3,
   maxSpeechDuration: 15.0,
   // Overlap duration prepended to chunks (seconds)
   overlapDuration: 1.5,
