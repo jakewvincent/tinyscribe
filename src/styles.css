@@ -130,6 +130,9 @@
   --button-radius: var(--radius-md);
   --button-shadow: none;
   --button-shadow-hover: var(--shadow-sm);
+  --button-secondary-bg: var(--gray-200);
+  --button-secondary-border: var(--gray-300);
+  --button-secondary-hover-bg: var(--gray-300);
 
   /* Input tokens */
   --input-border-width: var(--border-width);
@@ -2487,15 +2490,15 @@ body.resizing * {
 }
 
 .btn.secondary {
-  background: var(--border-color);
+  background: var(--button-secondary-bg);
   color: var(--text-color);
-  border: var(--button-border-width) solid var(--border-strong);
+  border: var(--button-border-width) solid var(--button-secondary-border);
 }
 
 .btn.secondary:hover:not(:disabled) {
-  background: var(--border-strong);
+  background: var(--button-secondary-hover-bg);
   transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--button-shadow-hover);
 }
 
 .btn.secondary:active:not(:disabled) {
@@ -5269,6 +5272,11 @@ body.resizing * {
   --shadow-lg: 4px 4px 0 #1a1a1a;
   --shadow-xl: 6px 6px 0 #1a1a1a;
 
+  /* Secondary button - light background with black border */
+  --button-secondary-bg: #ffffff;
+  --button-secondary-border: #1a1a1a;
+  --button-secondary-hover-bg: #fff8e7;
+
   /* Component overrides - thick borders, solid shadows */
   --panel-border-width: 2px;
   --panel-border-color: #1a1a1a;
@@ -5349,6 +5357,11 @@ body.resizing * {
   --radius-lg: 0;
   --radius-xl: 0;
   --radius-2xl: 0;
+
+  /* Secondary button - white with black border */
+  --button-secondary-bg: #ffffff;
+  --button-secondary-border: #000000;
+  --button-secondary-hover-bg: #f0f0f0;
 
   /* Component overrides - thick borders, square, harsh */
   --panel-border-width: 3px;
