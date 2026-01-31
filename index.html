@@ -206,6 +206,23 @@
             </div>
           </div>
         </div>
+
+        <!-- Theme Selector -->
+        <div x-data="{ open: false }" class="theme-dropdown-container">
+          <button class="btn secondary theme-dropdown-btn" @click="open = !open" :class="{ 'active': open }">
+            <i class="ti ti-palette"></i>
+            <span class="btn-text" x-text="$store.theme.getCurrentName()">Theme</span>
+            <i class="ti ti-chevron-down" :class="{ 'rotated': open }"></i>
+          </button>
+          <div x-show="open" x-transition @click.outside="open = false" class="theme-dropdown-menu">
+            <template x-for="theme in $store.theme.available" :key="theme.id">
+              <button class="theme-option" :class="{ 'selected': $store.theme.current === theme.id }" @click="$store.theme.set(theme.id); open = false">
+                <span class="theme-name" x-text="theme.name"></span>
+                <span class="theme-desc" x-text="theme.description"></span>
+              </button>
+            </template>
+          </div>
+        </div>
       </div>
     </header>
 

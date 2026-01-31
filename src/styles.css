@@ -645,6 +645,74 @@ body {
   margin: 0;
 }
 
+/* Theme Selector Dropdown */
+.theme-dropdown-container {
+  position: relative;
+}
+
+.theme-dropdown-btn {
+  gap: var(--space-sm);
+}
+
+.theme-dropdown-btn i.ti-chevron-down {
+  font-size: var(--text-md);
+  transition: transform var(--transition-fast);
+}
+
+.theme-dropdown-btn i.ti-chevron-down.rotated {
+  transform: rotate(180deg);
+}
+
+.theme-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 200px;
+  background: var(--panel-bg);
+  border: var(--panel-border-width) solid var(--panel-border-color);
+  border-radius: var(--panel-radius);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-dropdown);
+  overflow: hidden;
+}
+
+.theme-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  text-align: left;
+}
+
+.theme-option:hover {
+  background: var(--gray-100);
+}
+
+.theme-option.selected {
+  background: var(--primary-bg);
+}
+
+.theme-option .theme-name {
+  font-size: var(--text-md);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-color);
+}
+
+.theme-option .theme-desc {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.theme-option.selected .theme-name {
+  color: var(--primary-color);
+}
+
 /* ==================== MAIN CONTENT ==================== */
 #main-content {
   display: grid;
@@ -5093,4 +5161,250 @@ body.resizing * {
     justify-content: center;
     padding-top: var(--space-sm);
   }
+}
+
+/* ==================== THEMES ==================== */
+
+/* =================================================
+   NEUMORPHISM THEME
+   Soft, extruded UI with subtle light/dark shadows.
+   Elements appear to push out from the background.
+   ================================================= */
+[data-theme="neumorphism"] {
+  /* Neumorphism requires matching background colors */
+  --bg-color: #e0e5ec;
+  --panel-bg: #e0e5ec;
+
+  /* Muted, monochromatic palette */
+  --text-color: #4a5568;
+  --text-muted: #718096;
+  --border-color: transparent;
+  --border-light: transparent;
+  --border-strong: transparent;
+
+  /* Softer primary colors */
+  --primary-color: #6366f1;
+  --primary-hover: #4f46e5;
+
+  /* Neumorphic shadows - light from top-left, dark from bottom-right */
+  --shadow-neu-light: -6px -6px 12px rgba(255, 255, 255, 0.8);
+  --shadow-neu-dark: 6px 6px 12px rgba(163, 177, 198, 0.6);
+  --shadow-neu: var(--shadow-neu-light), var(--shadow-neu-dark);
+  --shadow-neu-sm: -3px -3px 6px rgba(255, 255, 255, 0.8), 3px 3px 6px rgba(163, 177, 198, 0.6);
+  --shadow-neu-inset: inset 3px 3px 6px rgba(163, 177, 198, 0.6), inset -3px -3px 6px rgba(255, 255, 255, 0.8);
+
+  /* Component overrides */
+  --panel-border-width: 0;
+  --panel-radius: var(--radius-xl);
+  --panel-shadow: var(--shadow-neu);
+
+  --button-border-width: 0;
+  --button-radius: var(--radius-lg);
+  --button-shadow: var(--shadow-neu-sm);
+  --button-shadow-hover: var(--shadow-neu);
+
+  --input-border-width: 0;
+  --input-radius: var(--radius-lg);
+  --input-shadow: var(--shadow-neu-inset);
+  --input-shadow-focus: var(--shadow-neu-inset), 0 0 0 2px var(--primary-color);
+
+  --modal-radius: var(--radius-2xl);
+  --modal-shadow: var(--shadow-neu), 0 20px 40px rgba(0, 0, 0, 0.1);
+
+  /* Larger radii throughout */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+}
+
+/* Neumorphism button pressed state */
+[data-theme="neumorphism"] .btn:active:not(:disabled) {
+  box-shadow: var(--shadow-neu-inset) !important;
+}
+
+/* Neumorphism topbar blends with background */
+[data-theme="neumorphism"] #topbar {
+  background: var(--bg-color);
+  border-bottom-color: transparent;
+  box-shadow: var(--shadow-neu-sm);
+}
+
+/* =================================================
+   NEO-MEMPHIS THEME
+   Bold, playful, 80s/90s inspired design.
+   Thick black outlines, solid shadows, bright colors.
+   ================================================= */
+[data-theme="neo-memphis"] {
+  /* Warm, creamy background */
+  --bg-color: #fff8e7;
+  --panel-bg: #ffffff;
+
+  /* High contrast text */
+  --text-color: #1a1a1a;
+  --text-muted: #4a4a4a;
+
+  /* Bold black borders */
+  --border-color: #1a1a1a;
+  --border-light: #1a1a1a;
+  --border-strong: #1a1a1a;
+
+  /* Vibrant primary palette */
+  --primary-color: #ff6b6b;
+  --primary-hover: #ee5a5a;
+  --success-color: #4ecdc4;
+  --warning-color: #ffe66d;
+
+  /* Playful speaker colors */
+  --speaker-0: #ff6b6b; /* Coral */
+  --speaker-1: #4ecdc4; /* Teal */
+  --speaker-2: #ffe66d; /* Yellow */
+  --speaker-3: #95e1d3; /* Mint */
+  --speaker-4: #a29bfe; /* Lavender */
+  --speaker-5: #fd79a8; /* Pink */
+
+  /* Solid offset shadows */
+  --shadow-sm: 2px 2px 0 #1a1a1a;
+  --shadow-md: 3px 3px 0 #1a1a1a;
+  --shadow-lg: 4px 4px 0 #1a1a1a;
+  --shadow-xl: 6px 6px 0 #1a1a1a;
+
+  /* Component overrides - thick borders, solid shadows */
+  --panel-border-width: 2px;
+  --panel-border-color: #1a1a1a;
+  --panel-radius: var(--radius-lg);
+  --panel-shadow: var(--shadow-md);
+
+  --button-border-width: 2px;
+  --button-radius: var(--radius-md);
+  --button-shadow: var(--shadow-sm);
+  --button-shadow-hover: var(--shadow-md);
+
+  --input-border-width: 2px;
+  --input-radius: var(--radius-sm);
+  --input-shadow: none;
+  --input-shadow-focus: var(--shadow-sm);
+
+  --modal-radius: var(--radius-lg);
+  --modal-shadow: var(--shadow-xl);
+
+  /* Slightly bolder font */
+  --font-weight-normal: 500;
+  --font-weight-medium: 600;
+}
+
+/* Neo-memphis button pressed - shadow disappears, moves down-right */
+[data-theme="neo-memphis"] .btn:active:not(:disabled) {
+  transform: translate(2px, 2px) !important;
+  box-shadow: none !important;
+}
+
+/* Neo-memphis topbar */
+[data-theme="neo-memphis"] #topbar {
+  background: var(--panel-bg);
+  border-bottom: 2px solid #1a1a1a;
+}
+
+/* Neo-memphis adds subtle pattern to background */
+[data-theme="neo-memphis"] body {
+  background-image: radial-gradient(#1a1a1a 1px, transparent 1px);
+  background-size: 20px 20px;
+  background-color: var(--bg-color);
+}
+
+/* =================================================
+   NEOBRUTALIST THEME
+   Raw, unpolished, intentionally harsh aesthetic.
+   Thick borders, no shadows or solid offset, square edges.
+   ================================================= */
+[data-theme="neobrutalist"] {
+  /* Stark white background */
+  --bg-color: #ffffff;
+  --panel-bg: #ffffff;
+
+  /* Pure black text */
+  --text-color: #000000;
+  --text-muted: #333333;
+
+  /* Heavy black borders */
+  --border-color: #000000;
+  --border-light: #000000;
+  --border-strong: #000000;
+
+  /* Single accent color - electric blue */
+  --primary-color: #0000ff;
+  --primary-hover: #0000cc;
+  --primary-bg: rgba(0, 0, 255, 0.1);
+
+  /* Brutalist shadows - harsh offset, no blur */
+  --shadow-sm: 3px 3px 0 #000000;
+  --shadow-md: 4px 4px 0 #000000;
+  --shadow-lg: 6px 6px 0 #000000;
+  --shadow-xl: 8px 8px 0 #000000;
+
+  /* No rounded corners */
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+
+  /* Component overrides - thick borders, square, harsh */
+  --panel-border-width: 3px;
+  --panel-border-color: #000000;
+  --panel-radius: 0;
+  --panel-shadow: var(--shadow-md);
+
+  --button-border-width: 2px;
+  --button-radius: 0;
+  --button-shadow: var(--shadow-sm);
+  --button-shadow-hover: var(--shadow-md);
+
+  --input-border-width: 2px;
+  --input-radius: 0;
+  --input-shadow: none;
+  --input-shadow-focus: var(--shadow-sm);
+
+  --modal-radius: 0;
+  --modal-shadow: var(--shadow-xl);
+
+  /* Monospace font for raw feel */
+  --font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* Bolder weights */
+  --font-weight-normal: 500;
+  --font-weight-medium: 700;
+  --font-weight-semibold: 800;
+  --font-weight-bold: 900;
+}
+
+/* Brutalist button pressed */
+[data-theme="neobrutalist"] .btn:active:not(:disabled) {
+  transform: translate(3px, 3px) !important;
+  box-shadow: none !important;
+}
+
+/* Brutalist primary buttons - inverted */
+[data-theme="neobrutalist"] .btn.primary {
+  background: #000000;
+  color: #ffffff;
+  border-color: #000000;
+}
+
+[data-theme="neobrutalist"] .btn.primary:hover:not(:disabled) {
+  background: var(--primary-color);
+  border-color: #000000;
+}
+
+/* Brutalist topbar */
+[data-theme="neobrutalist"] #topbar {
+  background: var(--panel-bg);
+  border-bottom: 3px solid #000000;
+}
+
+/* Brutalist modal overlay - no blur */
+[data-theme="neobrutalist"] .modal-overlay {
+  backdrop-filter: none;
+  background: rgba(255, 255, 255, 0.9);
 }

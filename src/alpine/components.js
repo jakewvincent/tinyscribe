@@ -143,6 +143,61 @@ document.addEventListener('alpine:init', () => {
   });
 
   /**
+   * Theme store
+   * Manages visual theme selection with persistence
+   */
+  Alpine.store('theme', {
+    available: [
+      { id: '', name: 'Default', description: 'Clean, modern interface' },
+      { id: 'neumorphism', name: 'Neumorphism', description: 'Soft, extruded UI' },
+      { id: 'neo-memphis', name: 'Neo-Memphis', description: 'Bold, playful, 80s inspired' },
+      { id: 'neobrutalist', name: 'Neobrutalist', description: 'Raw, harsh, monospace' },
+    ],
+
+    current: (() => {
+      // Load and apply theme immediately to prevent flash
+      let themeId = '';
+      try {
+        themeId = localStorage.getItem('app-theme') || '';
+      } catch (e) {
+        // Ignore
+      }
+      // Apply immediately
+      if (themeId) {
+        document.documentElement.setAttribute('data-theme', themeId);
+      }
+      return themeId;
+    })(),
+
+    _apply(themeId) {
+      if (themeId) {
+        document.documentElement.setAttribute('data-theme', themeId);
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+      }
+    },
+
+    set(themeId) {
+      this.current = themeId;
+      this._apply(themeId);
+      try {
+        if (themeId) {
+          localStorage.setItem('app-theme', themeId);
+        } else {
+          localStorage.removeItem('app-theme');
+        }
+      } catch (e) {
+        // Ignore localStorage errors
+      }
+    },
+
+    getCurrentName() {
+      const theme = this.available.find(t => t.id === this.current);
+      return theme?.name || 'Default';
+    },
+  });
+
+  /**
    * Live Mode store
    * Tracks whether we're in live recording mode vs viewing a saved recording.
    * Also holds the live job when in live mode.
