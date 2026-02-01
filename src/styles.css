@@ -5424,35 +5424,35 @@ body.resizing * {
 
 /* =================================================
    GLASSMORPHISM THEME
-   Frosted glass panels on a colorful gradient background.
+   Frosted glass panels on a subtle gradient background.
    Semi-transparent with blur effects.
    ================================================= */
 [data-theme="glassmorphism"] {
-  /* Gradient background - purple to blue to teal */
-  --bg-color: #667eea;
+  /* Muted gradient background - soft gray-blue */
+  --bg-color: #dfe6ed;
 
   /* Semi-transparent panels */
-  --panel-bg: rgba(255, 255, 255, 0.25);
+  --panel-bg: rgba(255, 255, 255, 0.5);
 
-  /* Text colors for contrast on glass */
+  /* Text colors */
   --text-color: #1e293b;
-  --text-muted: #475569;
+  --text-muted: #64748b;
 
-  /* Subtle white/light borders */
-  --border-color: rgba(255, 255, 255, 0.3);
-  --border-light: rgba(255, 255, 255, 0.2);
-  --border-strong: rgba(255, 255, 255, 0.4);
+  /* Subtle borders */
+  --border-color: rgba(255, 255, 255, 0.6);
+  --border-light: rgba(255, 255, 255, 0.4);
+  --border-strong: rgba(255, 255, 255, 0.8);
 
-  /* Primary - vibrant but works on glass */
+  /* Primary - subtle blue */
   --primary-color: #6366f1;
   --primary-hover: #4f46e5;
-  --primary-bg: rgba(99, 102, 241, 0.2);
-  --primary-border: rgba(99, 102, 241, 0.4);
+  --primary-bg: rgba(99, 102, 241, 0.15);
+  --primary-border: rgba(99, 102, 241, 0.3);
 
   /* Adjusted grays for glass context */
-  --gray-100: rgba(255, 255, 255, 0.3);
-  --gray-200: rgba(255, 255, 255, 0.4);
-  --gray-300: rgba(255, 255, 255, 0.5);
+  --gray-100: rgba(255, 255, 255, 0.5);
+  --gray-200: rgba(255, 255, 255, 0.6);
+  --gray-300: rgba(255, 255, 255, 0.7);
 
   /* Soft shadows with color tint */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -5493,9 +5493,9 @@ body.resizing * {
   --radius-2xl: 24px;
 }
 
-/* Glassmorphism gradient background */
+/* Glassmorphism gradient background - muted, subtle */
 [data-theme="glassmorphism"] body {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #6B8DD6 100%);
+  background: linear-gradient(135deg, #c3cfe2 0%, #dfe6ed 50%, #cfd9e8 100%);
   background-attachment: fixed;
 }
 
@@ -5505,58 +5505,59 @@ body.resizing * {
 [data-theme="glassmorphism"] .recordings-dropdown-menu,
 [data-theme="glassmorphism"] .audio-inputs-dropdown-menu,
 [data-theme="glassmorphism"] .theme-dropdown-menu {
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  background: rgba(255, 255, 255, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.8);
 }
 
 /* Glassmorphism topbar */
 [data-theme="glassmorphism"] #topbar {
-  background: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.8);
 }
 
 /* Glassmorphism workspace */
 [data-theme="glassmorphism"] .workspace {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.4);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
 
 /* Glassmorphism status bar */
 [data-theme="glassmorphism"] #statusbar {
-  background: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-top: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(255, 255, 255, 0.8);
 }
 
-/* Glassmorphism buttons need visible backgrounds */
+/* Glassmorphism buttons */
 [data-theme="glassmorphism"] .btn.secondary {
+  background: rgba(255, 255, 255, 0.6);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
 
 [data-theme="glassmorphism"] .btn.primary {
-  background: rgba(99, 102, 241, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: var(--primary-color);
+  border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 [data-theme="glassmorphism"] .btn.primary:hover:not(:disabled) {
-  background: rgba(79, 70, 229, 0.95);
+  background: var(--primary-hover);
 }
 
 /* Glassmorphism inputs */
 [data-theme="glassmorphism"] .settings-select {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.6);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
 
-/* Glassmorphism modal overlay - darker for contrast */
+/* Glassmorphism modal overlay */
 [data-theme="glassmorphism"] .modal-overlay {
-  background: rgba(102, 126, 234, 0.5);
+  background: rgba(100, 116, 139, 0.4);
 }
