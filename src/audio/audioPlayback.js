@@ -68,6 +68,11 @@ export class AudioPlayback {
   play() {
     if (!this.audioBuffer || this.isPlaying) return;
 
+    // If at the end, reset to beginning for replay
+    if (this.pauseTime >= this.duration) {
+      this.pauseTime = 0;
+    }
+
     // Resume context if suspended
     if (this.audioContext.state === 'suspended') {
       this.audioContext.resume();
