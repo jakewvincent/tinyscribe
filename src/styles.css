@@ -5503,10 +5503,7 @@ body.resizing * {
 
 /* Glassmorphism panels - proper glass opacity with inset highlight */
 [data-theme="glassmorphism"] .sidebar-panel,
-[data-theme="glassmorphism"] .modal-content,
-[data-theme="glassmorphism"] .recordings-dropdown-menu,
-[data-theme="glassmorphism"] .audio-inputs-dropdown-menu,
-[data-theme="glassmorphism"] .theme-dropdown-menu {
+[data-theme="glassmorphism"] .modal-content {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   background: rgba(255, 255, 255, 0.2);
@@ -5517,22 +5514,32 @@ body.resizing * {
   transform: translateZ(0);
 }
 
-/* Glassmorphism topbar */
+/* Glassmorphism dropdowns - higher opacity for readability over content */
+[data-theme="glassmorphism"] .recordings-dropdown-menu,
+[data-theme="glassmorphism"] .audio-inputs-dropdown-menu,
+[data-theme="glassmorphism"] .theme-dropdown-menu {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow:
+    0 8px 32px rgba(31, 38, 135, 0.15),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.6);
+  transform: translateZ(0);
+}
+
+/* Glassmorphism topbar - no backdrop-filter so dropdown blur works */
 [data-theme="glassmorphism"] #topbar {
-  background: rgba(255, 255, 255, 0.3);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.7);
   border-bottom: 1px solid rgba(255, 255, 255, 0.25);
   box-shadow:
     0 4px 16px rgba(31, 38, 135, 0.08),
     inset 0 1px 1px 0 rgba(255, 255, 255, 0.5);
 }
 
-/* Glassmorphism workspace */
+/* Glassmorphism workspace - no backdrop-filter so nested dropdown blur works */
 [data-theme="glassmorphism"] .workspace {
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.4);
 }
 
 /* Glassmorphism status bar */
@@ -5590,15 +5597,15 @@ body.resizing * {
   box-shadow: inset 0 -1px 1px 0 rgba(255, 255, 255, 0.3);
 }
 
-/* Job dropdown - glass treatment */
+/* Job dropdown - higher opacity for readability */
 [data-theme="glassmorphism"] .job-dropdown-menu {
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  background: rgba(255, 255, 255, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   box-shadow:
-    0 8px 32px rgba(31, 38, 135, 0.12),
-    inset 0 1px 1px 0 rgba(255, 255, 255, 0.4);
+    0 8px 32px rgba(31, 38, 135, 0.15),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 /* Workspace divider - subtle glass edge */
@@ -5684,16 +5691,16 @@ body.resizing * {
     inset 0 1px 1px 0 rgba(255, 255, 255, 0.8);
 }
 
-/* Popovers and tooltips */
+/* Popovers and tooltips - higher opacity for readability */
 [data-theme="glassmorphism"] .model-status-popover,
 [data-theme="glassmorphism"] .debug-status-popover {
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  background: rgba(255, 255, 255, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   box-shadow:
-    0 8px 32px rgba(31, 38, 135, 0.12),
-    inset 0 1px 1px 0 rgba(255, 255, 255, 0.4);
+    0 8px 32px rgba(31, 38, 135, 0.15),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 /* Transcript segments - subtle glass cards */
