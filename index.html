@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Live Transcription Studio</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
-  <link rel="stylesheet" href="/src/styles.css">
   <script>
     // Apply saved layout preferences before render to prevent flash
     (function() {
@@ -207,22 +206,6 @@
           </div>
         </div>
 
-        <!-- Theme Selector -->
-        <div x-data="{ open: false }" class="theme-dropdown-container">
-          <button class="btn secondary theme-dropdown-btn" @click="open = !open" :class="{ 'active': open }">
-            <i class="ti ti-palette"></i>
-            <span class="btn-text" x-text="$store.theme.getCurrentName()">Theme</span>
-            <i class="ti ti-chevron-down" :class="{ 'rotated': open }"></i>
-          </button>
-          <div x-show="open" x-transition @click.outside="open = false" class="theme-dropdown-menu">
-            <template x-for="theme in $store.theme.available" :key="theme.id">
-              <button class="theme-option" :class="{ 'selected': $store.theme.current === theme.id }" @click="$store.theme.set(theme.id); open = false">
-                <span class="theme-name" x-text="theme.name"></span>
-                <span class="theme-desc" x-text="theme.description"></span>
-              </button>
-            </template>
-          </div>
-        </div>
       </div>
     </header>
 

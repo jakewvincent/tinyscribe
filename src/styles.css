@@ -5514,17 +5514,17 @@ body.resizing * {
   transform: translateZ(0);
 }
 
-/* Glassmorphism dropdowns - higher opacity for readability over content */
+/* Glassmorphism dropdowns - frosted glass overlay */
 [data-theme="glassmorphism"] .recordings-dropdown-menu,
 [data-theme="glassmorphism"] .audio-inputs-dropdown-menu,
 [data-theme="glassmorphism"] .theme-dropdown-menu {
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  background: rgba(255, 255, 255, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   box-shadow:
     0 8px 32px rgba(31, 38, 135, 0.15),
-    inset 0 1px 1px 0 rgba(255, 255, 255, 0.6);
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.4);
   transform: translateZ(0);
 }
 
@@ -5597,15 +5597,15 @@ body.resizing * {
   box-shadow: inset 0 -1px 1px 0 rgba(255, 255, 255, 0.3);
 }
 
-/* Job dropdown - higher opacity for readability */
+/* Job dropdown - frosted glass overlay */
 [data-theme="glassmorphism"] .job-dropdown-menu {
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  background: rgba(255, 255, 255, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   box-shadow:
     0 8px 32px rgba(31, 38, 135, 0.15),
-    inset 0 1px 1px 0 rgba(255, 255, 255, 0.6);
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.4);
 }
 
 /* Workspace divider - subtle glass edge */
@@ -5691,16 +5691,16 @@ body.resizing * {
     inset 0 1px 1px 0 rgba(255, 255, 255, 0.8);
 }
 
-/* Popovers and tooltips - higher opacity for readability */
+/* Popovers and tooltips - frosted glass overlay */
 [data-theme="glassmorphism"] .model-status-popover,
 [data-theme="glassmorphism"] .debug-status-popover {
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  background: rgba(255, 255, 255, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   box-shadow:
     0 8px 32px rgba(31, 38, 135, 0.15),
-    inset 0 1px 1px 0 rgba(255, 255, 255, 0.6);
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.4);
 }
 
 /* Transcript segments - subtle glass cards */

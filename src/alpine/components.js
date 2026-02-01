@@ -157,9 +157,12 @@ document.addEventListener('alpine:init', () => {
 
     current: (() => {
       // Load and apply theme immediately to prevent flash
-      let themeId = '';
+      let themeId = 'glassmorphism';
       try {
-        themeId = localStorage.getItem('app-theme') || '';
+        const stored = localStorage.getItem('app-theme');
+        if (stored !== null) {
+          themeId = stored;
+        }
       } catch (e) {
         // Ignore
       }
