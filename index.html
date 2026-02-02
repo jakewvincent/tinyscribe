@@ -578,11 +578,16 @@
                         </div>
                       </div>
 
-                      <div class="settings-section settings-info">
-                        <span class="settings-info-text">
-                          <i class="ti ti-info-circle"></i>
-                          Speaker count is configured per-input in the topbar
-                        </span>
+                      <div class="settings-section">
+                        <label class="settings-label">
+                          Expected Speakers
+                          <app-tooltip text="Maximum number of distinct speakers the system will identify. Limits cluster creation — once this many speakers exist, new voices are matched to the closest existing speaker rather than creating new ones.">
+                            <i class="ti ti-info-circle"></i>
+                          </app-tooltip>
+                        </label>
+                        <div class="settings-row">
+                          <span class="settings-info-inline">Configured per-input in topbar</span>
+                        </div>
                       </div>
                     </div>
                   </template>

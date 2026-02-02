@@ -4898,6 +4898,11 @@ body.resizing * {
   color: var(--primary);
 }
 
+.settings-info-inline {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
 .settings-label {
   font-size: var(--text-xs);
   text-transform: uppercase;
@@ -5832,27 +5837,31 @@ app-tooltip [slot="content"] {
 
 /* Glassmorphism theme tooltip override */
 [data-theme="glassmorphism"] .tooltip-portal {
-  background: rgba(30, 41, 59, 0.9);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(30, 41, 59, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow:
+    0 8px 32px rgba(31, 38, 135, 0.2),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 [data-theme="glassmorphism"] .tooltip-portal[data-position="up"]::after,
 [data-theme="glassmorphism"] .tooltip-portal[data-position="up-left"]::after,
 [data-theme="glassmorphism"] .tooltip-portal[data-position="up-right"]::after {
-  border-top-color: rgba(30, 41, 59, 0.9);
+  border-top-color: rgba(30, 41, 59, 0.6);
 }
 
 [data-theme="glassmorphism"] .tooltip-portal[data-position="down"]::after,
 [data-theme="glassmorphism"] .tooltip-portal[data-position="down-left"]::after,
 [data-theme="glassmorphism"] .tooltip-portal[data-position="down-right"]::after {
-  border-bottom-color: rgba(30, 41, 59, 0.9);
+  border-bottom-color: rgba(30, 41, 59, 0.6);
 }
 
 [data-theme="glassmorphism"] .tooltip-portal[data-position="left"]::after {
-  border-left-color: rgba(30, 41, 59, 0.9);
+  border-left-color: rgba(30, 41, 59, 0.6);
 }
 
 [data-theme="glassmorphism"] .tooltip-portal[data-position="right"]::after {
-  border-right-color: rgba(30, 41, 59, 0.9);
+  border-right-color: rgba(30, 41, 59, 0.6);
 }
