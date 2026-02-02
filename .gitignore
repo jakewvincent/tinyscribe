@@ -34,3 +34,6 @@ data/
 
 # Mockups
 mockups/
+
+# Planning docs
+*.pdf
