@@ -120,10 +120,8 @@ export const SEGMENTATION_MODELS = {
     id: 'reverb-diarization-v1',
     name: 'Reverb Diarization v1',
     backend: 'onnx',
-    // TODO: Host model.onnx externally and update URL (see task list)
-    // Model file extracted from sherpa-onnx-reverb-diarization-v1.tar.bz2
-    // Download: https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-segmentation-models
-    source: '/models/segmentation/reverb-diarization-v1/model.onnx',
+    // Model hosted on HuggingFace (originally from sherpa-onnx)
+    source: 'https://huggingface.co/jakewvincent/reverb-diarization-v1-onnx/resolve/main/model.onnx',
     size: '~9 MB',
     description: 'Fine-tuned pyannote. 16.5% better WDER than baseline.',
     maxSpeakers: 3,

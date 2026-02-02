@@ -37,3 +37,6 @@ mockups/
 
 # Planning docs
 *.pdf
+
+# Large model files (downloaded at runtime)
+public/models/
