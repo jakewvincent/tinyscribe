@@ -1,5 +1,5 @@
 {
-  "name": "live-transcription-diarization",
+  "name": "tinyscribe",
   "version": "1.0.0",
   "type": "module",
   "description": "Live browser-based audio transcription with speaker diarization using Whisper and Pyannote",

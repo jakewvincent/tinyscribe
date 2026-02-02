@@ -1,4 +1,4 @@
-# Live Transcription with Speaker Diarization
+# TinyScribe
 
 Browser-based speech recognition with speaker identification. All processing runs locally - no audio sent to servers.
 
