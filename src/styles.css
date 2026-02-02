@@ -5713,3 +5713,146 @@ body.resizing * {
 [data-theme="glassmorphism"] .transcript-segment:hover {
   background: rgba(255, 255, 255, 0.25);
 }
+
+/* =================================================
+   TOOLTIP WEB COMPONENT
+   Portal-based tooltips that render at body level
+   to avoid overflow clipping issues.
+   ================================================= */
+
+/* Host element styling */
+app-tooltip {
+  display: inline-flex;
+  align-items: center;
+  cursor: help;
+}
+
+/* Hide the slot content element (content is copied to portal) */
+app-tooltip [slot="content"] {
+  display: none;
+}
+
+/* Portal tooltip (rendered at body level) */
+.tooltip-portal {
+  position: fixed;
+  padding: var(--space-sm) var(--space-md);
+  background-color: var(--gray-900);
+  color: white;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-normal);
+  line-height: 1.4;
+  border-radius: var(--radius-md);
+  white-space: normal;
+  width: max-content;
+  max-width: 220px;
+  text-align: left;
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--transition-fast), visibility var(--transition-fast);
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.tooltip-portal.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Arrow pseudo-element */
+.tooltip-portal::after {
+  content: '';
+  position: absolute;
+  border: 5px solid transparent;
+}
+
+/* Arrow positions - up variants (tooltip above trigger) */
+.tooltip-portal[data-position="up"]::after,
+.tooltip-portal[data-position="up-left"]::after,
+.tooltip-portal[data-position="up-right"]::after {
+  top: 100%;
+  border-top-color: var(--gray-900);
+  border-bottom: none;
+}
+
+.tooltip-portal[data-position="up"]::after {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tooltip-portal[data-position="up-left"]::after {
+  right: 0.5rem;
+  left: auto;
+}
+
+.tooltip-portal[data-position="up-right"]::after {
+  left: 0.5rem;
+}
+
+/* Arrow positions - down variants (tooltip below trigger) */
+.tooltip-portal[data-position="down"]::after,
+.tooltip-portal[data-position="down-left"]::after,
+.tooltip-portal[data-position="down-right"]::after {
+  bottom: 100%;
+  border-bottom-color: var(--gray-900);
+  border-top: none;
+}
+
+.tooltip-portal[data-position="down"]::after {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tooltip-portal[data-position="down-left"]::after {
+  right: 0.5rem;
+  left: auto;
+}
+
+.tooltip-portal[data-position="down-right"]::after {
+  left: 0.5rem;
+}
+
+/* Arrow positions - left (tooltip to left of trigger) */
+.tooltip-portal[data-position="left"]::after {
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border-left-color: var(--gray-900);
+  border-right: none;
+}
+
+/* Arrow positions - right (tooltip to right of trigger) */
+.tooltip-portal[data-position="right"]::after {
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border-right-color: var(--gray-900);
+  border-left: none;
+}
+
+/* Glassmorphism theme tooltip override */
+[data-theme="glassmorphism"] .tooltip-portal {
+  background: rgba(30, 41, 59, 0.9);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+[data-theme="glassmorphism"] .tooltip-portal[data-position="up"]::after,
+[data-theme="glassmorphism"] .tooltip-portal[data-position="up-left"]::after,
+[data-theme="glassmorphism"] .tooltip-portal[data-position="up-right"]::after {
+  border-top-color: rgba(30, 41, 59, 0.9);
+}
+
+[data-theme="glassmorphism"] .tooltip-portal[data-position="down"]::after,
+[data-theme="glassmorphism"] .tooltip-portal[data-position="down-left"]::after,
+[data-theme="glassmorphism"] .tooltip-portal[data-position="down-right"]::after {
+  border-bottom-color: rgba(30, 41, 59, 0.9);
+}
+
+[data-theme="glassmorphism"] .tooltip-portal[data-position="left"]::after {
+  border-left-color: rgba(30, 41, 59, 0.9);
+}
+
+[data-theme="glassmorphism"] .tooltip-portal[data-position="right"]::after {
+  border-right-color: rgba(30, 41, 59, 0.9);
+}

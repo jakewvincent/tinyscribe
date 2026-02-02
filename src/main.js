@@ -14,6 +14,9 @@ import {
 } from './config/segmentation.js';
 import { ModelSelectionStore, SegmentationModelStore } from './storage/index.js';
 
+// Register custom elements
+import './ui/components/tooltip.js';
+
 // Expose model configuration for Alpine components
 window.embeddingModels = {
   available: getAvailableEmbeddingModels(),
