@@ -169,7 +169,7 @@ export const SEGMENTATION_MODELS = {
 /**
  * Default model to use when none is selected
  */
-export const DEFAULT_SEGMENTATION_MODEL = 'phrase-gap';
+export const DEFAULT_SEGMENTATION_MODEL = 'pyannote-seg-3';
 
 /**
  * Get model config by ID, with fallback to default
