@@ -553,7 +553,12 @@
                   <template x-if="isEditable">
                     <div class="settings-group-content">
                       <div class="settings-section">
-                        <label class="settings-label" title="Minimum cosine similarity to match a speaker">Similarity Threshold</label>
+                        <label class="settings-label">
+                          Similarity Threshold
+                          <app-tooltip text="Minimum cosine similarity to assign a segment to a speaker. Higher = stricter matching, fewer false positives but more 'Unknown' labels. WavLM typically scores ~0.62 for different speakers, ~0.96 for same speaker.">
+                            <i class="ti ti-info-circle"></i>
+                          </app-tooltip>
+                        </label>
                         <div class="settings-row">
                           <input type="range" class="settings-slider" min="0.5" max="0.95" step="0.05" x-model="settings.similarityThreshold" @input="updateSetting('similarityThreshold', parseFloat($event.target.value))">
                           <span class="settings-value" x-text="formatThreshold(settings.similarityThreshold)"></span>
@@ -561,7 +566,12 @@
                       </div>
 
                       <div class="settings-section">
-                        <label class="settings-label" title="Required margin between best and runner-up match">Confidence Margin</label>
+                        <label class="settings-label">
+                          Confidence Margin
+                          <app-tooltip text="Required gap between best and second-best match. If two speakers score too closely (e.g., 0.78 vs 0.76), the result is 'ambiguous' and may be labeled Unknown. Higher = more conservative.">
+                            <i class="ti ti-info-circle"></i>
+                          </app-tooltip>
+                        </label>
                         <div class="settings-row">
                           <input type="range" class="settings-slider" min="0" max="0.3" step="0.01" x-model="settings.confidenceMargin" @input="updateSetting('confidenceMargin', parseFloat($event.target.value))">
                           <span class="settings-value" x-text="formatThreshold(settings.confidenceMargin)"></span>
@@ -603,7 +613,12 @@
                   <template x-if="isBoostingEditable">
                     <div class="settings-group-content">
                       <div class="settings-section">
-                        <label class="settings-label" title="Multiplier applied to similarity scores for hypothesized speakers">Boost Factor</label>
+                        <label class="settings-label">
+                          Boost Factor
+                          <app-tooltip text="Multiplier applied to similarity scores for 'hypothesized participants' — speakers the system believes are in this conversation based on turn-taking patterns. 1.10 = 10% boost.">
+                            <i class="ti ti-info-circle"></i>
+                          </app-tooltip>
+                        </label>
                         <div class="settings-row">
                           <input type="range" class="settings-slider" min="1.0" max="1.30" step="0.01" x-model="settings.boostFactor" @input="updateBoostingSetting('boostFactor', parseFloat($event.target.value))">
                           <span class="settings-value" x-text="formatThreshold(settings.boostFactor)"></span>
@@ -611,7 +626,12 @@
                       </div>
 
                       <div class="settings-section">
-                        <label class="settings-label" title="Speaker must be in top N matches to receive boost">Eligibility Rank</label>
+                        <label class="settings-label">
+                          Eligibility Rank
+                          <app-tooltip text="Only candidates ranked in the top N can receive a boost. If set to 2, only the #1 and #2 matches are eligible. Prevents boosting low-ranked candidates.">
+                            <i class="ti ti-info-circle"></i>
+                          </app-tooltip>
+                        </label>
                         <div class="settings-row">
                           <input type="range" class="settings-slider" min="1" max="4" step="1" x-model="settings.boostEligibilityRank" @input="updateBoostingSetting('boostEligibilityRank', parseInt($event.target.value))">
                           <span class="settings-value" x-text="settings.boostEligibilityRank"></span>
@@ -619,7 +639,12 @@
                       </div>
 
                       <div class="settings-section">
-                        <label class="settings-label" title="Only boost when margin between top candidates is below this">Max Margin</label>
+                        <label class="settings-label">
+                          Max Margin
+                          <app-tooltip text="Boosting only activates when the gap between top candidates is below this threshold. If there's already a clear winner, boosting isn't needed.">
+                            <i class="ti ti-info-circle"></i>
+                          </app-tooltip>
+                        </label>
                         <div class="settings-row">
                           <input type="range" class="settings-slider" min="0.05" max="0.40" step="0.01" x-model="settings.ambiguityMarginThreshold" @input="updateBoostingSetting('ambiguityMarginThreshold', parseFloat($event.target.value))">
                           <span class="settings-value" x-text="formatThreshold(settings.ambiguityMarginThreshold)"></span>
@@ -627,7 +652,12 @@
                       </div>
 
                       <div class="settings-section">
-                        <label class="settings-label" title="Skip boosting if best match similarity is above this">Skip if Confident</label>
+                        <label class="settings-label">
+                          Skip if Confident
+                          <app-tooltip text="If the best match already exceeds this similarity, skip boosting entirely — the match is confident enough without it.">
+                            <i class="ti ti-info-circle"></i>
+                          </app-tooltip>
+                        </label>
                         <div class="settings-row">
                           <input type="range" class="settings-slider" min="0.70" max="0.95" step="0.01" x-model="settings.skipBoostIfConfident" @input="updateBoostingSetting('skipBoostIfConfident', parseFloat($event.target.value))">
                           <span class="settings-value" x-text="formatThreshold(settings.skipBoostIfConfident)"></span>
@@ -635,7 +665,12 @@
                       </div>
 
                       <div class="settings-section">
-                        <label class="settings-label" title="Don't boost if best match is below this (garbage match)">Min Similarity</label>
+                        <label class="settings-label">
+                          Min Similarity
+                          <app-tooltip text="Don't apply boosting if the best match is below this threshold. Prevents boosting poor matches that shouldn't be assigned regardless.">
+                            <i class="ti ti-info-circle"></i>
+                          </app-tooltip>
+                        </label>
                         <div class="settings-row">
                           <input type="range" class="settings-slider" min="0.40" max="0.75" step="0.01" x-model="settings.minSimilarityForBoosting" @input="updateBoostingSetting('minSimilarityForBoosting', parseFloat($event.target.value))">
                           <span class="settings-value" x-text="formatThreshold(settings.minSimilarityForBoosting)"></span>
@@ -643,7 +678,12 @@
                       </div>
 
                       <div class="settings-section">
-                        <label class="settings-label" title="Even with boost, must meet this threshold for assignment">Min After Boost</label>
+                        <label class="settings-label">
+                          Min After Boost
+                          <app-tooltip text="Even after boosting, the final similarity must meet this minimum to be assigned. Acts as a safety floor to prevent bad attributions.">
+                            <i class="ti ti-info-circle"></i>
+                          </app-tooltip>
+                        </label>
                         <div class="settings-row">
                           <input type="range" class="settings-slider" min="0.60" max="0.85" step="0.01" x-model="settings.minSimilarityAfterBoost" @input="updateBoostingSetting('minSimilarityAfterBoost', parseFloat($event.target.value))">
                           <span class="settings-value" x-text="formatThreshold(settings.minSimilarityAfterBoost)"></span>
