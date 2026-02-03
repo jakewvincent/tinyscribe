@@ -2495,19 +2495,19 @@ body.resizing * {
   font-size: 1em;
 }
 
-.btn:not(.primary):not(.secondary):not(.danger-text) {
+.btn.success {
   background: var(--success-color);
   color: white;
   box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
 }
 
-.btn:not(.primary):not(.secondary):not(.danger-text):hover:not(:disabled) {
+.btn.success:hover:not(:disabled) {
   background: var(--success-hover);
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(16, 185, 129, 0.35);
 }
 
-.btn:not(.primary):not(.secondary):not(.danger-text):active:not(:disabled) {
+.btn.success:active:not(:disabled) {
   transform: translateY(0);
   box-shadow: 0 1px 2px rgba(16, 185, 129, 0.3);
 }

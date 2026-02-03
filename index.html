@@ -47,7 +47,7 @@
       </div>
       <div class="topbar-center" x-data="recordingControls()" x-cloak>
         <div class="button-group">
-          <button id="record-btn" class="btn"
+          <button id="record-btn" class="btn success"
                   :class="{ 'recording': isRecording }"
                   :disabled="!modelLoaded"
                   @click="toggleRecording()"
@@ -899,7 +899,7 @@
             <button id="modal-upload-btn" class="btn secondary"><i class="ti ti-upload"></i> Upload</button>
             <input type="file" id="modal-file-input" accept="audio/*" class="hidden">
           </div>
-          <button id="modal-finish-btn" class="btn" disabled><i class="ti ti-check"></i> Finish</button>
+          <button id="modal-finish-btn" class="btn success" disabled><i class="ti ti-check"></i> Finish</button>
           <button id="modal-cancel-btn" class="btn secondary"><i class="ti ti-x"></i> Cancel</button>
         </div>
       </div>
