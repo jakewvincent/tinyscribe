@@ -1,3 +1,41 @@
+/* Register custom properties for animatable gradient transitions
+   @property allows CSS to understand these are colors/percentages and can be interpolated */
+@property --gradient-color-1 {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+
+@property --gradient-color-2 {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+
+@property --gradient-color-3 {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+
+@property --gradient-color-4 {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+
+@property --gradient-pos-x {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+
+@property --gradient-pos-y {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 50%;
+}
+
 :root {
   /* Speaker colors */
   --speaker-0: #3b82f6; /* Blue */
@@ -5508,6 +5546,108 @@ body.resizing * {
 [data-theme="glassmorphism"] #topbar {
   background: var(--glass-solid);
   box-shadow: var(--shadow-md), var(--glass-inset-strong);
+}
+
+/* Topbar ambient gradient - shows through the glass background
+   Uses CSS custom properties for animatable gradient color stops and position */
+[data-theme="glassmorphism"] #topbar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.85;
+  pointer-events: none;
+  /* Oversized gradient for movement */
+  background-size: 200% 200%;
+  /* Default to loading colors and position */
+  --gradient-color-1: rgba(99, 102, 241, 0.6);
+  --gradient-color-2: rgba(168, 85, 247, 0.5);
+  --gradient-color-3: rgba(59, 130, 246, 0.55);
+  --gradient-color-4: rgba(139, 92, 246, 0.45);
+  --gradient-pos-x: 0%;
+  --gradient-pos-y: 50%;
+  background-image: linear-gradient(
+    120deg,
+    var(--gradient-color-1) 0%,
+    var(--gradient-color-2) 25%,
+    var(--gradient-color-3) 50%,
+    var(--gradient-color-4) 75%,
+    var(--gradient-color-1) 100%
+  );
+  background-position: var(--gradient-pos-x) var(--gradient-pos-y);
+  transition:
+    --gradient-color-1 0.8s cubic-bezier(0.4, 0, 0.2, 1),
+    --gradient-color-2 0.8s cubic-bezier(0.4, 0, 0.2, 1),
+    --gradient-color-3 0.8s cubic-bezier(0.4, 0, 0.2, 1),
+    --gradient-color-4 0.8s cubic-bezier(0.4, 0, 0.2, 1),
+    --gradient-pos-x 0.8s cubic-bezier(0.4, 0, 0.2, 1),
+    --gradient-pos-y 0.8s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.4s ease;
+}
+
+/* Loading state - vibrant indigo/purple/blue, positioned left */
+[data-theme="glassmorphism"] #topbar[data-app-state="loading"]::before {
+  --gradient-color-1: rgba(99, 102, 241, 0.7);
+  --gradient-color-2: rgba(168, 85, 247, 0.6);
+  --gradient-color-3: rgba(59, 130, 246, 0.65);
+  --gradient-color-4: rgba(139, 92, 246, 0.55);
+  --gradient-pos-x: 0%;
+  --gradient-pos-y: 50%;
+  animation: topbar-loading-shimmer 3s ease-in-out infinite;
+}
+
+@keyframes topbar-loading-shimmer {
+  0%, 100% { --gradient-pos-x: 0%; }
+  50% { --gradient-pos-x: 30%; }
+}
+
+/* Ready state - vibrant green/teal, sweeps to center-right */
+[data-theme="glassmorphism"] #topbar[data-app-state="ready"]::before {
+  --gradient-color-1: rgba(16, 185, 129, 0.6);
+  --gradient-color-2: rgba(34, 197, 94, 0.5);
+  --gradient-color-3: rgba(20, 184, 166, 0.55);
+  --gradient-color-4: rgba(52, 211, 153, 0.45);
+  --gradient-pos-x: 100%;
+  --gradient-pos-y: 50%;
+}
+
+/* Recording state - vibrant red/orange with slow sweeping journey */
+[data-theme="glassmorphism"] #topbar[data-app-state="recording"]::before {
+  --gradient-color-1: rgba(239, 68, 68, 0.7);
+  --gradient-color-2: rgba(249, 115, 22, 0.6);
+  --gradient-color-3: rgba(220, 38, 38, 0.65);
+  --gradient-color-4: rgba(248, 113, 113, 0.55);
+  --gradient-pos-x: 0%;
+  --gradient-pos-y: 0%;
+  animation: topbar-recording-journey 12s ease-in-out infinite;
+}
+
+@keyframes topbar-recording-journey {
+  0% {
+    opacity: 0.75;
+    --gradient-pos-x: 0%;
+    --gradient-pos-y: 100%;
+  }
+  25% {
+    opacity: 0.85;
+    --gradient-pos-x: 100%;
+    --gradient-pos-y: 50%;
+  }
+  50% {
+    opacity: 0.9;
+    --gradient-pos-x: 50%;
+    --gradient-pos-y: 0%;
+  }
+  75% {
+    opacity: 0.8;
+    --gradient-pos-x: 0%;
+    --gradient-pos-y: 50%;
+  }
+  100% {
+    opacity: 0.75;
+    --gradient-pos-x: 0%;
+    --gradient-pos-y: 100%;
+  }
 }
 
 /* Workspace - no blur (so nested dropdown blur works) */

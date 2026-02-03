@@ -36,7 +36,7 @@
 
   <div id="app">
     <!-- Top Bar -->
-    <header id="topbar">
+    <header id="topbar" x-data="topbarGradient" :data-app-state="appState">
       <div class="topbar-left">
         <h1>TinyScribe</h1>
         <!-- Speakers Button -->
@@ -49,6 +49,7 @@
         <div class="button-group">
           <button id="record-btn" class="btn success"
                   :class="{ 'recording': isRecording }"
+                  disabled
                   :disabled="!modelLoaded"
                   @click="toggleRecording()"
                   title="Record">

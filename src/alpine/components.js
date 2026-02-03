@@ -482,6 +482,38 @@ document.addEventListener('alpine:init', () => {
   }));
 
   /**
+   * Topbar gradient component
+   * Controls the ambient gradient behind the topbar based on app state
+   */
+  Alpine.data('topbarGradient', () => ({
+    modelLoaded: false,
+    isRecording: false,
+
+    init() {
+      // Check if models are already loaded (handles race condition where
+      // model-loaded event fires before this listener is registered)
+      const recordBtn = document.getElementById('record-btn');
+      if (recordBtn && !recordBtn.disabled) {
+        this.modelLoaded = true;
+      }
+
+      window.addEventListener('model-loaded', () => {
+        this.modelLoaded = true;
+      });
+
+      window.addEventListener('recording-state', (e) => {
+        this.isRecording = e.detail.recording;
+      });
+    },
+
+    get appState() {
+      if (!this.modelLoaded) return 'loading';
+      if (this.isRecording) return 'recording';
+      return 'ready';
+    },
+  }));
+
+  /**
    * Audio Inputs component
    * Manages dual audio input configuration in topbar
    */
