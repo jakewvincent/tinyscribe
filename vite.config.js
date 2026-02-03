@@ -11,6 +11,11 @@ export default defineConfig({
   plugins: [
     viteStaticCopy({
       targets: [
+        // Alpine.js components (must be copied as-is for non-module script loading)
+        {
+          src: 'src/alpine/components.js',
+          dest: 'src/alpine',
+        },
         // VAD model and worklet files
         {
           src: 'node_modules/@ricky0123/vad-web/dist/vad.worklet.bundle.min.js',
