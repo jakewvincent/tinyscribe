@@ -46,7 +46,7 @@ export const SEGMENTATION_MODELS = {
     name: 'Text-based Phrase Gap',
     backend: 'text-gap',
     size: '0 MB',
-    description: 'Current default. Uses Whisper word timing gaps to segment.',
+    description: 'Uses Whisper word timing gaps to segment.',
     maxSpeakers: null,
     params: {
       gapThreshold: {

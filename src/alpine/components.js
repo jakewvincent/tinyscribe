@@ -1577,9 +1577,9 @@ document.addEventListener('alpine:init', () => {
 
     // Editable settings (for unprocessed jobs)
     settings: {
-      // Models
-      embeddingModelId: 'wavlm-base-sv',
-      segmentationModelId: 'phrase-gap',
+      // Models - use exposed defaults from main.js
+      embeddingModelId: window.embeddingModels?.defaultModel || 'wavlm-base-sv',
+      segmentationModelId: window.segmentationModels?.defaultModel || 'pyannote-seg-3',
       // Segmentation params (dynamic based on model)
       segmentationParams: {},
       // Clustering
@@ -1721,9 +1721,9 @@ document.addEventListener('alpine:init', () => {
 
       const s = this.activeJob.settings;
 
-      // Models
-      this.settings.embeddingModelId = s.embeddingModel?.id || 'wavlm-base-sv';
-      this.settings.segmentationModelId = s.segmentationModel?.id || 'phrase-gap';
+      // Models - use exposed defaults from main.js
+      this.settings.embeddingModelId = s.embeddingModel?.id || window.embeddingModels?.defaultModel || 'wavlm-base-sv';
+      this.settings.segmentationModelId = s.segmentationModel?.id || window.segmentationModels?.defaultModel || 'pyannote-seg-3';
 
       // Segmentation params
       this.settings.segmentationParams = { ...(s.segmentationParams || {}) };
