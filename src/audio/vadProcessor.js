@@ -19,6 +19,7 @@ export class VADProcessor {
    * @param {number} [options.preSpeechPadMs] - Audio to include before speech start
    * @param {string} [options.deviceId] - Audio device ID
    * @param {number} [options.channelId] - Channel identifier for dual-input support (default: 0)
+   * @param {boolean} [options.debug] - Enable diagnostic logging for timing analysis
    * @param {Function} [options.onSpeechStart] - Callback when speech starts
    * @param {Function} [options.onSpeechEnd] - Callback when speech ends
    * @param {Function} [options.onSpeechProgress] - Callback for progress updates
@@ -75,6 +76,21 @@ export class VADProcessor {
 
     // Track the active MediaStream for proper cleanup
     this.activeStream = null;
+
+    // Debug mode for timing diagnostics
+    this.debug = options.debug ?? false;
+  }
+
+  /**
+   * Log diagnostic message if debug mode is enabled
+   * @param {string} event - Event name
+   * @param {Object} data - Additional data to log
+   */
+  _debugLog(event, data = {}) {
+    if (!this.debug) return;
+    const timestamp = performance.now().toFixed(2);
+    const prefix = `[VAD ch${this.channelId}]`;
+    console.log(`${prefix} [${timestamp}ms] ${event}`, data);
   }
 
   /**
@@ -132,6 +148,10 @@ export class VADProcessor {
         onSpeechStart: () => {
           this.speechStartTime = performance.now();
           this.currentSpeechBuffer = [];
+          this._debugLog('SPEECH_START', {
+            speechStartTime: this.speechStartTime.toFixed(2),
+            maxDuration: this.maxSpeechDuration,
+          });
           this.onSpeechStart();
 
           // Start max duration check
@@ -139,6 +159,16 @@ export class VADProcessor {
         },
 
         onSpeechEnd: (audio) => {
+          const audioDuration = audio.length / this.sampleRate;
+          const elapsed = this.speechStartTime
+            ? (performance.now() - this.speechStartTime) / 1000
+            : null;
+          this._debugLog('SPEECH_END_VAD', {
+            audioDuration: audioDuration.toFixed(2) + 's',
+            elapsedSinceSpeechStart: elapsed ? elapsed.toFixed(2) + 's' : 'N/A',
+            bufferedFrames: this.currentSpeechBuffer.length,
+            exceedsMax: audioDuration > this.maxSpeechDuration,
+          });
           this.stopMaxDurationCheck();
           this.handleSpeechSegment(audio, false);
         },
@@ -248,6 +278,12 @@ export class VADProcessor {
     const maxDurationWithBuffer = this.maxSpeechDuration * 1.1; // 10% buffer for timing variance
     if (duration > maxDurationWithBuffer && !isFinal) {
       console.warn(`[VAD] Splitting oversized segment: ${duration.toFixed(2)}s exceeds max ${this.maxSpeechDuration}s`);
+      this._debugLog('OVERSIZED_SEGMENT_SPLIT', {
+        audioDuration: duration.toFixed(2) + 's',
+        maxAllowed: maxDurationWithBuffer.toFixed(2) + 's',
+        willSplitInto: Math.ceil(duration / this.maxSpeechDuration) + ' chunks',
+        reason: 'VAD delivered audio exceeding max duration - interval check may have been blocked',
+      });
 
       // Split into chunks of maxSpeechDuration
       const samplesPerChunk = Math.floor(this.maxSpeechDuration * this.sampleRate);
@@ -312,11 +348,22 @@ export class VADProcessor {
    */
   startMaxDurationCheck() {
     this.stopMaxDurationCheck();
+    this._lastIntervalLog = 0; // Track last log time for periodic heartbeat
 
     this.maxDurationCheckInterval = setInterval(() => {
       if (this.speechStartTime === null) return;
 
-      const duration = (performance.now() - this.speechStartTime) / 1000;
+      const now = performance.now();
+      const duration = (now - this.speechStartTime) / 1000;
+
+      // Log heartbeat every 5 seconds during speech (helps diagnose if interval is running)
+      if (this.debug && now - this._lastIntervalLog > 5000) {
+        this._debugLog('INTERVAL_HEARTBEAT', {
+          speechDuration: duration.toFixed(2) + 's',
+          untilForceEmit: (this.maxSpeechDuration - duration).toFixed(2) + 's',
+        });
+        this._lastIntervalLog = now;
+      }
 
       if (duration >= this.maxSpeechDuration) {
         // Force emit current speech and continue
@@ -342,6 +389,16 @@ export class VADProcessor {
     if (this.currentSpeechBuffer.length === 0) return;
 
     const audio = this.concatenateFrames(this.currentSpeechBuffer);
+    const audioDuration = audio.length / this.sampleRate;
+    const elapsed = this.speechStartTime
+      ? (performance.now() - this.speechStartTime) / 1000
+      : null;
+    this._debugLog('FORCE_EMIT_MAX_DURATION', {
+      audioDuration: audioDuration.toFixed(2) + 's',
+      elapsedSinceSpeechStart: elapsed ? elapsed.toFixed(2) + 's' : 'N/A',
+      bufferedFrames: this.currentSpeechBuffer.length,
+      maxDuration: this.maxSpeechDuration,
+    });
     this.handleSpeechSegment(audio, false, true); // wasForced = true
 
     // Reset for continued speech - keep the overlap portion in buffer
@@ -350,6 +407,9 @@ export class VADProcessor {
       // We just need to reset the speech tracking
       this.speechStartTime = performance.now();
       this.currentSpeechBuffer = [];
+      this._debugLog('SPEECH_CONTINUE', {
+        newSpeechStartTime: this.speechStartTime.toFixed(2),
+      });
     }
   }
 
