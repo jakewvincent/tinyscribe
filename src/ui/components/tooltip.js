@@ -121,9 +121,16 @@ class AppTooltip extends HTMLElement {
     this._portal.setAttribute('data-position', position);
 
     // Calculate portal position
-    const { top, left } = this._calculatePosition(rect, position);
+    const { top, left, arrowOffset } = this._calculatePosition(rect, position);
     this._portal.style.top = `${top}px`;
     this._portal.style.left = `${left}px`;
+
+    // Set arrow offset as CSS custom property (for when tooltip is clamped)
+    if (arrowOffset !== undefined) {
+      this._portal.style.setProperty('--arrow-offset', `${arrowOffset}px`);
+    } else {
+      this._portal.style.removeProperty('--arrow-offset');
+    }
   }
 
   _getOptimalPosition(rect) {
@@ -172,6 +179,7 @@ class AppTooltip extends HTMLElement {
     this._portal.style.visibility = '';
 
     let top, left;
+    let arrowOffset; // Offset from center when tooltip is clamped
 
     switch (position) {
       case 'up':
@@ -192,19 +200,23 @@ class AppTooltip extends HTMLElement {
         break;
       case 'up-left':
         top = rect.top - portalRect.height - gap - arrowSize;
-        left = rect.right - portalRect.width;
+        // Position so arrow (14px from right edge) points at trigger center
+        left = rect.left + rect.width / 2 - portalRect.width + 14;
         break;
       case 'up-right':
         top = rect.top - portalRect.height - gap - arrowSize;
-        left = rect.left;
+        // Position so arrow (14px from left edge) points at trigger center
+        left = rect.left + rect.width / 2 - 14;
         break;
       case 'down-left':
         top = rect.bottom + gap + arrowSize;
-        left = rect.right - portalRect.width;
+        // Position so arrow (14px from right edge) points at trigger center
+        left = rect.left + rect.width / 2 - portalRect.width + 14;
         break;
       case 'down-right':
         top = rect.bottom + gap + arrowSize;
-        left = rect.left;
+        // Position so arrow (14px from left edge) points at trigger center
+        left = rect.left + rect.width / 2 - 14;
         break;
       default:
         top = rect.top - portalRect.height - gap - arrowSize;
@@ -213,10 +225,25 @@ class AppTooltip extends HTMLElement {
 
     // Clamp to viewport with padding
     const padding = 8;
+    const originalLeft = left;
     left = Math.max(padding, Math.min(left, window.innerWidth - portalRect.width - padding));
     top = Math.max(padding, Math.min(top, window.innerHeight - portalRect.height - padding));
 
-    return { top, left };
+    // Calculate arrow offset for centered up/down positions when clamped
+    // Corner positions (up-left, up-right, down-left, down-right) don't need dynamic offset
+    // because the tooltip body is positioned to align the fixed arrow with trigger center
+    if (position === 'up' || position === 'down') {
+      if (left !== originalLeft) {
+        const triggerCenterX = rect.left + rect.width / 2;
+        arrowOffset = triggerCenterX - left - portalRect.width / 2;
+        // Clamp so arrow stays in safe zone (14px from edges)
+        const safeZone = 14;
+        const maxOffset = portalRect.width / 2 - safeZone;
+        arrowOffset = Math.max(-maxOffset, Math.min(maxOffset, arrowOffset));
+      }
+    }
+
+    return { top, left, arrowOffset };
   }
 }
 

@@ -5686,17 +5686,17 @@ app-tooltip [slot="content"] {
 }
 
 .tooltip-portal[data-position="up"]::after {
-  left: 50%;
+  left: calc(50% + var(--arrow-offset, 0px));
   transform: translateX(-50%);
 }
 
 .tooltip-portal[data-position="up-left"]::after {
-  right: 0.5rem;
+  right: 9px; /* 14px - 5px (half arrow width) */
   left: auto;
 }
 
 .tooltip-portal[data-position="up-right"]::after {
-  left: 0.5rem;
+  left: 9px; /* 14px - 5px (half arrow width) */
 }
 
 /* Arrow positions - down variants (tooltip below trigger) */
@@ -5709,17 +5709,17 @@ app-tooltip [slot="content"] {
 }
 
 .tooltip-portal[data-position="down"]::after {
-  left: 50%;
+  left: calc(50% + var(--arrow-offset, 0px));
   transform: translateX(-50%);
 }
 
 .tooltip-portal[data-position="down-left"]::after {
-  right: 0.5rem;
+  right: 9px; /* 14px - 5px (half arrow width) */
   left: auto;
 }
 
 .tooltip-portal[data-position="down-right"]::after {
-  left: 0.5rem;
+  left: 9px; /* 14px - 5px (half arrow width) */
 }
 
 /* Arrow positions - left (tooltip to left of trigger) */
