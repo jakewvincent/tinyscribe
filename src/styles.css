@@ -3291,7 +3291,7 @@ body.resizing * {
   padding: var(--space-sm);
   border-radius: var(--radius-sm);
   margin-bottom: var(--space-sm);
-  background: var(--bg-color);
+  background: var(--panel-bg);
   border-left: 3px solid var(--participant-color, var(--text-muted));
   transition: background-color var(--transition-fast);
 }
@@ -3317,7 +3317,7 @@ body.resizing * {
 
 /* Unknown (non-enrolled) speaker styling */
 .participant-item.participant-unknown {
-  background: var(--border-light);
+  background: var(--bg-color);
   border-left-style: dashed;
 }
 
@@ -4080,7 +4080,7 @@ body.resizing * {
 .participant-item {
   margin-bottom: var(--space-sm-md);
   padding: var(--space-sm);
-  background: var(--bg-color);
+  background: var(--panel-bg);
   border-radius: var(--radius-sm);
   border-left: 3px solid var(--participant-color, #64748b);
 }
