@@ -873,10 +873,11 @@ body.resizing * {
 /* Raw chunk styling */
 .raw-chunk {
   margin-bottom: var(--space-md);
-  padding: var(--space-sm);
-  background: var(--bg-color);
-  border-radius: var(--radius-sm);
-  border-left: 3px solid var(--speaker-0);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--panel-radius);
+  box-shadow: var(--panel-shadow), var(--panel-inset-shadow);
 }
 
 .raw-chunk-header {

@@ -2180,17 +2180,13 @@ export class App {
 
     chunkEl.appendChild(wordsEl);
 
-    // Summary line
-    const summaryEl = document.createElement('div');
-    summaryEl.className = 'raw-chunk-summary';
+    // Summary line - only show when it adds information beyond the header
     if (mergeInfo && mergeInfo.mergeIndex > 0) {
-      summaryEl.textContent = `Merged ${mergeInfo.mergeIndex} overlapping words (${mergeInfo.method}, ${(mergeInfo.confidence * 100).toFixed(0)}% confidence)`;
-    } else if (overlapDuration > 0) {
-      summaryEl.textContent = `${allWords.length} words (first chunk or no overlap match)`;
-    } else {
-      summaryEl.textContent = `${allWords.length} words`;
+      const summaryEl = document.createElement('div');
+      summaryEl.className = 'raw-chunk-summary';
+      summaryEl.textContent = `Merged ${mergeInfo.mergeIndex} overlapping words`;
+      chunkEl.appendChild(summaryEl);
     }
-    chunkEl.appendChild(summaryEl);
 
     this.rawChunksContainer.appendChild(chunkEl);
 

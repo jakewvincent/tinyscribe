@@ -465,6 +465,30 @@ box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 padding: 0.5rem;
 ```
 
+**IMPORTANT - Check existing patterns before proposing new solutions:**
+
+When styling components, especially for theme support (e.g., glassmorphism), **always check if semantic design tokens already handle the use case** before proposing theme-specific overrides like `[data-theme="glassmorphism"] .my-component { ... }`.
+
+The design token system uses semantic tokens (e.g., `--panel-bg`, `--panel-shadow`, `--panel-radius`) that are remapped per theme. If you use these tokens in base styles, theme support comes automatically:
+
+```css
+/* Good: uses semantic tokens that themes remap automatically */
+.my-component {
+  background: var(--panel-bg);
+  border-radius: var(--panel-radius);
+  box-shadow: var(--panel-shadow), var(--panel-inset-shadow);
+}
+
+/* Avoid: theme-specific override when semantic tokens would suffice */
+[data-theme="glassmorphism"] .my-component {
+  background: var(--glass-faint);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg), var(--glass-inset);
+}
+```
+
+Before writing any theme-specific CSS, ask: "Do semantic tokens already exist that get remapped by themes?" Check `:root` and `[data-theme="glassmorphism"]` in styles.css to see which tokens have theme-specific values.
+
 See `STYLING.md` for the complete design token reference and usage guidelines.
 
 ### Commits
