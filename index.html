@@ -339,8 +339,9 @@
 
               <!-- Edit popover -->
               <div class="job-edit-popover-container">
-                <button class="btn-icon-sm" @click.stop="openEditPopover()" title="Edit job name and notes">
+                <button class="btn secondary small" @click.stop="openEditPopover()" title="Edit job name and notes">
                   <i class="ti ti-pencil"></i>
+                  Edit
                 </button>
 
                 <div x-show="editPopoverOpen" x-transition class="job-edit-popover">
@@ -370,8 +371,9 @@
 
               <!-- Delete with confirmation -->
               <div class="job-delete-confirm-container">
-                <button class="btn-icon-sm" :class="{ 'danger': deleteConfirmOpen }" :disabled="!canDelete" @click.stop="confirmDelete()" title="Delete job">
+                <button class="btn secondary small" :class="{ 'danger': deleteConfirmOpen }" :disabled="!canDelete" @click.stop="confirmDelete()" title="Delete job">
                   <i class="ti ti-trash"></i>
+                  Delete
                 </button>
 
                 <div x-show="deleteConfirmOpen" x-transition class="job-delete-confirm">
