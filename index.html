@@ -8,6 +8,10 @@
   <script>
     // Apply saved layout preferences before render to prevent flash
     (function() {
+      // Apply theme (default to glassmorphism)
+      var theme = localStorage.getItem('app-theme') || 'glassmorphism';
+      document.documentElement.setAttribute('data-theme', theme);
+
       var sidebarWidth = localStorage.getItem('sidebar-width');
       if (sidebarWidth) {
         document.documentElement.style.setProperty('--sidebar-width', sidebarWidth + 'px');
