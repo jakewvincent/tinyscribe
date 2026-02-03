@@ -887,7 +887,7 @@ export class App {
       this.returnToLive();
     }
 
-    // Reset for new session
+    // Reset for new session (preserves enrolled speakers by default)
     this.transcriptMerger.reset();
     this.clearTranscriptDisplay();
     this.clearRawChunksDisplay();
@@ -1573,6 +1573,14 @@ export class App {
       if (!merger) {
         const channelConfig = this.channelConfigs.get(channelId);
         merger = new TranscriptMerger(channelConfig?.expectedSpeakers ?? this.numSpeakers);
+
+        // Import enrolled speakers from the main clusterer so channel mergers can match them
+        const enrolledSpeakers = this.transcriptMerger.speakerClusterer.exportEnrolledSpeakers();
+        if (enrolledSpeakers.length > 0) {
+          merger.speakerClusterer.importEnrolledSpeakers(enrolledSpeakers);
+          console.log(`[App] Channel ${channelId} merger created with ${enrolledSpeakers.length} enrolled speaker(s)`);
+        }
+
         this.channelMergers.set(channelId, merger);
       }
 
@@ -4326,6 +4334,7 @@ export class App {
    */
   async loadSavedEnrollments() {
     const enrollments = await EnrollmentManager.loadAll();
+
     if (enrollments.length > 0) {
       // Prepare enrollments with model-specific embeddings for the clusterer
       const modelId = ModelSelectionStore.getEmbeddingModel();
@@ -4339,6 +4348,8 @@ export class App {
 
       // Update Alpine UI with enrolled state
       await this.dispatchEnrollmentsUpdated(enrollments);
+
+      console.log(`[App] Loaded ${enrollmentsForClusterer.length} enrollment(s) for model "${modelId}"`);
     }
   }
 
