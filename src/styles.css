@@ -5466,10 +5466,12 @@ body.resizing * {
   background: var(--glass-medium);
 }
 
-/* Status bar - specific background */
+/* Status bar - specific background, no backdrop-filter so child popovers can blur */
 [data-theme="glassmorphism"] #status-bar {
   background: var(--glass-light);
   box-shadow: var(--glass-inset-strong);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 /* Primary button - custom styling */
