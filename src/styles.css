@@ -428,28 +428,7 @@ body {
   50% { opacity: 0.5; }
 }
 
-.add-input-btn {
-  padding: var(--space-2xs) var(--space-sm);
-  font-size: var(--text-sm);
-  background: transparent;
-  border: 1px dashed var(--border-color);
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  white-space: nowrap;
-}
-
-.add-input-btn:hover:not(:disabled) {
-  border-color: var(--primary);
-  color: var(--primary);
-  background: var(--primary-bg);
-}
-
-.add-input-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+/* Add Input just uses .btn.secondary.small - no custom styles needed */
 
 .remove-input-btn {
   opacity: 0.5;
