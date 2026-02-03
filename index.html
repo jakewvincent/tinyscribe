@@ -218,14 +218,74 @@
       <!-- Transcript Workspace (left) -->
       <section id="transcript-section" class="workspace">
         <!-- Raw Chunks Panel (top 1/3) -->
-        <div id="raw-chunks-panel">
+        <div id="raw-chunks-panel" x-data="captureSettingsPanel">
           <div class="panel-header-inline">
-            <h3>Raw ASR</h3>
-            <span class="panel-subtitle">Word-by-word transcription before processing</span>
+            <h3>Capture Stage</h3>
+            <span class="panel-subtitle">VAD-triggered chunks sent to Whisper</span>
             <button id="export-raw-btn" class="btn secondary small" disabled><i class="ti ti-download"></i> Export</button>
+            <button class="btn accent small capture-settings-toggle" :class="{ 'active': isVisible }" @click="toggle()" title="Toggle capture settings">
+              <i class="ti ti-settings"></i>
+              Capture Settings
+            </button>
           </div>
-          <div id="raw-chunks-container">
-            <p class="placeholder">Raw chunk data will appear here...</p>
+          <div class="capture-panel-body">
+            <div id="raw-chunks-container">
+              <p class="placeholder">Raw chunk data will appear here...</p>
+            </div>
+
+            <!-- Capture Settings Sidebar -->
+            <div class="capture-settings-sidebar" x-show="isVisible" x-cloak x-transition>
+              <div class="settings-content">
+                <div class="settings-group">
+                  <div class="settings-group-header">VAD Settings</div>
+                  <div class="settings-group-content">
+                    <!-- Min Speech Duration -->
+                    <div class="settings-section">
+                      <label class="settings-label">
+                        Min Speech Duration
+                        <app-tooltip text="Minimum duration for a speech segment to be captured. Shorter segments are discarded by VAD. Lower values catch short words like 'yes' or 'no', but may capture more noise.">
+                          <i class="ti ti-info-circle"></i>
+                        </app-tooltip>
+                      </label>
+                      <div class="settings-slider-row">
+                        <input type="range" class="settings-slider" min="0.1" max="2.0" step="0.1" x-model="settings.minSpeechDuration" @input="updateSetting('minSpeechDuration', $event.target.value)">
+                        <span class="settings-slider-value" x-text="settings.minSpeechDuration + 's'"></span>
+                      </div>
+                    </div>
+
+                    <!-- Pre-Speech Pad -->
+                    <div class="settings-section">
+                      <label class="settings-label">
+                        Pre-Speech Pad
+                        <app-tooltip text="Audio captured before speech is detected. Ensures word beginnings aren't clipped. Higher values are safer but may capture trailing audio from the previous utterance.">
+                          <i class="ti ti-info-circle"></i>
+                        </app-tooltip>
+                      </label>
+                      <div class="settings-slider-row">
+                        <input type="range" class="settings-slider" min="50" max="300" step="25" x-model="settings.preSpeechPadMs" @input="updateSetting('preSpeechPadMs', $event.target.value)">
+                        <span class="settings-slider-value" x-text="settings.preSpeechPadMs + 'ms'"></span>
+                      </div>
+                    </div>
+
+                    <!-- Silence Threshold (redemptionMs) -->
+                    <div class="settings-section">
+                      <label class="settings-label">
+                        Silence Threshold
+                        <app-tooltip text="How long silence must last before ending a speech segment. Lower values create more frequent, shorter chunks. Higher values allow for natural pauses within a single chunk.">
+                          <i class="ti ti-info-circle"></i>
+                        </app-tooltip>
+                      </label>
+                      <div class="settings-slider-row">
+                        <input type="range" class="settings-slider" min="100" max="1000" step="50" x-model="settings.redemptionMs" @input="updateSetting('redemptionMs', $event.target.value)">
+                        <span class="settings-slider-value" x-text="settings.redemptionMs + 'ms'"></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <p class="settings-hint">These settings apply when recording starts. They cannot be changed mid-recording.</p>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -235,8 +295,8 @@
         <!-- Processed Transcript (bottom 2/3) -->
         <div id="processed-panel">
           <div class="panel-header-inline">
-            <h3>Processed Transcript</h3>
-            <span class="panel-subtitle">Grouped into phrases with speaker assignment</span>
+            <h3>Processing Stage</h3>
+            <span class="panel-subtitle">Segmentation, clustering, and speaker attribution</span>
             <!-- Feature 7: Comparison mode toggle -->
             <div x-data="comparisonMode" class="comparison-mode-controls">
               <button class="comparison-toggle" :class="{ 'active': enabled }" @click="toggle()" title="Compare segment embeddings">

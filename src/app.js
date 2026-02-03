@@ -923,6 +923,17 @@ export class App {
       },
     });
 
+    // Get capture settings from Alpine store (user-configurable VAD params)
+    const captureSettings = window.Alpine?.store('captureSettings')?.getSettings() ?? {};
+    const vadOptions = {
+      minSpeechDuration: captureSettings.minSpeechDuration ?? 0.3,
+      maxSpeechDuration: 15.0,
+      overlapDuration: 1.5,
+      preSpeechPadMs: captureSettings.preSpeechPadMs ?? 150,
+      redemptionMs: captureSettings.redemptionMs ?? 300,
+      debug: this.debugLogger?.enabled ?? false,
+    };
+
     // Add configured inputs (from Alpine audioInputs component)
     if (this.channelConfigs.size > 0) {
       for (const [channelId, config] of this.channelConfigs) {
@@ -930,12 +941,7 @@ export class App {
           deviceId: config.deviceId,
           expectedSpeakers: config.expectedSpeakers,
           label: config.label,
-          vadOptions: {
-            minSpeechDuration: 1.0,
-            maxSpeechDuration: 15.0,
-            overlapDuration: 1.5,
-            debug: this.debugLogger?.enabled ?? false,
-          },
+          vadOptions,
         });
       }
     } else {
@@ -945,12 +951,7 @@ export class App {
         deviceId: selectedDeviceId,
         expectedSpeakers: this.numSpeakers,
         label: 'Input 1',
-        vadOptions: {
-          minSpeechDuration: 1.0,
-          maxSpeechDuration: 15.0,
-          overlapDuration: 1.5,
-          debug: this.debugLogger?.enabled ?? false,
-        },
+        vadOptions,
       });
       // Update channelConfigs to reflect the default input
       this.channelConfigs.set(0, {

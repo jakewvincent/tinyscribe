@@ -4874,6 +4874,55 @@ body.resizing * {
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
 }
 
+.settings-slider-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.settings-slider-value {
+  font-size: var(--text-sm);
+  color: var(--text-color);
+  font-weight: var(--font-weight-medium);
+  min-width: 48px;
+  text-align: right;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+}
+
+/* Capture Settings Panel (Raw ASR / Capture Stage) */
+.capture-panel-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.capture-panel-body #raw-chunks-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-sm);
+}
+
+.capture-settings-sidebar {
+  width: 260px;
+  background: var(--panel-bg);
+  border-left: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.capture-settings-sidebar .settings-content {
+  flex: 1;
+  padding: var(--space-md);
+  overflow-y: auto;
+}
+
+.capture-settings-toggle {
+  margin-left: auto;
+}
+
 /* Unprocessed job empty state in transcript area */
 .job-empty-state {
   display: flex;

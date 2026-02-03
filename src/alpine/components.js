@@ -143,6 +143,85 @@ document.addEventListener('alpine:init', () => {
   });
 
   /**
+   * Capture settings store
+   * Manages VAD/capture stage settings with persistence
+   */
+  Alpine.store('captureSettings', {
+    // Settings with defaults (loaded from localStorage)
+    minSpeechDuration: (() => {
+      try {
+        const saved = localStorage.getItem('capture-min-speech-duration');
+        return saved ? parseFloat(saved) : 0.3;
+      } catch (e) {
+        return 0.3;
+      }
+    })(),
+
+    preSpeechPadMs: (() => {
+      try {
+        const saved = localStorage.getItem('capture-pre-speech-pad');
+        return saved ? parseInt(saved, 10) : 150;
+      } catch (e) {
+        return 150;
+      }
+    })(),
+
+    redemptionMs: (() => {
+      try {
+        const saved = localStorage.getItem('capture-redemption-ms');
+        return saved ? parseInt(saved, 10) : 300;
+      } catch (e) {
+        return 300;
+      }
+    })(),
+
+    // Sidebar visibility
+    sidebarOpen: (() => {
+      try {
+        const saved = localStorage.getItem('capture-settings-sidebar');
+        return saved === 'true';
+      } catch (e) {
+        return false;
+      }
+    })(),
+
+    // Update a setting and persist
+    update(key, value) {
+      this[key] = value;
+      try {
+        const storageKey = {
+          minSpeechDuration: 'capture-min-speech-duration',
+          preSpeechPadMs: 'capture-pre-speech-pad',
+          redemptionMs: 'capture-redemption-ms',
+        }[key];
+        if (storageKey) {
+          localStorage.setItem(storageKey, String(value));
+        }
+      } catch (e) {
+        // Ignore localStorage errors
+      }
+    },
+
+    toggleSidebar() {
+      this.sidebarOpen = !this.sidebarOpen;
+      try {
+        localStorage.setItem('capture-settings-sidebar', String(this.sidebarOpen));
+      } catch (e) {
+        // Ignore localStorage errors
+      }
+    },
+
+    // Get all settings as an object (for app.js to read)
+    getSettings() {
+      return {
+        minSpeechDuration: this.minSpeechDuration,
+        preSpeechPadMs: this.preSpeechPadMs,
+        redemptionMs: this.redemptionMs,
+      };
+    },
+  });
+
+  /**
    * Theme store
    * Manages visual theme selection with persistence
    */
@@ -2017,6 +2096,48 @@ document.addEventListener('alpine:init', () => {
     // Format values for display
     formatThreshold(value) {
       return parseFloat(value).toFixed(2);
+    },
+  }));
+
+  /**
+   * Capture Settings Panel component
+   * Manages VAD/capture stage settings in a sidebar
+   */
+  Alpine.data('captureSettingsPanel', () => ({
+    // Local copy of settings (synced with store)
+    settings: {
+      minSpeechDuration: 0.3,
+      preSpeechPadMs: 150,
+      redemptionMs: 300,
+    },
+
+    // Visibility state
+    isVisible: false,
+
+    init() {
+      // Sync from store
+      const store = Alpine.store('captureSettings');
+      this.settings.minSpeechDuration = store.minSpeechDuration;
+      this.settings.preSpeechPadMs = store.preSpeechPadMs;
+      this.settings.redemptionMs = store.redemptionMs;
+      this.isVisible = store.sidebarOpen;
+    },
+
+    toggle() {
+      this.isVisible = !this.isVisible;
+      Alpine.store('captureSettings').sidebarOpen = this.isVisible;
+      try {
+        localStorage.setItem('capture-settings-sidebar', String(this.isVisible));
+      } catch (e) {
+        // Ignore localStorage errors
+      }
+    },
+
+    updateSetting(key, value) {
+      // Parse numeric values
+      const numValue = key === 'minSpeechDuration' ? parseFloat(value) : parseInt(value, 10);
+      this.settings[key] = numValue;
+      Alpine.store('captureSettings').update(key, numValue);
     },
   }));
 });
