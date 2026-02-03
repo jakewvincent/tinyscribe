@@ -251,8 +251,9 @@
           <div x-data="jobNavigation" x-show="jobs.length > 0 || $store.liveMode.isLiveMode" x-cloak class="job-navigation-bar">
             <!-- Far left: Participants toggle -->
             <div class="job-nav-far-left">
-              <button class="btn-icon-sm job-participants-toggle" :class="{ 'active': participantsSidebarOpen }" @click="toggleParticipants()" title="Toggle participants panel">
+              <button class="btn accent small job-participants-toggle" :class="{ 'active': participantsSidebarOpen }" @click="toggleParticipants()" title="Toggle participants panel">
                 <i class="ti ti-users"></i>
+                Participants
               </button>
             </div>
 
@@ -424,9 +425,6 @@
           <div class="transcript-body" x-data="jobSettingsPanel">
             <!-- Participants Sidebar (left) -->
             <div class="job-participants-sidebar" x-show="$store.jobUI.participantsSidebarOpen" x-cloak x-transition>
-              <div class="sidebar-header">
-                <span class="sidebar-title">Participants</span>
-              </div>
               <div class="sidebar-content">
                 <div id="participants-list"></div>
                 <div id="participants-status" class="participants-status">No participants yet</div>

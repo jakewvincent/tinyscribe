@@ -4343,21 +4343,7 @@ body.resizing * {
   to { transform: rotate(360deg); }
 }
 
-/* Participants toggle */
-.job-participants-toggle {
-  position: relative;
-}
-
-.job-participants-toggle.active {
-  background: var(--speaker-0);
-  color: white;
-}
-
-.job-participants-toggle.active:hover {
-  background: var(--primary-hover);
-}
-
-/* Settings toggle - uses .btn.accent, active state handled by .btn.accent.active */
+/* Participants and Settings toggles use .btn.accent, active state handled by .btn.accent.active */
 
 /* Edit popover */
 .job-edit-popover-container {
@@ -4645,23 +4631,6 @@ body.resizing * {
   overflow: hidden;
 }
 
-.job-participants-sidebar .sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid var(--border-light);
-  background: var(--panel-bg);
-  position: sticky;
-  top: 0;
-  z-index: var(--z-base);
-}
-
-.job-participants-sidebar .sidebar-title {
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-medium);
-  color: var(--text-color);
-}
 
 .job-participants-sidebar .sidebar-content {
   flex: 1;
