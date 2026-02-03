@@ -220,7 +220,11 @@
         <!-- Raw Chunks Panel (top 1/3) -->
         <div id="raw-chunks-panel" x-data="captureSettingsPanel">
           <div class="panel-header-inline">
-            <h3>Capture Stage</h3>
+            <h3>Capture Stage
+              <app-tooltip text="Audio capture and speech-to-text. Microphone audio is monitored by VAD (Voice Activity Detection), which emits speech segments to Whisper for transcription. Each chunk becomes raw ASR output with word-level timestamps.">
+                <i class="ti ti-info-circle"></i>
+              </app-tooltip>
+            </h3>
             <span class="panel-subtitle">VAD-triggered chunks sent to Whisper</span>
             <button id="export-raw-btn" class="btn secondary small" disabled><i class="ti ti-download"></i> Export</button>
             <button class="btn accent small capture-settings-toggle" :class="{ 'active': isVisible }" @click="toggle()" title="Toggle capture settings">
@@ -295,7 +299,11 @@
         <!-- Processed Transcript (bottom 2/3) -->
         <div id="processed-panel">
           <div class="panel-header-inline">
-            <h3>Processing Stage</h3>
+            <h3>Processing Stage
+              <app-tooltip text="Speaker identification and transcript formatting. Raw words are grouped into phrases, speaker embeddings are extracted, and clustering assigns each phrase to a speaker. Conversation inference can boost attributions based on turn-taking patterns.">
+                <i class="ti ti-info-circle"></i>
+              </app-tooltip>
+            </h3>
             <span class="panel-subtitle">Segmentation, clustering, and speaker attribution</span>
             <!-- Feature 7: Comparison mode toggle -->
             <div x-data="comparisonMode" class="comparison-mode-controls">
