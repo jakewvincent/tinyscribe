@@ -344,14 +344,24 @@ export class DebugLogger {
   }
 
   /**
-   * Export the current active session
+   * Export the current active session, or the most recent session if none is active
    */
   async exportCurrentSession() {
-    if (!this.sessionId) {
-      console.warn('DebugLogger: No active session');
-      return null;
+    let sessionIdToExport = this.sessionId;
+
+    // If no active session, try to export the most recent one
+    if (!sessionIdToExport) {
+      const sessions = await this.getSessions();
+      if (sessions.length > 0) {
+        sessionIdToExport = sessions[0].sessionId;
+        console.log('DebugLogger: No active session, exporting most recent:', sessionIdToExport);
+      } else {
+        console.warn('DebugLogger: No sessions available to export');
+        return null;
+      }
     }
-    return this.exportSession(this.sessionId);
+
+    return this.exportSession(sessionIdToExport);
   }
 
   /**
