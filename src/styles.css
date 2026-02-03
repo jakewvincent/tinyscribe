@@ -4914,27 +4914,6 @@ body.resizing * {
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
 }
 
-/* Settings footer with process button */
-.settings-footer {
-  padding: var(--space-md);
-  border-top: 1px solid var(--border-light);
-  background: var(--panel-bg);
-  position: sticky;
-  bottom: 0;
-}
-
-.settings-footer .btn {
-  width: 100%;
-  justify-content: center;
-  padding: var(--space-sm) var(--space-md);
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-medium);
-}
-
-.settings-footer .btn .ti {
-  margin-right: var(--space-xs);
-}
-
 /* Unprocessed job empty state in transcript area */
 .job-empty-state {
   display: flex;
