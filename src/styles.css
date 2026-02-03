@@ -336,9 +336,13 @@ body {
 }
 
 .topbar-center #recording-status {
+  flex: 1;
+  min-width: 0; /* Allow shrinking below content size */
   font-size: var(--text-sm);
   color: var(--text-muted);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .topbar-right {
