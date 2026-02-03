@@ -934,7 +934,7 @@ export class App {
             minSpeechDuration: 1.0,
             maxSpeechDuration: 15.0,
             overlapDuration: 1.5,
-            debug: this.debugLogger?.isEnabled() ?? false,
+            debug: this.debugLogger?.enabled ?? false,
           },
         });
       }
@@ -949,7 +949,7 @@ export class App {
           minSpeechDuration: 1.0,
           maxSpeechDuration: 15.0,
           overlapDuration: 1.5,
-          debug: this.debugLogger?.isEnabled() ?? false,
+          debug: this.debugLogger?.enabled ?? false,
         },
       });
       // Update channelConfigs to reflect the default input
