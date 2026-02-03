@@ -265,7 +265,7 @@
 
               <!-- Job dropdown -->
               <div class="job-dropdown-container">
-                <button class="job-dropdown-trigger" @click.stop="toggleDropdown()">
+                <button class="btn secondary job-dropdown-trigger" @click.stop="toggleDropdown()">
                   <span class="job-dropdown-label">
                     <span class="job-name" x-text="activeJob?.name || 'Select Job'"></span>
                     <span class="job-count" x-text="'(' + (currentIndex + 1) + '/' + jobCount + ')'"></span>
