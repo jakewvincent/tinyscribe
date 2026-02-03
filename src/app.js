@@ -161,6 +161,7 @@ export class App {
     this.modalCancelBtn = document.getElementById('modal-cancel-btn');
     this.modalUploadBtn = document.getElementById('modal-upload-btn');
     this.modalFileInput = document.getElementById('modal-file-input');
+    this.modalMicSelect = document.getElementById('modal-mic-select');
 
     // Status bar and phrase stats are managed by Alpine - we dispatch events to update them
 
@@ -4645,7 +4646,7 @@ export class App {
    * Open the enrollment modal
    * @param {string} name - Speaker name for enrollment
    */
-  openEnrollmentModal(name) {
+  async openEnrollmentModal(name) {
     // Store last focused element for accessibility
     this.lastFocusedElement = document.activeElement;
 
@@ -4657,6 +4658,9 @@ export class App {
 
     // Show first passage
     this.updateModalPassage();
+
+    // Populate microphone select
+    await this.populateModalMicSelect();
 
     // Reset UI state
     this.modalRecordBtn.textContent = 'Record';
@@ -4679,6 +4683,43 @@ export class App {
   }
 
   /**
+   * Populate the microphone select in the enrollment modal
+   */
+  async populateModalMicSelect() {
+    try {
+      // Get available audio devices (this will request permission if needed)
+      const devices = await AudioCapture.getAudioInputDevices({ dispatchEvent: false });
+
+      // Clear existing options
+      this.modalMicSelect.innerHTML = '';
+
+      // Add default option
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = 'Default';
+      this.modalMicSelect.appendChild(defaultOption);
+
+      // Add device options
+      devices.forEach(device => {
+        const option = document.createElement('option');
+        option.value = device.deviceId;
+        option.textContent = device.label;
+        this.modalMicSelect.appendChild(option);
+      });
+
+      // Try to match the main app's selected device
+      const mainSelectedDevice = this.micSelect?.value || '';
+      if (mainSelectedDevice && devices.some(d => d.deviceId === mainSelectedDevice)) {
+        this.modalMicSelect.value = mainSelectedDevice;
+      }
+    } catch (error) {
+      console.error('[App] Failed to populate modal mic select:', error);
+      // Keep default option
+      this.modalMicSelect.innerHTML = '<option value="">Default</option>';
+    }
+  }
+
+  /**
    * Close the enrollment modal
    */
   closeEnrollmentModal() {
@@ -4695,10 +4736,11 @@ export class App {
       this.lastFocusedElement.focus();
     }
 
-    // Clean up VAD
-    if (this.enrollmentVAD) {
-      this.enrollmentVAD.destroy();
-      this.enrollmentVAD = null;
+    // Clean up VAD (safety net - stopModalRecording should have already done this)
+    const vad = this.enrollmentVAD;
+    this.enrollmentVAD = null;
+    if (vad) {
+      vad.destroy().catch(err => console.warn('[App] Error destroying enrollment VAD:', err));
     }
 
     // Clear timer
@@ -4852,8 +4894,11 @@ export class App {
     this.enrollmentAudioChunks = [];
     this.enrollmentStartTime = Date.now();
 
-    // Get selected microphone device ID
-    const selectedDeviceId = this.micSelect.value || null;
+    // Get selected microphone device ID from modal's select (not main app's)
+    const selectedDeviceId = this.modalMicSelect.value || null;
+
+    // Disable mic selection while recording
+    this.modalMicSelect.disabled = true;
 
     // Create VAD processor for enrollment (different config than main recording)
     this.enrollmentVAD = new VADProcessor({
@@ -4870,6 +4915,7 @@ export class App {
 
     const initSuccess = await this.enrollmentVAD.init();
     if (!initSuccess) {
+      this.modalMicSelect.disabled = false;
       this.setModalStatus('Failed to initialize VAD. Please check permissions.', true);
       return;
     }
@@ -4893,6 +4939,12 @@ export class App {
       // Start timer
       this.startRecordingTimer();
     } catch (error) {
+      this.modalMicSelect.disabled = false;
+      // Clean up VAD if it was created
+      if (this.enrollmentVAD) {
+        this.enrollmentVAD.destroy().catch(() => {});
+        this.enrollmentVAD = null;
+      }
       this.setModalStatus('Failed to start recording: ' + error.message, true);
       console.error('Failed to start enrollment VAD:', error);
     }
@@ -4903,14 +4955,25 @@ export class App {
    * @param {boolean} shouldProcess - Whether to process the accumulated audio
    */
   async stopModalRecording(shouldProcess) {
-    // Stop VAD
-    if (this.enrollmentVAD) {
-      await this.enrollmentVAD.stop();
-      await this.enrollmentVAD.destroy();
-      this.enrollmentVAD = null;
+    // Capture VAD reference and null it immediately to prevent race conditions
+    // (e.g., double-click on stop button or modal close during stop)
+    const vad = this.enrollmentVAD;
+    this.enrollmentVAD = null;
+
+    // Stop VAD if it exists
+    if (vad) {
+      try {
+        await vad.stop();
+        await vad.destroy();
+      } catch (error) {
+        console.warn('[App] Error stopping enrollment VAD:', error);
+      }
     }
 
     this.isEnrollmentRecording = false;
+
+    // Re-enable mic selection
+    this.modalMicSelect.disabled = false;
 
     // Stop timer
     if (this.enrollmentRecordingTimer) {
