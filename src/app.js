@@ -1325,6 +1325,20 @@ export class App {
   }
 
   /**
+   * Check if two words match (for lightweight single-word dedup)
+   * Uses OverlapMerger's text normalization for consistency
+   * @param {Object} word1 - First word {text, timestamp}
+   * @param {Object} word2 - Second word {text, timestamp}
+   * @returns {boolean} True if words match after normalization
+   */
+  isWordDuplicate(word1, word2) {
+    if (!word1?.text || !word2?.text) return false;
+    const norm1 = this.overlapMerger.normalizeWord(word1.text);
+    const norm2 = this.overlapMerger.normalizeWord(word2.text);
+    return norm1 === norm2 && norm1.length > 0;
+  }
+
+  /**
    * Handle transcription result from worker
    */
   handleTranscriptionResult(data) {
@@ -1442,6 +1456,31 @@ export class App {
 
         // Adjust timestamps for the words we keep (subtract overlap)
         wordsToUse = this.overlapMerger.adjustTimestamps(wordsToUse, overlapDuration);
+      }
+    }
+
+    // Lightweight single-word dedup for natural VAD boundaries
+    // Handles the ~150ms preSpeechPad overlap that can capture trailing words
+    if (!mergeInfo && lastChunkResult?.words?.length > 0 && wordsToUse.length > 0) {
+      const lastWordPrev = lastChunkResult.words[lastChunkResult.words.length - 1];
+      const firstWordCurr = wordsToUse[0];
+
+      if (this.isWordDuplicate(lastWordPrev, firstWordCurr)) {
+        // Remove duplicate first word
+        wordsToUse = wordsToUse.slice(1);
+
+        // Also filter phrases that only contained the removed word
+        if (phrasesToUse.length > 0) {
+          const removedWordEnd = firstWordCurr.timestamp?.[1] ?? 0;
+          phrasesToUse = phrasesToUse.filter((p) => p.end > removedWordEnd);
+        }
+
+        mergeInfo = {
+          mergeIndex: 1,
+          confidence: 1.0,
+          method: 'single_word_dedup',
+          matchedWords: [firstWordCurr.text],
+        };
       }
     }
 
@@ -3553,6 +3592,7 @@ export class App {
       let wordsToUse = transcript?.chunks || [];
       let chunkStartTime = globalTimeOffset;
 
+      let mergeApplied = false;
       if (lastChunkResult && chunk.overlapDuration > 0) {
         const prevWords = lastChunkResult.transcript?.chunks || [];
         const mergeResult = this.overlapMerger.findMergePoint(prevWords, wordsToUse, chunk.overlapDuration);
@@ -3568,6 +3608,21 @@ export class App {
             start: p.start - chunk.overlapDuration,
             end: p.end - chunk.overlapDuration,
           }));
+          mergeApplied = true;
+        }
+      }
+
+      // Lightweight single-word dedup for natural VAD boundaries (recording reload)
+      // Handles the ~150ms preSpeechPad overlap that can capture trailing words
+      if (!mergeApplied && lastChunkResult?.transcript?.chunks?.length > 0 && wordsToUse.length > 0) {
+        const prevWords = lastChunkResult.transcript.chunks;
+        const lastWordPrev = prevWords[prevWords.length - 1];
+        const firstWordCurr = wordsToUse[0];
+
+        if (this.isWordDuplicate(lastWordPrev, firstWordCurr)) {
+          wordsToUse = wordsToUse.slice(1);
+          const removedWordEnd = firstWordCurr.timestamp?.[1] ?? 0;
+          phrases = phrases.filter(p => p.end > removedWordEnd);
         }
       }
 

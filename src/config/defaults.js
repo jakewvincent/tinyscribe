@@ -68,7 +68,7 @@ export const VAD_DEFAULTS = {
   positiveSpeechThreshold: 0.5,
   negativeSpeechThreshold: 0.35,
   redemptionMs: 300,
-  preSpeechPadMs: 250,
+  preSpeechPadMs: 150, // Reduced from 250ms - 150ms is sufficient for word onsets
 };
 
 // Phrase detection configuration
