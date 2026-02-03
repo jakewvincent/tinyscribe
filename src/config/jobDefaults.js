@@ -164,7 +164,7 @@ export function createJob(options = {}) {
  */
 export function createLiveJob(options = {}) {
   return createJob({
-    name: 'Live Session',
+    name: 'Live Session Job',
     status: JOB_STATUS.LIVE,
     settings: buildJobSettings(options),
   });
