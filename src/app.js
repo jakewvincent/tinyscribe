@@ -1971,8 +1971,8 @@ export class App {
     // Amplify for visibility (typical speech is quiet)
     const normalizedLevel = Math.min(level * 8, 1);
     this.audioVisualizer.style.background = `linear-gradient(to right,
-      #3b82f6 ${normalizedLevel * 100}%,
-      #e2e8f0 ${normalizedLevel * 100}%)`;
+      rgba(59, 130, 246, 0.8) ${normalizedLevel * 100}%,
+      rgba(226, 232, 240, 0.5) ${normalizedLevel * 100}%)`;
 
     // Update buffer bar in status bar (via Alpine event)
     this.bufferFillPercent = Math.round(normalizedLevel * 100);

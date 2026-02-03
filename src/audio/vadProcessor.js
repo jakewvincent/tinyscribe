@@ -174,17 +174,17 @@ export class VADProcessor {
         },
 
         onFrameProcessed: (probs, frame) => {
+          // Calculate RMS for audio level visualization (always, even during silence)
+          let sum = 0;
+          for (let i = 0; i < frame.length; i++) {
+            sum += frame[i] * frame[i];
+          }
+          const rms = Math.sqrt(sum / frame.length);
+          this.onAudioLevel(rms);
+
           // Accumulate frames during speech for max duration handling
           if (this.speechStartTime !== null) {
             this.currentSpeechBuffer.push(frame);
-
-            // Calculate RMS for audio level visualization
-            let sum = 0;
-            for (let i = 0; i < frame.length; i++) {
-              sum += frame[i] * frame[i];
-            }
-            const rms = Math.sqrt(sum / frame.length);
-            this.onAudioLevel(rms);
 
             // Report speech progress
             const duration = (performance.now() - this.speechStartTime) / 1000;

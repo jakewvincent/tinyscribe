@@ -325,8 +325,9 @@ body {
 .topbar-center #audio-visualizer {
   width: 80px;
   height: 24px;
-  background: var(--border-color);
-  border-radius: var(--radius-sm);
+  background: var(--panel-bg);
+  border-radius: var(--radius-md);
+  box-shadow: var(--panel-inset-shadow), 0 0 0 1px var(--border-color);
   display: none;
   overflow: hidden;
 }
@@ -872,7 +873,7 @@ body.resizing * {
 
 /* Raw chunk styling */
 .raw-chunk {
-  margin-bottom: var(--space-md);
+  margin-bottom: var(--space-sm);
   padding: var(--space-sm) var(--space-md);
   background: var(--panel-bg);
   border: 1px solid var(--border-color);
