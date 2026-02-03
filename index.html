@@ -381,8 +381,9 @@
               </div>
 
               <!-- Settings toggle -->
-              <button class="btn-icon-sm job-settings-toggle" :class="{ 'active': settingsSidebarOpen }" @click="toggleSettings()" title="Toggle job settings">
+              <button class="btn secondary small job-settings-toggle" :class="{ 'active': settingsSidebarOpen }" @click="toggleSettings()" title="Toggle job settings">
                 <i class="ti ti-settings"></i>
+                Job Settings
               </button>
             </div>
           </div>
@@ -438,13 +439,6 @@
 
             <!-- Job Settings Sidebar -->
             <div class="job-settings-sidebar" x-show="isVisible && activeJob" x-cloak x-transition>
-              <div class="settings-header">
-                <span class="settings-title">Job Settings</span>
-                <template x-if="isLocked">
-                  <span class="readonly-badge">Locked</span>
-                </template>
-              </div>
-
               <!-- Tab navigation -->
               <div class="settings-tabs">
                 <button class="settings-tab" :class="{ active: activeTab === 'model' }" @click="activeTab = 'model'">

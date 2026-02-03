@@ -4671,32 +4671,6 @@ body.resizing * {
   overflow: hidden;
 }
 
-.settings-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid var(--border-light);
-  background: var(--panel-bg);
-  position: sticky;
-  top: 0;
-  z-index: var(--z-base);
-}
-
-.settings-title {
-  font-size: var(--text-md);
-  font-weight: var(--font-weight-medium);
-  color: var(--text-color);
-}
-
-.readonly-badge {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  background: var(--border-light);
-  padding: var(--space-2xs) var(--space-sm);
-  border-radius: var(--radius-sm);
-}
-
 /* Settings tabs */
 .settings-tabs {
   display: flex;
