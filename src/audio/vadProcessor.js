@@ -72,6 +72,9 @@ export class VADProcessor {
 
     // Sample rate (VAD outputs 16kHz)
     this.sampleRate = 16000;
+
+    // Track the active MediaStream for proper cleanup
+    this.activeStream = null;
   }
 
   /**
@@ -84,12 +87,27 @@ export class VADProcessor {
         const constraints = this.deviceId
           ? { audio: { deviceId: { exact: this.deviceId } } }
           : { audio: true };
-        return navigator.mediaDevices.getUserMedia(constraints);
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        this.activeStream = stream;
+        return stream;
+      };
+
+      // Callback to stop the microphone when VAD pauses
+      const pauseStream = async (stream) => {
+        stream.getTracks().forEach((track) => track.stop());
+        this.activeStream = null;
+      };
+
+      // Callback to get a new stream when VAD resumes
+      const resumeStream = async () => {
+        return getStream();
       };
 
       this.vad = await MicVAD.new({
         // Stream configuration
         getStream,
+        pauseStream,
+        resumeStream,
 
         // VAD model selection (legacy is more reliable for continuous speech)
         model: this.vadModel,
@@ -202,6 +220,12 @@ export class VADProcessor {
       this.stopMaxDurationCheck();
       await this.vad.destroy();
       this.vad = null;
+    }
+
+    // Ensure any lingering stream is stopped
+    if (this.activeStream) {
+      this.activeStream.getTracks().forEach((track) => track.stop());
+      this.activeStream = null;
     }
   }
 
