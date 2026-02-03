@@ -31,6 +31,19 @@ export const SegmentationModelStore = {
   },
 
   /**
+   * Migrate old defaults to new defaults (one-time migration)
+   * Called on app startup
+   */
+  migrateOldDefaults() {
+    const stored = LocalStorageAdapter.getString(LOCAL_STORAGE_KEYS.SEGMENTATION_MODEL_SELECTION);
+    // If user had phrase-gap (old default), migrate to pyannote-seg-3 (new default)
+    if (stored === 'phrase-gap') {
+      console.log('[SegmentationModelStore] Migrating from old default (phrase-gap) to new default (pyannote-seg-3)');
+      this.setSegmentationModel(DEFAULT_SEGMENTATION_MODEL);
+    }
+  },
+
+  /**
    * Set the selected segmentation model ID
    * @param {string} modelId - Must be a valid model ID from SEGMENTATION_MODELS
    * @returns {boolean} Success

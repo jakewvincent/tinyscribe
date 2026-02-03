@@ -14,6 +14,9 @@ import {
 } from './config/segmentation.js';
 import { ModelSelectionStore, SegmentationModelStore } from './storage/index.js';
 
+// Migrate old segmentation model default to new default
+SegmentationModelStore.migrateOldDefaults();
+
 // Register custom elements
 import './ui/components/tooltip.js';
 
