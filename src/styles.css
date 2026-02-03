@@ -5373,11 +5373,12 @@ body.resizing * {
   /* === Glass Design Tokens (used throughout this theme) === */
 
   /* Glass backgrounds at different opacity levels */
+  --glass-bright: rgba(255, 255, 255, 0.9);
   --glass-solid: rgba(255, 255, 255, 0.75);
+  --glass-strong: rgba(255, 255, 255, 0.6);
   --glass-medium: rgba(255, 255, 255, 0.4);
   --glass-light: rgba(255, 255, 255, 0.3);
-  --glass-subtle: rgba(255, 255, 255, 0.2);
-  --glass-faint: rgba(255, 255, 255, 0.15);
+  --glass-faint: rgba(255, 255, 255, 0.2);
   --glass-barely: rgba(255, 255, 255, 0.1);
 
   /* Glass hover states */
@@ -5389,6 +5390,7 @@ body.resizing * {
   --glass-border-light: rgba(255, 255, 255, 0.2);
   --glass-border-faint: rgba(255, 255, 255, 0.15);
   --glass-border-strong: rgba(255, 255, 255, 0.35);
+  --glass-border-medium: rgba(255, 255, 255, 0.5);
 
   /* Glass shadow tint (blue-purple) */
   --glass-shadow-tint: 31, 38, 135;
@@ -5405,7 +5407,7 @@ body.resizing * {
 
   /* Background colors */
   --bg-color: #dfe6ed;
-  --panel-bg: var(--glass-subtle);
+  --panel-bg: var(--glass-faint);
 
   /* Text colors */
   --text-color: #1e293b;
@@ -5421,6 +5423,9 @@ body.resizing * {
   --primary-hover: #4f46e5;
   --primary-bg: rgba(99, 102, 241, 0.15);
   --primary-border: rgba(99, 102, 241, 0.3);
+  --primary-glass: rgba(99, 102, 241, 0.85);
+  --primary-glass-hover: rgba(79, 70, 229, 0.9);
+  --primary-focus-ring: rgba(99, 102, 241, 0.25);
 
   /* Grays mapped to glass opacities */
   --gray-100: var(--glass-faint);
@@ -5462,7 +5467,7 @@ body.resizing * {
   --input-border-width: 1px;
   --input-radius: var(--radius-lg);
   --input-shadow: inset 0 2px 4px rgba(var(--glass-shadow-tint), 0.05);
-  --input-shadow-focus: 0 0 0 3px rgba(99, 102, 241, 0.25);
+  --input-shadow-focus: 0 0 0 3px var(--primary-focus-ring);
 
   /* Modal tokens */
   --modal-radius: var(--radius-2xl);
@@ -5492,7 +5497,7 @@ body.resizing * {
 
 /* Topbar - no blur (so dropdown blur works), glass appearance */
 [data-theme="glassmorphism"] #topbar {
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--glass-solid);
   box-shadow: var(--shadow-md), var(--glass-inset-strong);
 }
 
@@ -5509,29 +5514,29 @@ body.resizing * {
 
 /* Primary button - custom styling */
 [data-theme="glassmorphism"] .btn.primary {
-  background: rgba(99, 102, 241, 0.85);
+  background: var(--primary-glass);
   border-color: var(--glass-border);
-  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3), var(--glass-inset-subtle);
+  box-shadow: 0 4px 16px var(--primary-border), var(--glass-inset-subtle);
 }
 
 [data-theme="glassmorphism"] .btn.primary:hover:not(:disabled) {
-  background: rgba(79, 70, 229, 0.9);
+  background: var(--primary-glass-hover);
 }
 
 /* Job navigation bar */
 [data-theme="glassmorphism"] .job-navigation-bar {
-  background: var(--glass-subtle);
-  box-shadow: inset 0 -1px 1px 0 rgba(255, 255, 255, 0.3);
+  background: var(--glass-faint);
+  box-shadow: inset 0 -1px 1px 0 var(--glass-light);
 }
 
 /* Workspace divider */
 [data-theme="glassmorphism"] .workspace-divider {
   background: var(--glass-medium);
-  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 var(--glass-strong);
 }
 
 [data-theme="glassmorphism"] .workspace-divider:hover {
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--glass-strong);
 }
 
 /* Settings tabs - pill style */
@@ -5563,13 +5568,13 @@ body.resizing * {
 }
 
 [data-theme="glassmorphism"] .panel-header:hover {
-  background: var(--glass-subtle);
+  background: var(--glass-faint);
 }
 
 /* Panel header inline */
 [data-theme="glassmorphism"] .panel-header-inline {
   background: var(--glass-faint);
-  box-shadow: inset 0 -1px 1px 0 rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 -1px 1px 0 var(--glass-faint);
 }
 
 /* Transcript segments */
@@ -5582,28 +5587,28 @@ body.resizing * {
   background: var(--glass-hover);
 }
 
-/* Range slider track - must use hardcoded values (pseudo-element limitation) */
+/* Range slider track */
 [data-theme="glassmorphism"] .tuning-row input[type="range"]::-webkit-slider-runnable-track {
-  background: rgba(255, 255, 255, 0.3);
-  box-shadow: inset 0 1px 2px rgba(31, 38, 135, 0.1);
+  background: var(--glass-light);
+  box-shadow: inset 0 1px 2px rgba(var(--glass-shadow-tint), 0.1);
 }
 
 [data-theme="glassmorphism"] .tuning-row input[type="range"]::-moz-range-track {
-  background: rgba(255, 255, 255, 0.3);
-  box-shadow: inset 0 1px 2px rgba(31, 38, 135, 0.1);
+  background: var(--glass-light);
+  box-shadow: inset 0 1px 2px rgba(var(--glass-shadow-tint), 0.1);
 }
 
-/* Range slider thumb - must use hardcoded values (pseudo-element limitation) */
+/* Range slider thumb */
 [data-theme="glassmorphism"] .tuning-row input[type="range"]::-webkit-slider-thumb {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  box-shadow: 0 2px 8px rgba(31, 38, 135, 0.15), inset 0 1px 1px 0 rgba(255, 255, 255, 0.8);
+  background: var(--glass-bright);
+  border: 1px solid var(--glass-border-medium);
+  box-shadow: 0 2px 8px rgba(var(--glass-shadow-tint), 0.15), inset 0 1px 1px 0 var(--glass-solid);
 }
 
 [data-theme="glassmorphism"] .tuning-row input[type="range"]::-moz-range-thumb {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  box-shadow: 0 2px 8px rgba(31, 38, 135, 0.15), inset 0 1px 1px 0 rgba(255, 255, 255, 0.8);
+  background: var(--glass-bright);
+  border: 1px solid var(--glass-border-medium);
+  box-shadow: 0 2px 8px rgba(var(--glass-shadow-tint), 0.15), inset 0 1px 1px 0 var(--glass-solid);
 }
 
 /* =================================================
@@ -5726,31 +5731,31 @@ app-tooltip [slot="content"] {
 
 /* Glassmorphism theme tooltip override */
 [data-theme="glassmorphism"] .tooltip-portal {
-  background: rgba(30, 41, 59, 0.6);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--glass-tooltip-bg);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  border: 1px solid var(--glass-border-faint);
   box-shadow:
-    0 8px 32px rgba(31, 38, 135, 0.2),
-    inset 0 1px 1px 0 rgba(255, 255, 255, 0.1);
+    0 8px 32px rgba(var(--glass-shadow-tint), 0.2),
+    inset 0 1px 1px 0 var(--glass-barely);
 }
 
 [data-theme="glassmorphism"] .tooltip-portal[data-position="up"]::after,
 [data-theme="glassmorphism"] .tooltip-portal[data-position="up-left"]::after,
 [data-theme="glassmorphism"] .tooltip-portal[data-position="up-right"]::after {
-  border-top-color: rgba(30, 41, 59, 0.6);
+  border-top-color: var(--glass-tooltip-bg);
 }
 
 [data-theme="glassmorphism"] .tooltip-portal[data-position="down"]::after,
 [data-theme="glassmorphism"] .tooltip-portal[data-position="down-left"]::after,
 [data-theme="glassmorphism"] .tooltip-portal[data-position="down-right"]::after {
-  border-bottom-color: rgba(30, 41, 59, 0.6);
+  border-bottom-color: var(--glass-tooltip-bg);
 }
 
 [data-theme="glassmorphism"] .tooltip-portal[data-position="left"]::after {
-  border-left-color: rgba(30, 41, 59, 0.6);
+  border-left-color: var(--glass-tooltip-bg);
 }
 
 [data-theme="glassmorphism"] .tooltip-portal[data-position="right"]::after {
-  border-right-color: rgba(30, 41, 59, 0.6);
+  border-right-color: var(--glass-tooltip-bg);
 }
