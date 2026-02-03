@@ -476,7 +476,12 @@
                   <template x-if="isEditable">
                     <div class="settings-group-content">
                       <div class="settings-section">
-                        <label class="settings-label">Embedding Model</label>
+                        <label class="settings-label">
+                          Embedding Model
+                          <app-tooltip text="Converts audio into a numeric vector (embedding) that captures voice characteristics. Each speaker's unique vocal traits — pitch, timbre, speaking style — become a fixed-size array of numbers. Similar voices produce similar vectors, enabling speaker matching.">
+                            <i class="ti ti-info-circle"></i>
+                          </app-tooltip>
+                        </label>
                         <select class="settings-select" x-model="settings.embeddingModelId" @change="updateSetting('embeddingModelId', $event.target.value)" :disabled="isEmbeddingModelDisabled">
                           <template x-for="model in embeddingModels" :key="model.id">
                             <option :value="model.id" x-text="model.name"></option>
@@ -485,7 +490,12 @@
                       </div>
 
                       <div class="settings-section">
-                        <label class="settings-label">Segmentation</label>
+                        <label class="settings-label">
+                          Segmentation
+                          <app-tooltip text="Divides continuous audio into discrete chunks for speaker analysis. Text-based methods use word timing gaps from transcription. Acoustic methods analyze the waveform directly to detect speaker changes, independent of what's being said.">
+                            <i class="ti ti-info-circle"></i>
+                          </app-tooltip>
+                        </label>
                         <select class="settings-select" x-model="settings.segmentationModelId" @change="onSegmentationModelChange($event.target.value)">
                           <template x-for="model in segmentationModels" :key="model.id">
                             <option :value="model.id" x-text="model.name"></option>
@@ -518,7 +528,12 @@
                       <div class="settings-group-content">
                         <template x-for="key in segmentationParamKeys" :key="key">
                           <div class="settings-section">
-                            <label class="settings-label" :title="getSegParamDescription(key)" x-text="getSegParamLabel(key)"></label>
+                            <label class="settings-label">
+                              <span x-text="getSegParamLabel(key)"></span>
+                              <app-tooltip :text="getSegParamDescription(key)">
+                                <i class="ti ti-info-circle"></i>
+                              </app-tooltip>
+                            </label>
                             <div class="settings-row">
                               <input type="range" class="settings-slider"
                                      :min="getSegParamMin(key)"
