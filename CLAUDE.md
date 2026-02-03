@@ -341,6 +341,56 @@ All configurable constants are centralized in `src/config/defaults.js`:
 - Short phrases (<0.5s) may not get reliable embeddings
 - Phrase boundaries depend on Whisper word timing accuracy
 
+## Testing
+
+Tests use [Vitest](https://vitest.dev/) for fast, Vite-native testing.
+
+```bash
+npm test              # Watch mode (re-runs on file changes)
+npm run test:run      # Single run (CI-friendly)
+npm run test:coverage # With coverage report
+```
+
+### Test Structure
+
+```
+tests/
+├── unit/                    # Unit tests for pure modules
+│   ├── core/
+│   │   ├── embedding/
+│   │   │   ├── speakerClusterer.test.js
+│   │   │   └── embeddingUtils.test.js
+│   │   └── transcription/
+│   │       ├── overlapMerger.test.js
+│   │       └── phraseDetector.test.js
+│   └── storage/
+│       └── localStorageAdapter.test.js
+└── integration/             # Integration tests for critical flows
+    └── enrollmentFlow.test.js
+```
+
+### What's Tested
+
+- **SpeakerClusterer**: Speaker assignment, enrollment import/export, reset behavior, label generation
+- **embeddingUtils**: L2 normalization, cosine similarity edge cases
+- **OverlapMerger**: Text-based overlap merging, Levenshtein distance, fuzzy matching
+- **PhraseDetector**: Phrase boundary detection, embedding extraction from frame features
+- **LocalStorageAdapter**: String/JSON/boolean storage, error handling (uses vitest mocks)
+- **Enrollment Flow**: Verifies enrolled speakers propagate to channel mergers (caught regression in dual-input support)
+
+### CI
+
+Tests run automatically on push and PR via GitHub Actions (`.github/workflows/test.yml`). The workflow tests against Node.js 20 and 22.
+
+### Testing Philosophy
+
+Focus tests on `core/` modules since they're pure functions without browser dependencies. Integration tests target critical flows where regressions have occurred or would be costly (e.g., enrollment propagation bug).
+
+When adding tests:
+1. Unit tests for `core/` modules are straightforward—no mocking needed
+2. Integration tests can compose multiple `core/` classes to test data flow
+3. Browser-dependent code (`audio/`, `storage/`, `ui/`) would require mocked APIs
+
 ## Development Guidelines
 
 ### Modularity Principles
