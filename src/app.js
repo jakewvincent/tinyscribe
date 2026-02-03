@@ -1032,12 +1032,17 @@ export class App {
 
     this.isRecording = false;
 
+    // Transition live job to 'processed' status (transcript was processed in real-time)
+    if (this.liveJob) {
+      this.liveJob.status = 'processed';
+    }
+
     // Notify Alpine of recording state change
     window.dispatchEvent(
       new CustomEvent('recording-state', { detail: { recording: false } })
     );
 
-    // Update live job state (isRecording changed)
+    // Update live job state (isRecording changed, status changed to processed)
     this._dispatchLiveJobState();
 
     if (this.pendingChunks.size > 0 || this.chunkQueue.length > 0) {
@@ -4402,7 +4407,8 @@ export class App {
     const enrollmentsNeedingRecompute = await enrollmentStore.getEnrollmentsNeedingEmbeddings(modelId);
 
     if (enrollmentsNeedingRecompute.length === 0) {
-      console.log('[App] All enrollments have embeddings for current model');
+      // Still need to load into clusterer - init() call happens before models load
+      await this.loadSavedEnrollments();
       return;
     }
 

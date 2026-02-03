@@ -396,13 +396,13 @@
                 <i class="ti ti-download"></i> Export
               </button>
 
-              <!-- New Job button (disabled in live mode) -->
-              <button class="btn secondary small" @click="createNewJob()" :disabled="isLiveMode || isProcessing" title="Create new job with current settings">
+              <!-- New Job button (disabled during recording) -->
+              <button class="btn secondary small" @click="createNewJob()" :disabled="(isLiveMode && isRecordingActive) || isProcessing" title="Create new job with current settings">
                 <i class="ti ti-plus"></i> New Job
               </button>
 
-              <!-- Clone button (disabled in live mode) -->
-              <button class="btn secondary small" @click="cloneJob()" :disabled="isLiveMode || isProcessing" title="Clone this job's settings">
+              <!-- Clone button (disabled during recording) -->
+              <button class="btn secondary small" @click="cloneJob()" :disabled="(isLiveMode && isRecordingActive) || isProcessing" title="Clone this job's settings">
                 <i class="ti ti-copy"></i> Clone
               </button>
 
