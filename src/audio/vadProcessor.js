@@ -243,6 +243,30 @@ export class VADProcessor {
       return;
     }
 
+    // Safety check: split oversized audio that exceeds max duration
+    // This can happen when MicVAD's onSpeechEnd delivers audio longer than our limit
+    const maxDurationWithBuffer = this.maxSpeechDuration * 1.1; // 10% buffer for timing variance
+    if (duration > maxDurationWithBuffer && !isFinal) {
+      console.warn(`[VAD] Splitting oversized segment: ${duration.toFixed(2)}s exceeds max ${this.maxSpeechDuration}s`);
+
+      // Split into chunks of maxSpeechDuration
+      const samplesPerChunk = Math.floor(this.maxSpeechDuration * this.sampleRate);
+      let offset = 0;
+
+      while (offset < audio.length) {
+        const remainingSamples = audio.length - offset;
+        const chunkSamples = Math.min(samplesPerChunk, remainingSamples);
+        const chunk = audio.slice(offset, offset + chunkSamples);
+        const isLastChunk = offset + chunkSamples >= audio.length;
+
+        // Emit this chunk (recursively, but with wasForced=true to enable overlap)
+        this.handleSpeechSegment(chunk, isFinal && isLastChunk, true);
+
+        offset += chunkSamples;
+      }
+      return;
+    }
+
     // Prepare chunk - only add overlap for forced splits (max duration reached)
     // Natural VAD boundaries don't need overlap since they occur at pauses
     let chunkWithOverlap;

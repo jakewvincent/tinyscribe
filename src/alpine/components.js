@@ -502,19 +502,44 @@ document.addEventListener('alpine:init', () => {
       return this.inputs.length < this.maxInputs;
     },
 
+    /**
+     * Check if "Default" device option is available for this input.
+     * Returns false if another input is already using the default device (empty string).
+     */
+    isDefaultAvailableFor(inputId) {
+      return !this.inputs.some(i => i.id !== inputId && i.deviceId === '');
+    },
+
+    /**
+     * Get list of available devices for this input, excluding devices used by other inputs.
+     */
     availableDevicesFor(inputId) {
       const usedDevices = this.inputs
         .filter(i => i.id !== inputId)
         .map(i => i.deviceId)
-        .filter(Boolean);
+        .filter(Boolean); // Only filter explicit device IDs, not empty string
       return this.devices.filter(d => !usedDevices.includes(d.deviceId));
     },
 
     addInput() {
       if (!this.canAddInput) return;
+
+      // Check if default device is already in use
+      const defaultInUse = this.inputs.some(i => i.deviceId === '');
+
+      // If default is in use, try to pick the first available explicit device
+      let deviceId = '';
+      if (defaultInUse && this.devices.length > 0) {
+        const usedDeviceIds = this.inputs.map(i => i.deviceId).filter(Boolean);
+        const availableDevice = this.devices.find(d => !usedDeviceIds.includes(d.deviceId));
+        if (availableDevice) {
+          deviceId = availableDevice.deviceId;
+        }
+      }
+
       this.inputs.push({
         id: Date.now(),
-        deviceId: '',
+        deviceId,
         expectedSpeakers: 1, // Default to 1 for second input (common use case)
       });
       this.dispatchChange();

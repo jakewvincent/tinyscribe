@@ -515,11 +515,25 @@ export class App {
   /**
    * Handle audio inputs configuration change from Alpine
    * Updates channelConfigs map for use during recording
+   * Deduplicates inputs using the same device to prevent duplicate audio capture
    * @param {Array<{id: number, deviceId: string, expectedSpeakers: number}>} inputs
    */
   handleAudioInputsChange(inputs) {
+    // Deduplicate by deviceId (empty string = default device)
+    const seenDevices = new Set();
+    const uniqueInputs = inputs.filter((input) => {
+      // Normalize deviceId: empty string and null both mean "default"
+      const deviceKey = input.deviceId || 'default';
+      if (seenDevices.has(deviceKey)) {
+        console.warn(`[App] Duplicate device "${deviceKey}" detected on input ${input.id}, ignoring to prevent duplicate audio capture`);
+        return false;
+      }
+      seenDevices.add(deviceKey);
+      return true;
+    });
+
     this.channelConfigs.clear();
-    inputs.forEach((input, idx) => {
+    uniqueInputs.forEach((input, idx) => {
       this.channelConfigs.set(idx, {
         deviceId: input.deviceId || null,
         expectedSpeakers: input.expectedSpeakers ?? 2,

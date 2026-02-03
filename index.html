@@ -108,7 +108,7 @@
                     class="input-device-select"
                     :disabled="isRecording"
                   >
-                    <option value="">Default</option>
+                    <option value="" x-show="isDefaultAvailableFor(input.id)">Default</option>
                     <template x-for="device in availableDevicesFor(input.id)" :key="device.deviceId">
                       <option :value="device.deviceId" x-text="device.label || 'Unknown Device'"></option>
                     </template>
