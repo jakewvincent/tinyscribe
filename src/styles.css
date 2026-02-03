@@ -4483,7 +4483,7 @@ body.resizing * {
   border-color: var(--danger-color);
 }
 
-.btn.danger:hover {
+.btn.danger:hover:not(:disabled) {
   background: var(--danger-hover);
   border-color: var(--danger-hover);
 }

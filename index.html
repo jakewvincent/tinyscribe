@@ -371,7 +371,7 @@
 
               <!-- Delete with confirmation -->
               <div class="job-delete-confirm-container">
-                <button class="btn secondary small" :class="{ 'danger': deleteConfirmOpen }" :disabled="!canDelete" @click.stop="confirmDelete()" title="Delete job">
+                <button class="btn danger small" :disabled="!canDelete" @click.stop="confirmDelete()" title="Delete job">
                   <i class="ti ti-trash"></i>
                   Delete
                 </button>
