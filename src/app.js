@@ -2795,7 +2795,15 @@ export class App {
     const rows = panel.querySelectorAll('.candidate-bar-row');
 
     rows.forEach((row, i) => {
-      if (i >= sorted.length) return;
+      if (i >= sorted.length) {
+        // Hide rows that don't have corresponding data (prevents stale display)
+        row.style.display = 'none';
+        return;
+      }
+
+      // Ensure row is visible
+      row.style.display = '';
+
       const c = sorted[i];
       const pct = (c.similarity * 100).toFixed(0);
 

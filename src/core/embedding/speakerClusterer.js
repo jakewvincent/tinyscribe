@@ -130,9 +130,16 @@ export class SpeakerClusterer {
   /**
    * Re-cluster segments from a given index forward
    * Used after manual reassignment to propagate centroid changes
+   *
+   * IMPORTANT: This preserves the original allSimilarities from each segment
+   * because the original clustering data represents the speakers that existed
+   * when the segment was first processed. The dropdown for reassignment should
+   * show those original options, not options based on potentially-drifted
+   * clusterer state.
+   *
    * @param {Array} segments - All segments with embeddings
    * @param {number} fromIndex - Index to start re-clustering from
-   * @returns {Array<{index: number, oldSpeaker: number, newSpeaker: number, debug: Object}>} Changed segments
+   * @returns {Array<{index: number, oldSpeaker: number, newSpeaker: number}>} Changed segments
    */
   reclusterFromIndex(segments, fromIndex) {
     const changes = [];
@@ -149,15 +156,26 @@ export class SpeakerClusterer {
           index: i,
           oldSpeaker,
           newSpeaker: result.speakerId,
-          debug: result.debug,
         });
-      }
 
-      // Update segment with new assignment
-      segment.speaker = result.speakerId;
-      segment.speakerLabel = this.getSpeakerLabel(result.speakerId);
-      segment.debug = segment.debug || {};
-      segment.debug.clustering = result.debug;
+        // Update segment with new assignment but PRESERVE original allSimilarities
+        // The original allSimilarities represents the speaker options that were
+        // available when this segment was first processed - we don't want to
+        // overwrite that with potentially different data from the current
+        // clusterer state
+        segment.speaker = result.speakerId;
+        segment.speakerLabel = this.getSpeakerLabel(result.speakerId);
+
+        // Merge new debug info while preserving allSimilarities
+        segment.debug = segment.debug || {};
+        const originalAllSimilarities = segment.debug.clustering?.allSimilarities;
+        segment.debug.clustering = {
+          ...result.debug,
+          allSimilarities: originalAllSimilarities || result.debug.allSimilarities,
+          reclusteredAt: Date.now(),
+          reclusteredFrom: oldSpeaker,
+        };
+      }
     }
 
     return changes;
