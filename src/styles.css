@@ -3832,15 +3832,18 @@ body.resizing * {
 /* Reassignment dropdown */
 .speaker-reassignment-dropdown {
   position: fixed;
-  z-index: 1000;
-  background: var(--panel-bg);
-  border: 1px solid var(--border-color);
+  z-index: var(--z-dropdown);
+  background: var(--dropdown-bg);
+  border: 1px solid var(--dropdown-border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--dropdown-shadow);
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
   min-width: 180px;
   padding: var(--space-xs);
   max-height: 300px;
   overflow-y: auto;
+  transform: translateZ(0); /* GPU acceleration for blur */
 }
 
 .speaker-reassignment-dropdown .dropdown-header {
@@ -3891,6 +3894,13 @@ body.resizing * {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.speaker-reassignment-dropdown .speaker-option-name.enrolled::before {
+  content: '★';
+  margin-right: var(--space-xs);
+  font-size: 0.8em;
+  opacity: 0.7;
 }
 
 .speaker-reassignment-dropdown .similarity {

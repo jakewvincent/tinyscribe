@@ -315,6 +315,7 @@ The ConversationInference module tracks conversational patterns to improve attri
 - **WebGPU**: Used for Whisper if available, otherwise WASM fallback
 - **WavLM**: Always uses WASM with fp32 for accurate frame features
 - **Alpine.js**: CDN-loaded (v3 + persist plugin), no build step. Components communicate with app.js via CustomEvents. Panel states persisted to localStorage.
+  - **IMPORTANT: `x-model` + `x-for` select gotcha**: When using `x-model` on a `<select>` with options populated via `x-for`, you MUST add `:selected="item.id === boundValue"` to each `<option>`. Without this, the select will show the first option even when the bound value is different. This is because Alpine's `x-model` binding doesn't reliably sync when options are dynamically rendered.
 - **IndexedDB**: Used for ML model cache (~400MB) and saved recordings. Two-store pattern for recordings separates metadata from audio chunks.
 - **Audio cloning**: In `handleAudioChunk()`, audio is cloned before queuing since pipeline never mutates Float32Arrays. This captures audio for recording without interference.
 - **WAV export**: Recordings downloadable as 16-bit PCM WAV at 16kHz sample rate.

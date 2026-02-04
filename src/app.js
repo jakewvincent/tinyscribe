@@ -2643,59 +2643,69 @@ export class App {
    * Reassign a segment to a different speaker and propagate changes
    * @param {number} segmentIndex - Index of segment to reassign
    * @param {number} newSpeakerId - New speaker ID to assign
-   * @returns {Object|null} { reassignedSegment, reclusteredSegments, reboostedSegments } or null if failed
+   * @param {string} newSpeakerLabel - New speaker label (name) to display
+   * @returns {Object|null} { reassignedSegment, reclusteredSegments, totalChanged } or null if failed
    */
-  reassignSegmentSpeaker(segmentIndex, newSpeakerId) {
-    const segment = this.transcriptMerger.segments[segmentIndex];
-    if (!segment || !segment.embedding) return null;
+  reassignSegmentSpeaker(segmentIndex, newSpeakerId, newSpeakerLabel) {
+    // Get segments from the appropriate source
+    const segments = this.isViewingRecording
+      ? this._currentViewedSegments
+      : this.transcriptMerger.segments;
+
+    const segment = segments[segmentIndex];
+    if (!segment) return null;
 
     const oldSpeakerId = segment.speaker;
+    const oldSpeakerLabel = segment.speakerLabel;
     if (oldSpeakerId === newSpeakerId) return null;
 
-    const clusterer = this.transcriptMerger.speakerClusterer;
-
-    // 1. Update centroids (only for non-enrolled speakers)
-    clusterer.removeFromCentroid(oldSpeakerId, segment.embedding);
-    clusterer.updateCentroid(newSpeakerId, segment.embedding);
-
-    // 2. Update the reassigned segment itself
-    segment.speaker = newSpeakerId;
-    segment.speakerLabel = clusterer.getSpeakerLabel(newSpeakerId);
-    segment.manuallyReassigned = true; // Mark for UI indication
+    // Mark reassignment in debug info
     segment.debug = segment.debug || {};
     segment.debug.clustering = segment.debug.clustering || {};
     segment.debug.clustering.manualOverride = {
       fromSpeaker: oldSpeakerId,
+      fromLabel: oldSpeakerLabel,
       toSpeaker: newSpeakerId,
+      toLabel: newSpeakerLabel,
       timestamp: Date.now(),
     };
 
-    // 3. Re-cluster segments after this one
-    const reclusterChanges = clusterer.reclusterFromIndex(
-      this.transcriptMerger.segments,
-      segmentIndex + 1
-    );
+    // Update segment speaker info
+    segment.speaker = newSpeakerId;
+    segment.speakerLabel = newSpeakerLabel;
+    segment.manuallyReassigned = true;
 
-    // 4. Rebuild inference stats and re-boost all segments
-    const allSegments = this.transcriptMerger.segments;
-    this.conversationInference.rebuildFromSegments(allSegments);
-
-    // 5. Collect all changed indices for UI update
+    let reclusterChanges = [];
     const allChangedIndices = new Set([segmentIndex]);
-    reclusterChanges.forEach(c => allChangedIndices.add(c.index));
 
-    // Get reboosted indices from the rebuild (segments whose display changed)
-    for (let i = 0; i < allSegments.length; i++) {
+    // Only do centroid updates and reclustering for live mode with active clusterer
+    if (!this.isViewingRecording && segment.embedding) {
+      const clusterer = this.transcriptMerger.speakerClusterer;
+
+      // Update centroids (only for non-enrolled speakers)
+      clusterer.removeFromCentroid(oldSpeakerId, segment.embedding);
+      clusterer.updateCentroid(newSpeakerId, segment.embedding);
+
+      // Re-cluster segments after this one
+      reclusterChanges = clusterer.reclusterFromIndex(segments, segmentIndex + 1);
+      reclusterChanges.forEach(c => allChangedIndices.add(c.index));
+    }
+
+    // Rebuild inference stats and re-boost all segments
+    this.conversationInference.rebuildFromSegments(segments);
+
+    // Update inference attributions
+    for (let i = 0; i < segments.length; i++) {
       const attr = this.conversationInference.getAttribution(i);
       if (attr) {
-        allSegments[i].inferenceAttribution = attr;
+        segments[i].inferenceAttribution = attr;
       }
     }
 
-    // 6. Re-render changed segments
+    // Re-render changed segments
     this.reRenderSegments([...allChangedIndices]);
 
-    console.log(`[Reassignment] Segment ${segmentIndex} reassigned from speaker ${oldSpeakerId} to ${newSpeakerId}. ` +
+    console.log(`[Reassignment] Segment ${segmentIndex} reassigned: "${oldSpeakerLabel}" → "${newSpeakerLabel}". ` +
       `Reclustered ${reclusterChanges.length} segment(s).`);
 
     return {
@@ -2713,8 +2723,13 @@ export class App {
   reRenderSegments(indices) {
     const segmentEls = this.transcriptContainer.querySelectorAll('.transcript-segment');
 
+    // Get segments from the appropriate source
+    const segments = this.isViewingRecording
+      ? this._currentViewedSegments
+      : this.transcriptMerger.segments;
+
     for (const index of indices) {
-      const segment = this.transcriptMerger.segments[index];
+      const segment = segments[index];
       const segmentEl = segmentEls[index];
       if (!segment || !segmentEl) continue;
 
@@ -2744,7 +2759,10 @@ export class App {
         // Update speaker name text
         const speakerNameEl = labelEl.querySelector('.speaker-name');
         if (speakerNameEl) {
-          const displayLabel = segment.inferenceAttribution?.displayInfo?.label || segment.speakerLabel;
+          // For manually reassigned segments, use speakerLabel directly (inferenceAttribution has stale data)
+          const displayLabel = segment.manuallyReassigned
+            ? segment.speakerLabel
+            : (segment.inferenceAttribution?.displayInfo?.label || segment.speakerLabel);
           speakerNameEl.textContent = displayLabel;
         }
       }
@@ -2804,14 +2822,25 @@ export class App {
     // Remove any existing dropdown
     document.querySelector('.speaker-reassignment-dropdown')?.remove();
 
-    const segment = this.transcriptMerger.segments[segmentIndex];
+    // Get segments from the appropriate source
+    const segments = this.isViewingRecording
+      ? this._currentViewedSegments
+      : this.transcriptMerger.segments;
+
+    const segment = segments[segmentIndex];
     if (!segment || segment.isEnvironmental) return;
 
-    const clusterer = this.transcriptMerger.speakerClusterer;
-    const speakers = clusterer.getAllSpeakersForVisualization();
+    // Build speaker options from the segment's own clustering data
+    // This ensures we use the speakers that were available when this segment was processed
+    const allSimilarities = segment.debug?.clustering?.allSimilarities || [];
 
-    // Get similarity scores for this segment's embedding
-    const similarities = segment.debug?.clustering?.allSimilarities || [];
+    if (allSimilarities.length === 0) {
+      console.warn('[Reassignment] No speaker options available for segment', segmentIndex);
+      return;
+    }
+
+    // Sort by similarity (highest first) for better UX
+    const sortedSpeakers = [...allSimilarities].sort((a, b) => b.similarity - a.similarity);
 
     // Build dropdown
     const dropdown = document.createElement('div');
@@ -2823,25 +2852,34 @@ export class App {
     header.textContent = 'Reassign to:';
     dropdown.appendChild(header);
 
-    // Speaker options
-    for (let i = 0; i < speakers.length; i++) {
-      const speaker = speakers[i];
-      const similarity = similarities.find(s => s.speakerIdx === i)?.similarity;
-      const isCurrent = segment.speaker === i;
+    // Speaker options from the segment's clustering data
+    for (const speakerData of sortedSpeakers) {
+      const speakerId = speakerData.speakerIdx;
+      const speakerName = speakerData.speaker;
+      const similarity = speakerData.similarity;
+      const isEnrolled = speakerData.enrolled;
+      const isCurrent = segment.speaker === speakerId;
 
       const option = document.createElement('div');
       option.className = `dropdown-option ${isCurrent ? 'current' : ''}`;
 
+      // Color dot - use speakerIdx for consistent coloring
       const colorDot = document.createElement('span');
-      colorDot.className = `speaker-color speaker-${speaker.colorIndex % 6}`;
+      colorDot.className = `speaker-color speaker-${speakerId % 6}`;
 
       const nameSpan = document.createElement('span');
       nameSpan.className = 'speaker-option-name';
-      nameSpan.textContent = speaker.name;
+      nameSpan.textContent = speakerName;
+
+      // Enrolled badge
+      if (isEnrolled) {
+        nameSpan.classList.add('enrolled');
+      }
 
       option.appendChild(colorDot);
       option.appendChild(nameSpan);
 
+      // Similarity percentage
       if (similarity !== undefined) {
         const simSpan = document.createElement('span');
         simSpan.className = 'similarity';
@@ -2858,7 +2896,7 @@ export class App {
 
       if (!isCurrent) {
         option.addEventListener('click', () => {
-          this.reassignSegmentSpeaker(segmentIndex, i);
+          this.reassignSegmentSpeaker(segmentIndex, speakerId, speakerName);
           dropdown.remove();
         });
       }

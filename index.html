@@ -396,13 +396,13 @@
                 <i class="ti ti-download"></i> Export
               </button>
 
-              <!-- New Job button (disabled during recording) -->
-              <button class="btn secondary small" @click="createNewJob()" :disabled="(isLiveMode && isRecordingActive) || isProcessing" title="Create new job with current settings">
+              <!-- New Job button (only enabled when viewing a saved recording) -->
+              <button class="btn secondary small" @click="createNewJob()" :disabled="isLiveMode || isProcessing" title="Create new job with current settings">
                 <i class="ti ti-plus"></i> New Job
               </button>
 
-              <!-- Clone button (disabled during recording) -->
-              <button class="btn secondary small" @click="cloneJob()" :disabled="(isLiveMode && isRecordingActive) || isProcessing" title="Clone this job's settings">
+              <!-- Clone button (only enabled when viewing a saved recording) -->
+              <button class="btn secondary small" @click="cloneJob()" :disabled="isLiveMode || isProcessing" title="Clone this job's settings">
                 <i class="ti ti-copy"></i> Clone
               </button>
 
@@ -547,7 +547,7 @@
                         </label>
                         <select class="settings-select" x-model="settings.embeddingModelId" @change="updateSetting('embeddingModelId', $event.target.value)" :disabled="isEmbeddingModelDisabled">
                           <template x-for="model in embeddingModels" :key="model.id">
-                            <option :value="model.id" x-text="model.name"></option>
+                            <option :value="model.id" x-text="model.name" :selected="model.id === settings.embeddingModelId"></option>
                           </template>
                         </select>
                       </div>
@@ -561,7 +561,7 @@
                         </label>
                         <select class="settings-select" x-model="settings.segmentationModelId" @change="onSegmentationModelChange($event.target.value)">
                           <template x-for="model in segmentationModels" :key="model.id">
-                            <option :value="model.id" x-text="model.name"></option>
+                            <option :value="model.id" x-text="model.name" :selected="model.id === settings.segmentationModelId"></option>
                           </template>
                         </select>
                       </div>
