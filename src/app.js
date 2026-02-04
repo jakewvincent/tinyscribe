@@ -1935,6 +1935,18 @@ export class App {
         }
       });
 
+      // Add click handler to speaker name for reassignment (non-environmental only)
+      if (!segment.isEnvironmental && segment.speaker !== null) {
+        const speakerNameEl = labelEl.querySelector('.speaker-name');
+        if (speakerNameEl) {
+          speakerNameEl.classList.add('reassignable');
+          speakerNameEl.addEventListener('click', (e) => {
+            e.stopPropagation(); // Don't trigger comparison mode
+            this.showSpeakerReassignmentDropdown(segmentIndex, speakerNameEl);
+          });
+        }
+      }
+
       this.transcriptContainer.appendChild(segmentEl);
     }
 
@@ -2623,6 +2635,262 @@ export class App {
     this.updateParticipantsPanel();
 
     console.log(`[Inference] Re-attributed ${changedIndices.length} segment(s) based on updated hypothesis`);
+  }
+
+  // ==================== Manual Speaker Reassignment Methods ====================
+
+  /**
+   * Reassign a segment to a different speaker and propagate changes
+   * @param {number} segmentIndex - Index of segment to reassign
+   * @param {number} newSpeakerId - New speaker ID to assign
+   * @returns {Object|null} { reassignedSegment, reclusteredSegments, reboostedSegments } or null if failed
+   */
+  reassignSegmentSpeaker(segmentIndex, newSpeakerId) {
+    const segment = this.transcriptMerger.segments[segmentIndex];
+    if (!segment || !segment.embedding) return null;
+
+    const oldSpeakerId = segment.speaker;
+    if (oldSpeakerId === newSpeakerId) return null;
+
+    const clusterer = this.transcriptMerger.speakerClusterer;
+
+    // 1. Update centroids (only for non-enrolled speakers)
+    clusterer.removeFromCentroid(oldSpeakerId, segment.embedding);
+    clusterer.updateCentroid(newSpeakerId, segment.embedding);
+
+    // 2. Update the reassigned segment itself
+    segment.speaker = newSpeakerId;
+    segment.speakerLabel = clusterer.getSpeakerLabel(newSpeakerId);
+    segment.manuallyReassigned = true; // Mark for UI indication
+    segment.debug = segment.debug || {};
+    segment.debug.clustering = segment.debug.clustering || {};
+    segment.debug.clustering.manualOverride = {
+      fromSpeaker: oldSpeakerId,
+      toSpeaker: newSpeakerId,
+      timestamp: Date.now(),
+    };
+
+    // 3. Re-cluster segments after this one
+    const reclusterChanges = clusterer.reclusterFromIndex(
+      this.transcriptMerger.segments,
+      segmentIndex + 1
+    );
+
+    // 4. Rebuild inference stats and re-boost all segments
+    const allSegments = this.transcriptMerger.segments;
+    this.conversationInference.rebuildFromSegments(allSegments);
+
+    // 5. Collect all changed indices for UI update
+    const allChangedIndices = new Set([segmentIndex]);
+    reclusterChanges.forEach(c => allChangedIndices.add(c.index));
+
+    // Get reboosted indices from the rebuild (segments whose display changed)
+    for (let i = 0; i < allSegments.length; i++) {
+      const attr = this.conversationInference.getAttribution(i);
+      if (attr) {
+        allSegments[i].inferenceAttribution = attr;
+      }
+    }
+
+    // 6. Re-render changed segments
+    this.reRenderSegments([...allChangedIndices]);
+
+    console.log(`[Reassignment] Segment ${segmentIndex} reassigned from speaker ${oldSpeakerId} to ${newSpeakerId}. ` +
+      `Reclustered ${reclusterChanges.length} segment(s).`);
+
+    return {
+      reassignedSegment: segmentIndex,
+      reclusteredSegments: reclusterChanges,
+      totalChanged: allChangedIndices.size,
+    };
+  }
+
+  /**
+   * Re-render specific segments after reassignment
+   * Updates classes, labels, and applies visual feedback
+   * @param {number[]} indices - Segment indices to re-render
+   */
+  reRenderSegments(indices) {
+    const segmentEls = this.transcriptContainer.querySelectorAll('.transcript-segment');
+
+    for (const index of indices) {
+      const segment = this.transcriptMerger.segments[index];
+      const segmentEl = segmentEls[index];
+      if (!segment || !segmentEl) continue;
+
+      // Determine the speaker class
+      let speakerClass = '';
+      if (segment.isEnvironmental || segment.speaker === null) {
+        speakerClass = 'environmental';
+      } else if (segment.speaker === -1 || segment.speaker <= -100) {
+        const unknownIndex = segment.speaker === -1 ? 0 : -100 - segment.speaker;
+        speakerClass = `unknown-speaker unknown-speaker-${unknownIndex % 4}`;
+      } else {
+        speakerClass = `speaker-${segment.speaker % 6}`;
+      }
+
+      // Update segment class
+      segmentEl.className = `transcript-segment ${speakerClass}`;
+      if (segment.manuallyReassigned) {
+        segmentEl.classList.add('manually-reassigned');
+      }
+
+      // Update speaker label
+      const labelEl = segmentEl.querySelector('.speaker-label');
+      if (labelEl) {
+        // Update label class
+        labelEl.className = `speaker-label ${speakerClass}`;
+
+        // Update speaker name text
+        const speakerNameEl = labelEl.querySelector('.speaker-name');
+        if (speakerNameEl) {
+          const displayLabel = segment.inferenceAttribution?.displayInfo?.label || segment.speakerLabel;
+          speakerNameEl.textContent = displayLabel;
+        }
+      }
+
+      // Update candidates panel similarity bars if present
+      const candidatesPanel = segmentEl.querySelector('.candidates-panel');
+      if (candidatesPanel && segment.debug?.clustering?.allSimilarities) {
+        this.updateCandidatesPanel(candidatesPanel, segment);
+      }
+
+      // Flash animation to indicate change
+      segmentEl.classList.add('segment-reattributed');
+      setTimeout(() => segmentEl.classList.remove('segment-reattributed'), 500);
+    }
+
+    // Update participants panel
+    this.updateParticipantsPanel();
+  }
+
+  /**
+   * Update candidates panel with current similarity data
+   * @param {HTMLElement} panel - The candidates panel element
+   * @param {Object} segment - Segment with debug.clustering data
+   */
+  updateCandidatesPanel(panel, segment) {
+    const allSimilarities = segment.debug?.clustering?.allSimilarities;
+    if (!allSimilarities || allSimilarities.length === 0) return;
+
+    const sorted = [...allSimilarities].sort((a, b) => b.similarity - a.similarity);
+    const rows = panel.querySelectorAll('.candidate-bar-row');
+
+    rows.forEach((row, i) => {
+      if (i >= sorted.length) return;
+      const c = sorted[i];
+      const pct = (c.similarity * 100).toFixed(0);
+
+      // Update bar width
+      const bar = row.querySelector('.candidate-bar');
+      if (bar) bar.style.width = `${pct}%`;
+
+      // Update percentage text
+      const pctEl = row.querySelector('.candidate-pct');
+      if (pctEl) pctEl.textContent = `${pct}%`;
+
+      // Update name
+      const nameEl = row.querySelector('.candidate-name');
+      if (nameEl) nameEl.textContent = c.speaker;
+    });
+  }
+
+  /**
+   * Show dropdown for reassigning segment speaker
+   * @param {number} segmentIndex - Index of segment
+   * @param {HTMLElement} anchorEl - Element to anchor dropdown to
+   */
+  showSpeakerReassignmentDropdown(segmentIndex, anchorEl) {
+    // Remove any existing dropdown
+    document.querySelector('.speaker-reassignment-dropdown')?.remove();
+
+    const segment = this.transcriptMerger.segments[segmentIndex];
+    if (!segment || segment.isEnvironmental) return;
+
+    const clusterer = this.transcriptMerger.speakerClusterer;
+    const speakers = clusterer.getAllSpeakersForVisualization();
+
+    // Get similarity scores for this segment's embedding
+    const similarities = segment.debug?.clustering?.allSimilarities || [];
+
+    // Build dropdown
+    const dropdown = document.createElement('div');
+    dropdown.className = 'speaker-reassignment-dropdown';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'dropdown-header';
+    header.textContent = 'Reassign to:';
+    dropdown.appendChild(header);
+
+    // Speaker options
+    for (let i = 0; i < speakers.length; i++) {
+      const speaker = speakers[i];
+      const similarity = similarities.find(s => s.speakerIdx === i)?.similarity;
+      const isCurrent = segment.speaker === i;
+
+      const option = document.createElement('div');
+      option.className = `dropdown-option ${isCurrent ? 'current' : ''}`;
+
+      const colorDot = document.createElement('span');
+      colorDot.className = `speaker-color speaker-${speaker.colorIndex % 6}`;
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'speaker-option-name';
+      nameSpan.textContent = speaker.name;
+
+      option.appendChild(colorDot);
+      option.appendChild(nameSpan);
+
+      if (similarity !== undefined) {
+        const simSpan = document.createElement('span');
+        simSpan.className = 'similarity';
+        simSpan.textContent = `${(similarity * 100).toFixed(0)}%`;
+        option.appendChild(simSpan);
+      }
+
+      if (isCurrent) {
+        const badge = document.createElement('span');
+        badge.className = 'current-badge';
+        badge.textContent = 'current';
+        option.appendChild(badge);
+      }
+
+      if (!isCurrent) {
+        option.addEventListener('click', () => {
+          this.reassignSegmentSpeaker(segmentIndex, i);
+          dropdown.remove();
+        });
+      }
+
+      dropdown.appendChild(option);
+    }
+
+    // Position dropdown below anchor
+    const rect = anchorEl.getBoundingClientRect();
+    dropdown.style.top = `${rect.bottom + 4}px`;
+    dropdown.style.left = `${rect.left}px`;
+    document.body.appendChild(dropdown);
+
+    // Close on click outside
+    const closeHandler = (e) => {
+      if (!dropdown.contains(e.target) && e.target !== anchorEl) {
+        dropdown.remove();
+        document.removeEventListener('click', closeHandler);
+      }
+    };
+    // Delay to avoid immediate close from the click that opened it
+    setTimeout(() => document.addEventListener('click', closeHandler), 0);
+
+    // Close on escape key
+    const escHandler = (e) => {
+      if (e.key === 'Escape') {
+        dropdown.remove();
+        document.removeEventListener('keydown', escHandler);
+        document.removeEventListener('click', closeHandler);
+      }
+    };
+    document.addEventListener('keydown', escHandler);
   }
 
   // ==================== Comparison Mode Methods (Feature 7) ====================

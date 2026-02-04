@@ -3806,6 +3806,107 @@ body.resizing * {
   }
 }
 
+/* ==================== SPEAKER REASSIGNMENT ==================== */
+
+/* Reassignable speaker name - clickable indicator */
+.speaker-name.reassignable {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-xs);
+  margin: 0 calc(-1 * var(--space-xs));
+  transition: background-color 0.15s;
+}
+
+.speaker-name.reassignable:hover {
+  background-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Manual reassignment indicator - pencil icon */
+.transcript-segment.manually-reassigned .speaker-name::after {
+  content: '✎';
+  margin-left: var(--space-xs);
+  font-size: 0.75em;
+  opacity: 0.6;
+}
+
+/* Reassignment dropdown */
+.speaker-reassignment-dropdown {
+  position: fixed;
+  z-index: 1000;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  min-width: 180px;
+  padding: var(--space-xs);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.speaker-reassignment-dropdown .dropdown-header {
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: var(--space-xs);
+}
+
+.speaker-reassignment-dropdown .dropdown-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+}
+
+.speaker-reassignment-dropdown .dropdown-option:hover:not(.current) {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.speaker-reassignment-dropdown .dropdown-option.current {
+  opacity: 0.6;
+  cursor: default;
+  background-color: rgba(0, 0, 0, 0.03);
+}
+
+.speaker-reassignment-dropdown .speaker-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Speaker color dots in dropdown */
+.speaker-reassignment-dropdown .speaker-color.speaker-0 { background: var(--speaker-0); }
+.speaker-reassignment-dropdown .speaker-color.speaker-1 { background: var(--speaker-1); }
+.speaker-reassignment-dropdown .speaker-color.speaker-2 { background: var(--speaker-2); }
+.speaker-reassignment-dropdown .speaker-color.speaker-3 { background: var(--speaker-3); }
+.speaker-reassignment-dropdown .speaker-color.speaker-4 { background: var(--speaker-4); }
+.speaker-reassignment-dropdown .speaker-color.speaker-5 { background: var(--speaker-5); }
+
+.speaker-reassignment-dropdown .speaker-option-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.speaker-reassignment-dropdown .similarity {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  margin-left: auto;
+}
+
+.speaker-reassignment-dropdown .current-badge {
+  font-size: var(--font-size-xs);
+  padding: 1px var(--space-xs);
+  background: var(--gray-200);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+
 /* ==================== DEBUG PANEL ==================== */
 .debug-toggles {
   display: flex;

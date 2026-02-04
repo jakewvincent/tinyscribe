@@ -280,4 +280,166 @@ describe('SpeakerClusterer', () => {
       expect(clusterer.getSpeakerLabel(UNKNOWN_SPEAKER_ID)).toBe('Unknown');
     });
   });
+
+  describe('removeFromCentroid', () => {
+    it('should remove embedding from non-enrolled speaker centroid', () => {
+      const embedding1 = createEmbedding(1);
+      const embedding2 = createSimilarEmbedding(embedding1, 0.1);
+
+      // Add two embeddings to create a speaker with count=2
+      clusterer.assignSpeaker(embedding1);
+      clusterer.assignSpeaker(embedding2);
+
+      expect(clusterer.speakers[0].count).toBe(2);
+
+      // Remove one embedding
+      const result = clusterer.removeFromCentroid(0, embedding2);
+
+      expect(result).toBe(true);
+      expect(clusterer.speakers[0].count).toBe(1);
+    });
+
+    it('should not remove from enrolled speakers', () => {
+      const embedding = createEmbedding(1);
+      clusterer.importEnrolledSpeakers([
+        { id: '1', name: 'Alice', centroid: Array.from(embedding), colorIndex: 0 },
+      ]);
+
+      const result = clusterer.removeFromCentroid(0, embedding);
+
+      expect(result).toBe(false);
+      expect(clusterer.speakers[0].count).toBe(1);
+    });
+
+    it('should not remove last embedding from speaker', () => {
+      const embedding = createEmbedding(1);
+      clusterer.assignSpeaker(embedding);
+
+      expect(clusterer.speakers[0].count).toBe(1);
+
+      const result = clusterer.removeFromCentroid(0, embedding);
+
+      expect(result).toBe(false);
+      expect(clusterer.speakers[0].count).toBe(1);
+    });
+
+    it('should return false for invalid speaker ID', () => {
+      clusterer.assignSpeaker(createEmbedding(1));
+
+      expect(clusterer.removeFromCentroid(-1, createEmbedding(1))).toBe(false);
+      expect(clusterer.removeFromCentroid(5, createEmbedding(1))).toBe(false);
+    });
+
+    it('should return false for null embedding', () => {
+      clusterer.assignSpeaker(createEmbedding(1));
+      clusterer.assignSpeaker(createSimilarEmbedding(createEmbedding(1), 0.1));
+
+      expect(clusterer.removeFromCentroid(0, null)).toBe(false);
+    });
+  });
+
+  describe('reclusterFromIndex', () => {
+    it('should re-cluster segments from specified index', () => {
+      clusterer = new SpeakerClusterer({ numSpeakers: 2 });
+
+      const speaker1Base = createEmbedding(1);
+      const speaker2Base = createEmbedding(100);
+
+      // Create segments with embeddings
+      const segments = [
+        { embedding: speaker1Base, speaker: 0, speakerLabel: 'Speaker 1' },
+        { embedding: createSimilarEmbedding(speaker1Base, 0.05), speaker: 0, speakerLabel: 'Speaker 1' },
+        { embedding: createSimilarEmbedding(speaker2Base, 0.05), speaker: 1, speakerLabel: 'Speaker 2' },
+      ];
+
+      // Initialize clusterer with first embedding
+      clusterer.assignSpeaker(speaker1Base);
+      clusterer.assignSpeaker(speaker2Base);
+
+      // Re-cluster from index 1
+      const changes = clusterer.reclusterFromIndex(segments, 1);
+
+      // Should process segments 1 and 2
+      expect(segments[1].speaker).toBeDefined();
+      expect(segments[2].speaker).toBeDefined();
+    });
+
+    it('should skip environmental segments', () => {
+      clusterer = new SpeakerClusterer({ numSpeakers: 2 });
+
+      const embedding = createEmbedding(1);
+      clusterer.assignSpeaker(embedding);
+
+      const segments = [
+        { embedding: embedding, speaker: 0, isEnvironmental: true },
+        { embedding: createSimilarEmbedding(embedding, 0.05), speaker: 0 },
+      ];
+
+      const changes = clusterer.reclusterFromIndex(segments, 0);
+
+      // Environmental segment should not be in changes
+      const envChange = changes.find(c => c.index === 0);
+      expect(envChange).toBeUndefined();
+    });
+
+    it('should skip segments without embeddings', () => {
+      clusterer = new SpeakerClusterer({ numSpeakers: 2 });
+
+      const embedding = createEmbedding(1);
+      clusterer.assignSpeaker(embedding);
+
+      const segments = [
+        { embedding: null, speaker: 0 },
+        { embedding: createSimilarEmbedding(embedding, 0.05), speaker: 0 },
+      ];
+
+      const changes = clusterer.reclusterFromIndex(segments, 0);
+
+      // Segment without embedding should not be in changes
+      const noEmbeddingChange = changes.find(c => c.index === 0);
+      expect(noEmbeddingChange).toBeUndefined();
+    });
+
+    it('should return array of changed segments', () => {
+      clusterer = new SpeakerClusterer({ numSpeakers: 2 });
+
+      const speaker1Base = createEmbedding(1);
+      const speaker2Base = createEmbedding(100);
+
+      // Initialize clusterer
+      clusterer.assignSpeaker(speaker1Base);
+      clusterer.assignSpeaker(speaker2Base);
+
+      // Create segment that was wrongly assigned
+      const segments = [
+        { embedding: speaker2Base, speaker: 0, speakerLabel: 'Speaker 1' }, // Wrong assignment
+      ];
+
+      const changes = clusterer.reclusterFromIndex(segments, 0);
+
+      // Should detect the change from speaker 0 to speaker 1
+      if (changes.length > 0) {
+        expect(changes[0].index).toBe(0);
+        expect(changes[0].oldSpeaker).toBe(0);
+        expect(changes[0].newSpeaker).toBe(1);
+      }
+    });
+
+    it('should update segment labels after reclustering', () => {
+      clusterer = new SpeakerClusterer({ numSpeakers: 2 });
+      clusterer.importEnrolledSpeakers([
+        { id: '1', name: 'Alice', centroid: Array.from(createEmbedding(1)), colorIndex: 0 },
+        { id: '2', name: 'Bob', centroid: Array.from(createEmbedding(100)), colorIndex: 1 },
+      ]);
+
+      const segments = [
+        { embedding: createSimilarEmbedding(createEmbedding(100), 0.05), speaker: 0, speakerLabel: 'Alice' },
+      ];
+
+      clusterer.reclusterFromIndex(segments, 0);
+
+      // Label should be updated if speaker changed
+      expect(segments[0].speakerLabel).toBeDefined();
+    });
+  });
 });

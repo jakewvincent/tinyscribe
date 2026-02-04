@@ -99,6 +99,71 @@ export class SpeakerClusterer {
   }
 
   /**
+   * Remove an embedding from a speaker's centroid (inverse running average)
+   * Used when reassigning a segment to a different speaker
+   * @param {number} speakerId - The speaker ID
+   * @param {Float32Array|Array} embedding - Embedding to remove
+   * @returns {boolean} True if removal succeeded
+   */
+  removeFromCentroid(speakerId, embedding) {
+    if (!embedding || speakerId < 0 || speakerId >= this.speakers.length) return false;
+
+    const speaker = this.speakers[speakerId];
+    if (speaker.enrolled) return false; // Don't modify enrolled speakers
+    if (speaker.count <= 1) return false; // Can't remove last embedding
+
+    const centroid = speaker.centroid;
+    const normalizedEmbedding = l2NormalizeCopy(embedding);
+    if (!normalizedEmbedding) return false;
+
+    // Inverse running average: old_centroid = (new_centroid * count - embedding) / (count - 1)
+    for (let i = 0; i < centroid.length; i++) {
+      centroid[i] = (centroid[i] * speaker.count - normalizedEmbedding[i]) / (speaker.count - 1);
+    }
+    speaker.count--;
+
+    // Re-normalize centroid
+    l2Normalize(centroid);
+    return true;
+  }
+
+  /**
+   * Re-cluster segments from a given index forward
+   * Used after manual reassignment to propagate centroid changes
+   * @param {Array} segments - All segments with embeddings
+   * @param {number} fromIndex - Index to start re-clustering from
+   * @returns {Array<{index: number, oldSpeaker: number, newSpeaker: number, debug: Object}>} Changed segments
+   */
+  reclusterFromIndex(segments, fromIndex) {
+    const changes = [];
+
+    for (let i = fromIndex; i < segments.length; i++) {
+      const segment = segments[i];
+      if (!segment.embedding || segment.isEnvironmental) continue;
+
+      const oldSpeaker = segment.speaker;
+      const result = this.assignSpeaker(segment.embedding, true);
+
+      if (result.speakerId !== oldSpeaker) {
+        changes.push({
+          index: i,
+          oldSpeaker,
+          newSpeaker: result.speakerId,
+          debug: result.debug,
+        });
+      }
+
+      // Update segment with new assignment
+      segment.speaker = result.speakerId;
+      segment.speakerLabel = this.getSpeakerLabel(result.speakerId);
+      segment.debug = segment.debug || {};
+      segment.debug.clustering = result.debug;
+    }
+
+    return changes;
+  }
+
+  /**
    * Assign a speaker ID to a segment based on its embedding
    * Uses online clustering: matches to existing speaker or creates new one
    * @param {Float32Array|Array} embedding - The speaker embedding
